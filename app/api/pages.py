@@ -15,11 +15,19 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request", "").lower() == "true"
 
 
+def _render(request: Request, template: str, context: dict | None = None):
+    """Render a Jinja2 template with Starlette-compatible API."""
+    from app.main import templates
+
+    ctx = context or {}
+    # Starlette >= 0.29 uses TemplateResponse(request, name, context)
+    return templates.TemplateResponse(request, template, ctx)
+
+
 async def _get_optional_user(
     access_token: str | None = Cookie(default=None),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any] | None:
-    """Try to extract user from JWT cookie. Returns None instead of raising 401."""
     if not access_token:
         return None
     try:
@@ -42,10 +50,10 @@ async def _get_optional_user(
 
 
 def _require_auth(user: dict | None, request: Request):
-    """Redirect to login if user is not authenticated."""
     if user is None:
         if _is_htmx(request):
             from fastapi.responses import Response
+
             resp = Response(status_code=200)
             resp.headers["HX-Redirect"] = "/login"
             return resp
@@ -65,20 +73,7 @@ async def index() -> RedirectResponse:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    from app.main import templates, TEMPLATES_DIR
-    try:
-        return templates.TemplateResponse("pages/login.html", {"request": request})
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": str(e),
-                "templates_dir": str(TEMPLATES_DIR),
-                "exists": TEMPLATES_DIR.exists() if hasattr(TEMPLATES_DIR, 'exists') else "unknown",
-                "login_exists": (TEMPLATES_DIR / "pages" / "login.html").exists() if hasattr(TEMPLATES_DIR, 'exists') else "unknown",
-            },
-        )
+    return _render(request, "pages/login.html")
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +89,7 @@ async def dashboard_page(
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
-    from app.main import templates
-    return templates.TemplateResponse(
-        "pages/dashboard.html", {"request": request, "user": user}
-    )
+    return _render(request, "pages/dashboard.html", {"user": user})
 
 
 @router.get("/simulation/new", response_class=HTMLResponse)
@@ -108,10 +100,7 @@ async def simulation_new_page(
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
-    from app.main import templates
-    return templates.TemplateResponse(
-        "pages/simulation.html", {"request": request, "user": user}
-    )
+    return _render(request, "pages/simulation.html", {"user": user})
 
 
 @router.get("/simulation/{simulation_id}/result", response_class=HTMLResponse)
@@ -123,10 +112,10 @@ async def simulation_result_page(
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
-    from app.main import templates
-    return templates.TemplateResponse(
+    return _render(
+        request,
         "pages/simulation_result.html",
-        {"request": request, "user": user, "simulation_id": simulation_id},
+        {"user": user, "simulation_id": simulation_id},
     )
 
 
@@ -138,10 +127,7 @@ async def market_data_list_page(
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
-    from app.main import templates
-    return templates.TemplateResponse(
-        "pages/market_data_list.html", {"request": request, "user": user}
-    )
+    return _render(request, "pages/market_data_list.html", {"user": user})
 
 
 @router.get("/market-data/{item_id}", response_class=HTMLResponse)
@@ -153,8 +139,8 @@ async def market_data_detail_page(
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
-    from app.main import templates
-    return templates.TemplateResponse(
+    return _render(
+        request,
         "pages/market_data_detail.html",
-        {"request": request, "user": user, "item_id": item_id},
+        {"user": user, "item_id": item_id},
     )
