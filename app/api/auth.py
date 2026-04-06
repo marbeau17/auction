@@ -97,7 +97,7 @@ async def login(
         )
     except Exception as exc:
         logger.warning("login_failed", email=email, error=str(exc))
-        return _login_error_response(request, "メールアドレスまたはパスワードが正しくありません。")
+        return _login_error_response(request, f"Login error: {type(exc).__name__}: {str(exc)[:200]}")
 
     session = auth_response.session
     if session is None:
