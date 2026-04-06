@@ -65,9 +65,20 @@ async def index() -> RedirectResponse:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    # Import here to avoid circular import
-    from app.main import templates
-    return templates.TemplateResponse("pages/login.html", {"request": request})
+    from app.main import templates, TEMPLATES_DIR
+    try:
+        return templates.TemplateResponse("pages/login.html", {"request": request})
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "templates_dir": str(TEMPLATES_DIR),
+                "exists": TEMPLATES_DIR.exists() if hasattr(TEMPLATES_DIR, 'exists') else "unknown",
+                "login_exists": (TEMPLATES_DIR / "pages" / "login.html").exists() if hasattr(TEMPLATES_DIR, 'exists') else "unknown",
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

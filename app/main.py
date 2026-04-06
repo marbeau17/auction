@@ -37,10 +37,26 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger()
 # Paths
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
-TEMPLATES_DIR = APP_DIR / "templates"
+import os as _os
+
+# On Vercel, __file__ may resolve differently. Use multiple fallbacks.
+_this_file = Path(__file__).resolve()
+APP_DIR = _this_file.parent
+BASE_DIR = APP_DIR.parent
+
+# Try multiple candidate paths for templates and static
+_template_candidates = [
+    APP_DIR / "templates",
+    BASE_DIR / "app" / "templates",
+    Path(_os.getcwd()) / "app" / "templates",
+]
+TEMPLATES_DIR = next((p for p in _template_candidates if p.is_dir()), _template_candidates[0])
+
+_static_candidates = [
+    BASE_DIR / "static",
+    Path(_os.getcwd()) / "static",
+]
+STATIC_DIR = next((p for p in _static_candidates if p.is_dir()), _static_candidates[0])
 
 # ---------------------------------------------------------------------------
 # Jinja2 templates (shared instance)
