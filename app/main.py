@@ -38,8 +38,9 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-TEMPLATES_DIR = BASE_DIR / "app" / "templates"
+TEMPLATES_DIR = APP_DIR / "templates"
 
 # ---------------------------------------------------------------------------
 # Jinja2 templates (shared instance)
@@ -112,6 +113,16 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["ops"])
     async def health_check() -> dict[str, str]:
         return {"status": "ok"}
+
+    # -- Favicon ------------------------------------------------------------
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        from fastapi.responses import FileResponse
+
+        ico_path = STATIC_DIR / "favicon.svg"
+        if ico_path.exists():
+            return FileResponse(str(ico_path), media_type="image/svg+xml")
+        return JSONResponse(status_code=204, content=None)
 
     return app
 
