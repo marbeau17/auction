@@ -81,11 +81,14 @@ async def dashboard_page(request: Request):
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
-    try:
-        return _render(request, "pages/dashboard.html", {"user": user})
-    except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=500, content={"error": str(e), "user": str(user)})
+    # Provide default context for dashboard template
+    context = {
+        "user": user,
+        "kpi": {"simulation_count": 0, "avg_yield": 0.0, "price_alerts": 0},
+        "recent_simulations": [],
+        "stats": {"simulation_count": 0, "avg_yield": 0.0, "price_alerts": 0},
+    }
+    return _render(request, "pages/dashboard.html", context)
 
 
 @router.get("/simulation/new", response_class=HTMLResponse)
