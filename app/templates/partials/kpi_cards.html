@@ -1,0 +1,70 @@
+<div id="kpi-cards" class="kpi-cards-grid">
+  {# KPI Card 1: 今月査定数 #}
+  <div class="kpi-card">
+    <div class="kpi-card__icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+    </div>
+    <div class="kpi-card__body">
+      <span class="kpi-card__label">今月査定数</span>
+      <span class="kpi-card__value">{{ stats.simulation_count }}</span>
+    </div>
+    <div class="kpi-card__trend {% if stats.simulation_count_trend >= 0 %}kpi-card__trend--up{% else %}kpi-card__trend--down{% endif %}">
+      {% if stats.simulation_count_trend >= 0 %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        <span>+{{ stats.simulation_count_trend }}%</span>
+      {% else %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+        <span>{{ stats.simulation_count_trend }}%</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# KPI Card 2: 平均利回り #}
+  <div class="kpi-card">
+    <div class="kpi-card__icon kpi-card__icon--yield">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+    </div>
+    <div class="kpi-card__body">
+      <span class="kpi-card__label">平均利回り</span>
+      <span class="kpi-card__value">{{ stats.avg_yield }}%</span>
+    </div>
+    <div class="kpi-card__trend {% if stats.avg_yield_trend >= 0 %}kpi-card__trend--up{% else %}kpi-card__trend--down{% endif %}">
+      {% if stats.avg_yield_trend >= 0 %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        <span>+{{ stats.avg_yield_trend }}%</span>
+      {% else %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+        <span>{{ stats.avg_yield_trend }}%</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# KPI Card 3: 相場変動 #}
+  <div class="kpi-card">
+    <div class="kpi-card__icon kpi-card__icon--alert">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </div>
+    <div class="kpi-card__body">
+      <span class="kpi-card__label">相場変動</span>
+      <span class="kpi-card__value">{{ stats.price_alerts }}件</span>
+    </div>
+    <div class="kpi-card__trend {% if stats.price_alerts > 0 %}kpi-card__trend--alert{% else %}kpi-card__trend--stable{% endif %}">
+      {% if stats.price_alerts > 0 %}
+        <span>要確認</span>
+      {% else %}
+        <span>安定</span>
+      {% endif %}
+    </div>
+  </div>
+</div>

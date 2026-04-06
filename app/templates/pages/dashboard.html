@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}ダッシュボード - 商用車リースバック価格最適化システム{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-header__title">ダッシュボード</h2>
+    <p class="page-header__description">リースバック査定の概況と最新データ</p>
+</div>
+
+{# ===== KPI Cards ===== #}
+<section class="kpi-row"
+         hx-get="/api/v1/dashboard/kpi"
+         hx-trigger="load, every 60s"
+         hx-target="this"
+         hx-swap="innerHTML"
+         aria-label="主要指標">
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--primary" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+        </div>
+        <div class="kpi-card__body">
+            <span class="kpi-card__label">今月査定数</span>
+            <span class="kpi-card__value">{{ kpi.assessment_count | default("--") }}</span>
+            {% if kpi and kpi.assessment_change is defined %}
+            <span class="kpi-card__change {% if kpi.assessment_change >= 0 %}kpi-card__change--up{% else %}kpi-card__change--down{% endif %}">
+                {{ "%+d" | format(kpi.assessment_change) }}% 前月比
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--success" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="kpi-card__body">
+            <span class="kpi-card__label">平均利回り</span>
+            <span class="kpi-card__value">{{ "%.2f" | format(kpi.avg_yield_rate) if kpi and kpi.avg_yield_rate is defined else "--" }}%</span>
+            {% if kpi and kpi.yield_change is defined %}
+            <span class="kpi-card__change {% if kpi.yield_change >= 0 %}kpi-card__change--up{% else %}kpi-card__change--down{% endif %}">
+                {{ "%+.2f" | format(kpi.yield_change) }}pp 前月比
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--warning" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="kpi-card__body">
+            <span class="kpi-card__label">相場変動アラート</span>
+            <span class="kpi-card__value">{{ kpi.alert_count | default("--") }}件</span>
+            {% if kpi and kpi.alert_count is defined and kpi.alert_count > 0 %}
+            <a href="/market-data?alerts=1" class="kpi-card__link">詳細を確認</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+{# ===== Quick Actions ===== #}
+<section class="quick-actions" aria-label="クイックアクション">
+    <a href="/simulation/new" class="btn btn--primary btn--lg">
+        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        新規シミュレーション
+    </a>
+    <a href="/market-data" class="btn btn--outline btn--lg">
+        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M2 15V6l3.5 2.5 3.5-5 3.5 3.5L16 4v11H2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+        相場データ確認
+    </a>
+</section>
+
+{# ===== Recent Simulations ===== #}
+<section class="card" aria-label="最近のシミュレーション">
+    <div class="card__header">
+        <h3 class="card__title">最近のシミュレーション</h3>
+        <a href="/simulations" class="card__header-link">すべて表示</a>
+    </div>
+    <div class="card__body"
+         id="recent-simulations"
+         hx-get="/api/v1/simulations?per_page=5"
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="innerHTML"
+         hx-indicator="#simulations-loading">
+
+        <div id="simulations-loading" class="htmx-indicator loading-placeholder">
+            <span class="spinner"></span>
+            <span>読み込み中...</span>
+        </div>
+    </div>
+</section>
+
+{# ===== Recent Simulations Fragment (rendered by HTMX) ===== #}
+{#
+  The following is the expected partial structure returned by the API:
+
+  <table class="data-table">
+      <thead>
+          <tr>
+              <th>日時</th>
+              <th>メーカー / 車種</th>
+              <th>年式</th>
+              <th>推奨買取価格</th>
+              <th>利回り</th>
+              <th>判定</th>
+              <th></th>
+          </tr>
+      </thead>
+      <tbody>
+          {% for sim in simulations %}
+          <tr>
+              <td>{{ sim.created_at | datetimeformat }}</td>
+              <td>{{ sim.maker }} {{ sim.model }}</td>
+              <td>{{ sim.year }}年</td>
+              <td>{{ sim.recommended_price | numberformat }}円</td>
+              <td>{{ "%.2f" | format(sim.yield_rate) }}%</td>
+              <td><span class="badge badge--{{ sim.verdict_class }}">{{ sim.verdict }}</span></td>
+              <td><a href="/simulation/{{ sim.id }}" class="btn btn--text btn--sm">詳細</a></td>
+          </tr>
+          {% endfor %}
+      </tbody>
+  </table>
+#}
+{% endblock %}

@@ -1,0 +1,20 @@
+listing:
+  container: ".vehicle-card, .search-result-item, [class*='vehicle-list'] > div, .item-list > li"
+  title: ".vehicle-card__title, .item-title, h3 a, .vehicle-name"
+  price: ".vehicle-card__price, .item-price, .price, [class*='price']"
+  year: ".vehicle-card__year, .item-year, [class*='year']"
+  mileage: ".vehicle-card__mileage, .item-mileage, [class*='mileage']"
+  link: "a[href*='/detail/'], a[href*='/truck/']"
+  image: "img.vehicle-card__image, .item-image img, img[class*='thumb']"
+detail:
+  spec_table: "table.spec-table, .detail-spec table, .vehicle-spec table"
+  body_type: "//th[contains(text(),'形状')]/following-sibling::td | //th[contains(text(),'ボディ')]/following-sibling::td"
+  tonnage: "//th[contains(text(),'積載')]/following-sibling::td"
+  transmission: "//th[contains(text(),'ミッション')]/following-sibling::td"
+  engine: "//th[contains(text(),'排気量')]/following-sibling::td"
+  inspection: "//th[contains(text(),'車検')]/following-sibling::td"
+  location: "//th[contains(text(),'所在地')]/following-sibling::td"
+pagination:
+  next_button: "a.next, .pagination .next a, a[rel='next']"
+  page_indicator: ".pagination .current, .page-info"
+  total_results: ".search-result-count, .total-count"

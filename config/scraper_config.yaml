@@ -1,0 +1,33 @@
+global:
+  delay_min: 3
+  delay_max: 7
+  max_retries: 3
+  max_pages: 50
+  timeout: 30000
+  user_agent: "CommercialVehicleResearchBot/1.0 (+https://example.com/bot-info)"
+
+sites:
+  truck_kingdom:
+    enabled: true
+    base_url: "https://www.truck-kingdom.com"
+    categories:
+      - slug: "large-truck"
+        name: "大型トラック"
+      - slug: "medium-truck"
+        name: "中型トラック"
+      - slug: "small-truck"
+        name: "小型トラック"
+      - slug: "trailer"
+        name: "トレーラー"
+    max_pages: 30
+  steerlink:
+    enabled: true
+    base_url: "https://www.steerlink.co.jp"
+    categories:
+      - slug: "truck/large"
+        name: "大型トラック"
+      - slug: "truck/medium"
+        name: "中型トラック"
+      - slug: "truck/small"
+        name: "小型トラック"
+    max_pages: 20

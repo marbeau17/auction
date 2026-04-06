@@ -1,0 +1,113 @@
+# Model name normalization mapping
+# Format: canonical_name -> maker, variants list
+# Grouped by manufacturer
+
+# --- いすゞ (Isuzu) ---
+ギガ:
+  maker: いすゞ
+  size_class: large
+  variants:
+    - GIGA
+    - Giga
+    - ギガマックス
+    - GIGAMAX
+    - ギガ MAX
+
+フォワード:
+  maker: いすゞ
+  size_class: medium
+  variants:
+    - FORWARD
+    - Forward
+    - フォワードジャストン
+    - FORWARD JUSTON
+    - フォワード ジャストン
+
+エルフ:
+  maker: いすゞ
+  size_class: small
+  variants:
+    - ELF
+    - Elf
+    - エルフ100
+    - エルフUT
+    - ELF100
+
+# --- 日野 (Hino) ---
+プロフィア:
+  maker: 日野
+  size_class: large
+  variants:
+    - PROFIA
+    - Profia
+    - プロフィアテラヴィ
+    - PROFIA TERAVI
+
+レンジャー:
+  maker: 日野
+  size_class: medium
+  variants:
+    - RANGER
+    - Ranger
+    - レンジャープロ
+    - RANGER PRO
+
+デュトロ:
+  maker: 日野
+  size_class: small
+  variants:
+    - DUTRO
+    - Dutro
+    - デュトロハイブリッド
+    - DUTRO HYBRID
+
+# --- 三菱ふそう (Mitsubishi Fuso) ---
+スーパーグレート:
+  maker: 三菱ふそう
+  size_class: large
+  variants:
+    - SUPER GREAT
+    - Super Great
+    - スーパーグレートV
+    - SUPER GREAT V
+    - S.GREAT
+
+ファイター:
+  maker: 三菱ふそう
+  size_class: medium
+  variants:
+    - FIGHTER
+    - Fighter
+    - ファイターミニヨン
+    - FIGHTER MIGNON
+
+キャンター:
+  maker: 三菱ふそう
+  size_class: small
+  variants:
+    - CANTER
+    - Canter
+    - キャンターガッツ
+    - CANTER GUTS
+    - キャンターエコハイブリッド
+
+# --- UDトラックス (UD Trucks) ---
+クオン:
+  maker: UDトラックス
+  size_class: large
+  variants:
+    - QUON
+    - Quon
+    - クオンGW
+    - クオンCD
+    - QUON GW
+
+コンドル:
+  maker: UDトラックス
+  size_class: medium
+  variants:
+    - CONDOR
+    - Condor
+    - コンドルMK
+    - コンドルLK
+    - CONDOR MK

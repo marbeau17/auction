@@ -1,0 +1,14 @@
+<div id="validation-errors" class="alert alert-error" role="alert">
+  {% if message %}
+    <p class="alert__message">{{ message }}</p>
+  {% endif %}
+  {% if errors %}
+    <ul class="alert__list">
+      {% for err in errors %}
+        <p class="alert__field-error" data-field="{{ err.field }}">
+          <strong>{{ err.field }}:</strong> {{ err.message }}
+        </p>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

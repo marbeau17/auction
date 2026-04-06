@@ -1,0 +1,76 @@
+<div id="chart-container" class="chart-container">
+  <canvas id="{{ chart_id|default('mainChart') }}"
+          data-labels='{{ labels|tojson }}'
+          data-values='{{ values|tojson }}'
+          data-chart-type='{{ chart_type|default("line") }}'
+          data-chart-label='{{ chart_label|default("データ") }}'
+          width="800"
+          height="400">
+  </canvas>
+</div>
+
+<script>
+(function() {
+  var canvasId = '{{ chart_id|default("mainChart") }}';
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+
+  var labels = {{ labels|tojson }};
+  var values = {{ values|tojson }};
+  var chartType = canvas.dataset.chartType || 'line';
+  var chartLabel = canvas.dataset.chartLabel || 'データ';
+
+  // Destroy existing chart instance if present
+  if (window._chartInstances && window._chartInstances[canvasId]) {
+    window._chartInstances[canvasId].destroy();
+  }
+  if (!window._chartInstances) {
+    window._chartInstances = {};
+  }
+
+  var ctx = canvas.getContext('2d');
+  window._chartInstances[canvasId] = new Chart(ctx, {
+    type: chartType,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: chartLabel,
+        data: values,
+        borderColor: 'rgba(59,130,246,1)',
+        backgroundColor: chartType === 'line'
+          ? 'rgba(59,130,246,0.1)'
+          : 'rgba(59,130,246,0.6)',
+        borderWidth: 2,
+        fill: chartType === 'line',
+        tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': ¥' + ctx.parsed.y.toLocaleString();
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: false,
+          ticks: {
+            callback: function(value) {
+              return '¥' + value.toLocaleString();
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>

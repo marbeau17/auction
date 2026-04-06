@@ -1,0 +1,25 @@
+# Maker name normalization mapping
+# canonical_name: [variant1, variant2, ...]
+いすゞ:
+  - いすず
+  - イスズ
+  - ISUZU
+  - いすゞ自動車
+  - Isuzu
+日野:
+  - ヒノ
+  - HINO
+  - 日野自動車
+  - Hino
+三菱ふそう:
+  - 三菱
+  - ミツビシフソウ
+  - FUSO
+  - 三菱ふそうトラック・バス
+  - Mitsubishi Fuso
+UDトラックス:
+  - UD
+  - 日産ディーゼル
+  - UDTRUCKS
+  - UD TRUCKS
+  - UD Trucks

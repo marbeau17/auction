@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: auction-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_PORT
+        value: "8000"
+      - key: APP_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true
+
+  - type: cron
+    name: auction-scraper
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "0 3 * * *"
+    buildCommand: ""
+    startCommand: "python -m scraper.run"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SCRAPER_REQUEST_INTERVAL_SEC
+        value: "3"
+      - key: SCRAPER_MAX_RETRIES
+        value: "3"
+      - key: SCRAPER_USER_AGENT
+        value: CommercialVehicleResearchBot/1.0

@@ -1,0 +1,79 @@
+{#
+  Reusable form field macro.
+
+  Usage:
+    {% from "components/form_field.html" import form_field %}
+    {{ form_field("maker", "メーカー", type="select", required=True,
+                  options=makers, hx_attrs={"hx-get": "/api/models", "hx-target": "#model-select"}) }}
+    {{ form_field("mileage_km", "走行距離 (km)", type="number", required=True) }}
+#}
+
+{% macro form_field(name, label, type="text", required=False, value="", options=None, placeholder="", help_text="", min=None, max=None, step=None, hx_attrs=None, css_class="") %}
+<div class="form-field {{ css_class }}" id="field-{{ name }}">
+  <label class="form-field__label" for="{{ name }}">
+    {{ label }}
+    {% if required %}<span class="form-field__required" aria-label="必須">*</span>{% endif %}
+  </label>
+
+  {% if type == "select" %}
+    <select class="form-field__input form-field__select"
+            id="{{ name }}"
+            name="{{ name }}"
+            {% if required %}required{% endif %}
+            {% if hx_attrs %}
+              {% for attr, val in hx_attrs.items() %}{{ attr }}="{{ val }}" {% endfor %}
+            {% endif %}>
+      {% if placeholder %}
+        <option value="">{{ placeholder }}</option>
+      {% endif %}
+      {% if options %}
+        {% for opt in options %}
+          {% if opt is mapping %}
+            <option value="{{ opt.value }}"
+                    {% if opt.value|string == value|string %}selected{% endif %}>
+              {{ opt.label }}
+            </option>
+          {% else %}
+            <option value="{{ opt }}"
+                    {% if opt|string == value|string %}selected{% endif %}>
+              {{ opt }}
+            </option>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </select>
+
+  {% elif type == "textarea" %}
+    <textarea class="form-field__input form-field__textarea"
+              id="{{ name }}"
+              name="{{ name }}"
+              {% if required %}required{% endif %}
+              {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+              {% if hx_attrs %}
+                {% for attr, val in hx_attrs.items() %}{{ attr }}="{{ val }}" {% endfor %}
+              {% endif %}
+              rows="3">{{ value }}</textarea>
+
+  {% else %}
+    <input class="form-field__input"
+           type="{{ type }}"
+           id="{{ name }}"
+           name="{{ name }}"
+           {% if value %}value="{{ value }}"{% endif %}
+           {% if required %}required{% endif %}
+           {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+           {% if min is not none %}min="{{ min }}"{% endif %}
+           {% if max is not none %}max="{{ max }}"{% endif %}
+           {% if step is not none %}step="{{ step }}"{% endif %}
+           {% if hx_attrs %}
+             {% for attr, val in hx_attrs.items() %}{{ attr }}="{{ val }}" {% endfor %}
+           {% endif %}>
+  {% endif %}
+
+  {% if help_text %}
+    <p class="form-field__help">{{ help_text }}</p>
+  {% endif %}
+
+  <div class="form-field__error" id="error-{{ name }}" role="alert"></div>
+</div>
+{% endmacro %}

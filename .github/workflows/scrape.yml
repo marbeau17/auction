@@ -1,0 +1,47 @@
+name: Daily Scraping
+on:
+  schedule:
+    - cron: '0 18 * * *'  # UTC 18:00 = JST 03:00
+  workflow_dispatch:
+    inputs:
+      site:
+        description: 'Target site (or "all")'
+        required: false
+        default: 'all'
+      mode:
+        description: 'Scraping mode'
+        required: false
+        default: 'full'
+
+concurrency:
+  group: scraping
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        site: [truck_kingdom, steerlink]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: playwright install chromium --with-deps
+      - name: Run scraper
+        run: python scripts/run_scraper.py --site ${{ matrix.site }} --mode full
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-logs-${{ matrix.site }}
+          path: logs/
+          retention-days: 30

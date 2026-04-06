@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}シミュレーション - 商用車リースバック価格最適化システム{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-header__title">リースバックシミュレーション</h2>
+    <p class="page-header__description">車両情報とリース条件を入力して最適な買取価格を算出します</p>
+</div>
+
+<form id="simulation-form"
+      hx-post="/api/v1/simulations/calculate"
+      hx-target="#result-preview"
+      hx-swap="innerHTML"
+      hx-indicator="#calc-spinner"
+      hx-disabled-elt="#calc-submit">
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="form-columns">
+        {# ===== Left Column: Vehicle Information ===== #}
+        <div class="form-column">
+            <fieldset class="form-section">
+                <legend class="form-section__title">車両情報</legend>
+
+                <div class="form-group">
+                    <label for="maker" class="form-label form-label--required">メーカー</label>
+                    <select id="maker"
+                            name="maker"
+                            class="form-select"
+                            required
+                            hx-get="/api/v1/vehicles/models"
+                            hx-target="#model"
+                            hx-swap="innerHTML"
+                            hx-trigger="change"
+                            hx-include="[name='maker']"
+                            hx-indicator="#model-loading">
+                        <option value="">選択してください</option>
+                        {% for m in makers | default([]) %}
+                        <option value="{{ m.id }}" {% if form and form.maker == m.id %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="model" class="form-label form-label--required">車種</label>
+                    <div class="form-input-wrapper">
+                        <select id="model" name="model" class="form-select" required>
+                            <option value="">メーカーを先に選択</option>
+                            {% if models is defined %}
+                            {% for mdl in models %}
+                            <option value="{{ mdl.id }}" {% if form and form.model == mdl.id %}selected{% endif %}>{{ mdl.name }}</option>
+                            {% endfor %}
+                            {% endif %}
+                        </select>
+                        <span id="model-loading" class="htmx-indicator spinner spinner--inline" aria-label="読み込み中"></span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group form-group--half">
+                        <label for="year" class="form-label form-label--required">年式</label>
+                        <select id="year" name="year" class="form-select" required>
+                            <option value="">選択</option>
+                            {% for y in range(2026, 2005, -1) %}
+                            <option value="{{ y }}" {% if form and form.year == y %}selected{% endif %}>{{ y }}年</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group form-group--half">
+                        <label for="mileage" class="form-label form-label--required">走行距離 (km)</label>
+                        <input type="number"
+                               id="mileage"
+                               name="mileage"
+                               class="form-input"
+                               placeholder="例: 120000"
+                               min="0"
+                               max="9999999"
+                               step="1"
+                               required
+                               value="{{ form.mileage if form else '' }}">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group form-group--half">
+                        <label for="vehicle_class" class="form-label form-label--required">クラス</label>
+                        <select id="vehicle_class" name="vehicle_class" class="form-select" required>
+                            <option value="">選択</option>
+                            <option value="light" {% if form and form.vehicle_class == 'light' %}selected{% endif %}>軽</option>
+                            <option value="small" {% if form and form.vehicle_class == 'small' %}selected{% endif %}>小型</option>
+                            <option value="medium" {% if form and form.vehicle_class == 'medium' %}selected{% endif %}>中型</option>
+                            <option value="large" {% if form and form.vehicle_class == 'large' %}selected{% endif %}>大型</option>
+                            <option value="special" {% if form and form.vehicle_class == 'special' %}selected{% endif %}>特殊</option>
+                        </select>
+                    </div>
+                    <div class="form-group form-group--half">
+                        <label for="body_type" class="form-label form-label--required">ボディタイプ</label>
+                        <select id="body_type" name="body_type" class="form-select" required>
+                            <option value="">選択</option>
+                            <option value="van" {% if form and form.body_type == 'van' %}selected{% endif %}>バン</option>
+                            <option value="truck" {% if form and form.body_type == 'truck' %}selected{% endif %}>トラック</option>
+                            <option value="dump" {% if form and form.body_type == 'dump' %}selected{% endif %}>ダンプ</option>
+                            <option value="refrigerator" {% if form and form.body_type == 'refrigerator' %}selected{% endif %}>冷凍・冷蔵車</option>
+                            <option value="tanker" {% if form and form.body_type == 'tanker' %}selected{% endif %}>タンクローリー</option>
+                            <option value="bus" {% if form and form.body_type == 'bus' %}selected{% endif %}>バス</option>
+                            <option value="other" {% if form and form.body_type == 'other' %}selected{% endif %}>その他</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group form-group--half">
+                        <label for="acquisition_price" class="form-label form-label--required">取得価格 (円)</label>
+                        <input type="number"
+                               id="acquisition_price"
+                               name="acquisition_price"
+                               class="form-input"
+                               placeholder="例: 5000000"
+                               min="0"
+                               step="10000"
+                               required
+                               value="{{ form.acquisition_price if form else '' }}">
+                    </div>
+                    <div class="form-group form-group--half">
+                        <label for="book_value" class="form-label form-label--required">簿価 (円)</label>
+                        <input type="number"
+                               id="book_value"
+                               name="book_value"
+                               class="form-input"
+                               placeholder="例: 3000000"
+                               min="0"
+                               step="10000"
+                               required
+                               value="{{ form.book_value if form else '' }}">
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+        {# ===== Right Column: Lease Conditions ===== #}
+        <div class="form-column">
+            <fieldset class="form-section">
+                <legend class="form-section__title">リース条件</legend>
+
+                <div class="form-group">
+                    <label for="target_yield_rate" class="form-label form-label--required">目標利回り (%)</label>
+                    <input type="number"
+                           id="target_yield_rate"
+                           name="target_yield_rate"
+                           class="form-input"
+                           placeholder="例: 8.5"
+                           min="0"
+                           max="100"
+                           step="0.01"
+                           required
+                           value="{{ form.target_yield_rate if form else '' }}">
+                    <p class="form-hint">推奨範囲: 5.0% - 15.0%</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="lease_term_months" class="form-label form-label--required">リース期間</label>
+                    <select id="lease_term_months" name="lease_term_months" class="form-select" required>
+                        <option value="">選択してください</option>
+                        <option value="12" {% if form and form.lease_term_months == 12 %}selected{% endif %}>12ヶ月 (1年)</option>
+                        <option value="24" {% if form and form.lease_term_months == 24 %}selected{% endif %}>24ヶ月 (2年)</option>
+                        <option value="36" {% if form and form.lease_term_months == 36 %}selected{% endif %}>36ヶ月 (3年)</option>
+                        <option value="48" {% if form and form.lease_term_months == 48 %}selected{% endif %}>48ヶ月 (4年)</option>
+                        <option value="60" {% if form and form.lease_term_months == 60 %}selected{% endif %}>60ヶ月 (5年)</option>
+                        <option value="72" {% if form and form.lease_term_months == 72 %}selected{% endif %}>72ヶ月 (6年)</option>
+                        <option value="84" {% if form and form.lease_term_months == 84 %}selected{% endif %}>84ヶ月 (7年)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="residual_rate" class="form-label">残価率 (%) <span class="form-label__optional">任意</span></label>
+                    <input type="number"
+                           id="residual_rate"
+                           name="residual_rate"
+                           class="form-input"
+                           placeholder="未入力の場合は自動算出"
+                           min="0"
+                           max="100"
+                           step="0.1"
+                           value="{{ form.residual_rate if form and form.residual_rate else '' }}">
+                    <p class="form-hint">未入力の場合、車種・年式・走行距離から自動算出されます</p>
+                </div>
+            </fieldset>
+
+            {# ===== Market Reference Panel ===== #}
+            <div class="form-section form-section--muted">
+                <h4 class="form-section__title">相場参考データ</h4>
+                <div id="market-reference"
+                     hx-get="/api/v1/market-data/reference"
+                     hx-trigger="change from:#maker, change from:#model, change from:#year, change from:#mileage, change from:#body_type"
+                     hx-include="#maker, #model, #year, #mileage, #body_type"
+                     hx-target="this"
+                     hx-swap="innerHTML"
+                     hx-indicator="#market-ref-loading">
+                    <p class="text-muted">車両情報を入力すると相場データが表示されます</p>
+                </div>
+                <span id="market-ref-loading" class="htmx-indicator spinner spinner--inline" aria-label="相場データ読み込み中"></span>
+            </div>
+        </div>
+    </div>
+
+    {# ===== Submit ===== #}
+    <div class="form-actions">
+        <button type="reset" class="btn btn--outline">リセット</button>
+        <button type="submit" id="calc-submit" class="btn btn--primary btn--lg">
+            <span class="btn__text">シミュレーション実行</span>
+            <span id="calc-spinner" class="htmx-indicator spinner" aria-label="計算中"></span>
+        </button>
+    </div>
+</form>
+
+{# ===== Result Preview ===== #}
+<section id="result-preview" class="result-preview" aria-label="シミュレーション結果プレビュー" aria-live="polite"></section>
+{% endblock %}

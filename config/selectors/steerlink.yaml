@@ -1,0 +1,21 @@
+listing:
+  container: ".stockList__item, .stock-list-item, .search-list > li, [class*='stock'] > .item"
+  title: ".stockList__title, .stock-title, h3.item-name, .vehicle-title"
+  price: ".stockList__price, .stock-price, .price-value, [class*='price'] .num"
+  year: ".stockList__year, .stock-year, .year-value, [class*='nendo']"
+  mileage: ".stockList__mileage, .stock-mileage, .km-value, [class*='soukou']"
+  link: "a[href*='/stock/detail/'], a[href*='/truck/detail/']"
+  image: "img.stockList__image, .stock-thumb img, img[class*='stock-img']"
+detail:
+  spec_table: "table.specTable, .spec-detail table, .vehicle-detail-spec table"
+  body_type: "//th[contains(text(),'形状')]/following-sibling::td | //th[contains(text(),'ボディタイプ')]/following-sibling::td"
+  tonnage: "//th[contains(text(),'最大積載量')]/following-sibling::td | //th[contains(text(),'積載')]/following-sibling::td"
+  transmission: "//th[contains(text(),'シフト')]/following-sibling::td | //th[contains(text(),'ミッション')]/following-sibling::td"
+  engine: "//th[contains(text(),'排気量')]/following-sibling::td | //th[contains(text(),'エンジン')]/following-sibling::td"
+  inspection: "//th[contains(text(),'車検')]/following-sibling::td | //th[contains(text(),'車検有効期限')]/following-sibling::td"
+  location: "//th[contains(text(),'所在地')]/following-sibling::td | //th[contains(text(),'展示場')]/following-sibling::td"
+  dimensions: "//th[contains(text(),'荷台寸法')]/following-sibling::td | //th[contains(text(),'荷台内寸')]/following-sibling::td"
+pagination:
+  next_button: "a.pager__next, .pagination .next a, a[rel='next']"
+  page_indicator: ".pager__current, .page-num .active"
+  total_results: ".result-count, .search-total .num"

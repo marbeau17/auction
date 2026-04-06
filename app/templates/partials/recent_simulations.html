@@ -1,0 +1,44 @@
+<div id="recent-simulations">
+  <table class="table table--hover table--compact">
+    <thead>
+      <tr>
+        <th>車種</th>
+        <th>実行日</th>
+        <th>推奨価格</th>
+        <th>ステータス</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sim in simulations %}
+      <tr class="table__row--clickable"
+          hx-get="/simulation/{{ sim.id }}/result"
+          hx-target="#main-content"
+          hx-push-url="true"
+          hx-swap="innerHTML">
+        <td>
+          <span class="text-bold">{{ sim.input_data.maker }} {{ sim.input_data.model }}</span>
+          <br>
+          <small class="text-muted">{{ sim.input_data.registration_year_month }} / {{ "{:,}".format(sim.input_data.mileage_km) }}km</small>
+        </td>
+        <td>{{ sim.created_at.strftime('%Y/%m/%d') }}</td>
+        <td class="text-right">&yen;{{ "{:,}".format(sim.result.recommended_purchase_price) }}</td>
+        <td>
+          {% if sim.result.assessment == '推奨' %}
+            <span class="badge badge--success">{{ sim.result.assessment }}</span>
+          {% elif sim.result.assessment == '要検討' %}
+            <span class="badge badge--warning">{{ sim.result.assessment }}</span>
+          {% else %}
+            <span class="badge badge--danger">{{ sim.result.assessment }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" class="table__empty">
+          シミュレーション履歴がありません。
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

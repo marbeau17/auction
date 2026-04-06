@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}シミュレーション結果 - 商用車リースバック価格最適化システム{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-header__title">シミュレーション結果</h2>
+    <p class="page-header__description">ID: {{ result.id }} | {{ result.created_at | default("") }}</p>
+</div>
+
+{# ===== Summary Cards ===== #}
+<section class="result-summary" aria-label="結果サマリー">
+    <div class="result-card result-card--primary">
+        <span class="result-card__label">推奨買取価格</span>
+        <span class="result-card__value">&yen;{{ "{:,.0f}".format(result.recommended_price) if result and result.recommended_price is defined else "--" }}</span>
+        {% if result and result.book_value is defined %}
+        <span class="result-card__sub">簿価比 {{ "%.1f" | format(result.recommended_price / result.book_value * 100) }}%</span>
+        {% endif %}
+    </div>
+
+    <div class="result-card result-card--info">
+        <span class="result-card__label">月額リース料</span>
+        <span class="result-card__value">&yen;{{ "{:,.0f}".format(result.monthly_lease_payment) if result and result.monthly_lease_payment is defined else "--" }}</span>
+        <span class="result-card__sub">{{ result.lease_term_months | default("--") }}ヶ月</span>
+    </div>
+
+    <div class="result-card result-card--success">
+        <span class="result-card__label">実質利回り</span>
+        <span class="result-card__value">{{ "%.2f" | format(result.actual_yield_rate) if result and result.actual_yield_rate is defined else "--" }}%</span>
+        <span class="result-card__sub">目標: {{ "%.2f" | format(result.target_yield_rate) if result and result.target_yield_rate is defined else "--" }}%</span>
+    </div>
+
+    <div class="result-card result-card--{{ result.verdict_class | default('neutral') }}">
+        <span class="result-card__label">判定結果</span>
+        <span class="result-card__value result-card__verdict">
+            {% if result and result.verdict is defined %}
+                {% if result.verdict_class == 'success' %}
+                <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                {% elif result.verdict_class == 'warning' %}
+                <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 9v4m0 4h.01" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.5"/></svg>
+                {% elif result.verdict_class == 'danger' %}
+                <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                {% endif %}
+                {{ result.verdict }}
+            {% else %}
+                --
+            {% endif %}
+        </span>
+    </div>
+</section>
+
+{# ===== PnL Chart ===== #}
+<section class="card" aria-label="損益チャート">
+    <div class="card__header">
+        <h3 class="card__title">資産価値 vs 累積リース収入</h3>
+    </div>
+    <div class="card__body">
+        <div class="chart-container">
+            <canvas id="pnl-chart" aria-label="資産価値と累積リース収入の推移グラフ" role="img"></canvas>
+        </div>
+    </div>
+</section>
+
+{# ===== Monthly Schedule ===== #}
+<section class="card" aria-label="月次スケジュール">
+    <div class="card__header">
+        <h3 class="card__title">月次リーススケジュール</h3>
+        <button type="button"
+                class="btn btn--text btn--sm"
+                data-toggle="collapse"
+                data-target="#schedule-table"
+                aria-expanded="false"
+                aria-controls="schedule-table">
+            展開 / 折りたたみ
+        </button>
+    </div>
+    <div class="card__body collapse" id="schedule-table">
+        <div class="table-responsive">
+            <table class="data-table data-table--striped">
+                <thead>
+                    <tr>
+                        <th>月</th>
+                        <th class="text-right">リース料</th>
+                        <th class="text-right">累積リース収入</th>
+                        <th class="text-right">資産簿価</th>
+                        <th class="text-right">減価償却費</th>
+                        <th class="text-right">損益</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if result and result.schedule is defined %}
+                    {% for row in result.schedule %}
+                    <tr>
+                        <td>{{ row.month }}ヶ月目</td>
+                        <td class="text-right">&yen;{{ "{:,.0f}".format(row.lease_payment) }}</td>
+                        <td class="text-right">&yen;{{ "{:,.0f}".format(row.cumulative_income) }}</td>
+                        <td class="text-right">&yen;{{ "{:,.0f}".format(row.book_value) }}</td>
+                        <td class="text-right">&yen;{{ "{:,.0f}".format(row.depreciation) }}</td>
+                        <td class="text-right {% if row.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            &yen;{{ "{:,.0f}".format(row.pnl) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">データがありません</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+{# ===== Input Conditions Summary ===== #}
+<section class="card" aria-label="入力条件">
+    <div class="card__header">
+        <h3 class="card__title">入力条件</h3>
+    </div>
+    <div class="card__body">
+        <dl class="detail-grid">
+            <div class="detail-grid__item">
+                <dt>メーカー / 車種</dt>
+                <dd>{{ result.maker_name | default("--") }} {{ result.model_name | default("") }}</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>年式</dt>
+                <dd>{{ result.year | default("--") }}年</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>走行距離</dt>
+                <dd>{{ "{:,.0f}".format(result.mileage) if result and result.mileage is defined else "--" }} km</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>クラス</dt>
+                <dd>{{ result.vehicle_class_display | default("--") }}</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>ボディタイプ</dt>
+                <dd>{{ result.body_type_display | default("--") }}</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>取得価格</dt>
+                <dd>&yen;{{ "{:,.0f}".format(result.acquisition_price) if result and result.acquisition_price is defined else "--" }}</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>簿価</dt>
+                <dd>&yen;{{ "{:,.0f}".format(result.book_value) if result and result.book_value is defined else "--" }}</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>目標利回り</dt>
+                <dd>{{ "%.2f" | format(result.target_yield_rate) if result and result.target_yield_rate is defined else "--" }}%</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>リース期間</dt>
+                <dd>{{ result.lease_term_months | default("--") }}ヶ月</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>残価率</dt>
+                <dd>{{ "%.1f" | format(result.residual_rate) if result and result.residual_rate is defined else "自動算出" }}%</dd>
+            </div>
+        </dl>
+    </div>
+</section>
+
+{# ===== Action Buttons ===== #}
+<div class="form-actions form-actions--spread">
+    <a href="/simulation/new?from={{ result.id if result else '' }}" class="btn btn--outline btn--lg">
+        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M13.5 1.5l3 3-9 9H4.5v-3l9-9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        条件変更
+    </a>
+
+    <div class="form-actions__group">
+        <button type="button"
+                class="btn btn--primary btn--lg"
+                hx-post="/api/v1/simulations/{{ result.id if result else '' }}/save"
+                hx-target="#save-status"
+                hx-swap="innerHTML"
+                hx-indicator="#save-spinner"
+                hx-disabled-elt="this">
+            <span class="btn__text">結果保存</span>
+            <span id="save-spinner" class="htmx-indicator spinner" aria-label="保存中"></span>
+        </button>
+
+        <a href="/api/v1/simulations/{{ result.id if result else '' }}/export/pdf"
+           class="btn btn--outline btn--lg"
+           target="_blank"
+           rel="noopener">
+            <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 15.75h9a1.5 1.5 0 001.5-1.5v-6.75L10.5 2.25H4.5A1.5 1.5 0 003 3.75v10.5a1.5 1.5 0 001.5 1.5z" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 2.25v5.25H15" stroke="currentColor" stroke-width="1.5"/></svg>
+            PDF出力
+        </a>
+    </div>
+</div>
+<div id="save-status" class="save-status" aria-live="polite"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Collapse toggle
+    document.querySelectorAll("[data-toggle='collapse']").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var target = document.querySelector(btn.getAttribute("data-target"));
+            if (target) {
+                var isExpanded = btn.getAttribute("aria-expanded") === "true";
+                btn.setAttribute("aria-expanded", String(!isExpanded));
+                target.classList.toggle("collapse--open");
+            }
+        });
+    });
+
+    // PnL Chart
+    var chartData = {{ result.chart_data | tojson if result and result.chart_data is defined else '{}' }};
+    var ctx = document.getElementById("pnl-chart");
+    if (ctx && chartData.labels) {
+        new Chart(ctx.getContext("2d"), {
+            type: "line",
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: "資産簿価",
+                        data: chartData.book_values,
+                        borderColor: "#6366f1",
+                        backgroundColor: "rgba(99,102,241,0.08)",
+                        fill: true,
+                        tension: 0.3
+                    },
+                    {
+                        label: "累積リース収入",
+                        data: chartData.cumulative_incomes,
+                        borderColor: "#10b981",
+                        backgroundColor: "rgba(16,185,129,0.08)",
+                        fill: true,
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "top" },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                return context.dataset.label + ": \u00a5" + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: "\u7d4c\u904e\u6708\u6570" } },
+                    y: {
+                        title: { display: true, text: "\u91d1\u984d (\u5186)" },
+                        ticks: {
+                            callback: function (value) {
+                                return "\u00a5" + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

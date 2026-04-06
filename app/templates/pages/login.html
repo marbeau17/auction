@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>ログイン - 商用車リースバック価格最適化システム</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://unpkg.com/htmx.org/dist/htmx.min.js" defer></script>
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card">
+            {# ===== Branding ===== #}
+            <div class="login-card__header">
+                <div class="login-card__logo" aria-hidden="true">&#x1F69A;</div>
+                <h1 class="login-card__title">商用車リースバック<br>価格最適化システム</h1>
+                <p class="login-card__subtitle">Commercial Vehicle Leaseback Pricing Optimizer</p>
+            </div>
+
+            {# ===== Error Display ===== #}
+            <div id="login-error" class="login-card__error" role="alert" aria-live="polite"></div>
+
+            {# ===== Login Form ===== #}
+            <form class="login-form"
+                  hx-post="/auth/login"
+                  hx-target="#login-error"
+                  hx-swap="innerHTML"
+                  hx-indicator="#login-spinner"
+                  hx-disabled-elt="#login-submit">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="form-group">
+                    <label for="email" class="form-label">メールアドレス</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        class="form-input"
+                        placeholder="user@example.com"
+                        required
+                        autocomplete="email"
+                        autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" class="form-label">パスワード</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        class="form-input"
+                        placeholder="パスワードを入力"
+                        required
+                        autocomplete="current-password"
+                        minlength="8">
+                </div>
+
+                <div class="form-group form-group--row">
+                    <label class="form-checkbox">
+                        <input type="checkbox" name="remember" value="1">
+                        <span class="form-checkbox__label">ログイン状態を保持</span>
+                    </label>
+                    <a href="/auth/forgot-password" class="login-form__forgot-link">パスワードを忘れた方</a>
+                </div>
+
+                <button type="submit" id="login-submit" class="btn btn--primary btn--block btn--lg">
+                    <span class="btn__text">ログイン</span>
+                    <span id="login-spinner" class="htmx-indicator spinner" aria-label="読み込み中"></span>
+                </button>
+            </form>
+        </div>
+
+        <p class="login-footer">&copy; {{ current_year | default("2026") }} 商用車リースバック価格最適化システム</p>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            document.body.addEventListener("htmx:configRequest", function (event) {
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                if (csrfMeta) {
+                    event.detail.headers["X-CSRF-Token"] = csrfMeta.getAttribute("content");
+                }
+            });
+
+            document.body.addEventListener("htmx:afterRequest", function (event) {
+                if (event.detail.xhr.status === 200 && event.detail.xhr.getResponseHeader("HX-Redirect")) {
+                    window.location.href = event.detail.xhr.getResponseHeader("HX-Redirect");
+                }
+            });
+        });
+    </script>
+</body>
+</html>

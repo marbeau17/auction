@@ -1,0 +1,92 @@
+<nav class="pagination" aria-label="ページナビゲーション">
+  <ul class="pagination__list">
+    {# Previous Button #}
+    <li class="pagination__item {% if meta.page <= 1 %}pagination__item--disabled{% endif %}">
+      {% if meta.page > 1 %}
+        <a href="#"
+           class="pagination__link pagination__link--prev"
+           hx-get="{{ base_url|default(request.url.path) }}?page={{ meta.page - 1 }}{% if query_string %}&{{ query_string }}{% endif %}"
+           hx-target="{{ hx_target|default('#vehicle-table-container') }}"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           aria-label="前のページ">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          前へ
+        </a>
+      {% else %}
+        <span class="pagination__link pagination__link--prev" aria-disabled="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          前へ
+        </span>
+      {% endif %}
+    </li>
+
+    {# Page Numbers #}
+    {% set start_page = [1, meta.page - 2]|max %}
+    {% set end_page = [meta.total_pages, meta.page + 2]|min %}
+
+    {% if start_page > 1 %}
+      <li class="pagination__item">
+        <a href="#"
+           class="pagination__link"
+           hx-get="{{ base_url|default(request.url.path) }}?page=1{% if query_string %}&{{ query_string }}{% endif %}"
+           hx-target="{{ hx_target|default('#vehicle-table-container') }}"
+           hx-swap="outerHTML"
+           hx-push-url="true">1</a>
+      </li>
+      {% if start_page > 2 %}
+        <li class="pagination__item pagination__item--ellipsis"><span>...</span></li>
+      {% endif %}
+    {% endif %}
+
+    {% for p in range(start_page, end_page + 1) %}
+      <li class="pagination__item {% if p == meta.page %}pagination__item--active{% endif %}">
+        {% if p == meta.page %}
+          <span class="pagination__link pagination__link--current" aria-current="page">{{ p }}</span>
+        {% else %}
+          <a href="#"
+             class="pagination__link"
+             hx-get="{{ base_url|default(request.url.path) }}?page={{ p }}{% if query_string %}&{{ query_string }}{% endif %}"
+             hx-target="{{ hx_target|default('#vehicle-table-container') }}"
+             hx-swap="outerHTML"
+             hx-push-url="true">{{ p }}</a>
+        {% endif %}
+      </li>
+    {% endfor %}
+
+    {% if end_page < meta.total_pages %}
+      {% if end_page < meta.total_pages - 1 %}
+        <li class="pagination__item pagination__item--ellipsis"><span>...</span></li>
+      {% endif %}
+      <li class="pagination__item">
+        <a href="#"
+           class="pagination__link"
+           hx-get="{{ base_url|default(request.url.path) }}?page={{ meta.total_pages }}{% if query_string %}&{{ query_string }}{% endif %}"
+           hx-target="{{ hx_target|default('#vehicle-table-container') }}"
+           hx-swap="outerHTML"
+           hx-push-url="true">{{ meta.total_pages }}</a>
+      </li>
+    {% endif %}
+
+    {# Next Button #}
+    <li class="pagination__item {% if meta.page >= meta.total_pages %}pagination__item--disabled{% endif %}">
+      {% if meta.page < meta.total_pages %}
+        <a href="#"
+           class="pagination__link pagination__link--next"
+           hx-get="{{ base_url|default(request.url.path) }}?page={{ meta.page + 1 }}{% if query_string %}&{{ query_string }}{% endif %}"
+           hx-target="{{ hx_target|default('#vehicle-table-container') }}"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           aria-label="次のページ">
+          次へ
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
+      {% else %}
+        <span class="pagination__link pagination__link--next" aria-disabled="true">
+          次へ
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>
+      {% endif %}
+    </li>
+  </ul>
+</nav>

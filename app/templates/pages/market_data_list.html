@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}相場データ - 商用車リースバック価格最適化システム{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-header__title">相場データ</h2>
+    <p class="page-header__description">商用車の市場価格データを検索・分析</p>
+</div>
+
+{# ===== Statistics Summary Bar ===== #}
+<section class="stats-bar" id="stats-bar" aria-label="統計サマリー">
+    <div class="stats-bar__item">
+        <span class="stats-bar__label">件数</span>
+        <span class="stats-bar__value" id="stats-count">{{ stats.total_count | default("--") }}件</span>
+    </div>
+    <div class="stats-bar__item">
+        <span class="stats-bar__label">平均価格</span>
+        <span class="stats-bar__value" id="stats-avg">&yen;{{ "{:,.0f}".format(stats.avg_price) if stats and stats.avg_price is defined else "--" }}</span>
+    </div>
+    <div class="stats-bar__item">
+        <span class="stats-bar__label">中央値</span>
+        <span class="stats-bar__value" id="stats-median">&yen;{{ "{:,.0f}".format(stats.median_price) if stats and stats.median_price is defined else "--" }}</span>
+    </div>
+</section>
+
+{# ===== Filter Bar ===== #}
+<section class="filter-bar" aria-label="フィルター">
+    <form id="filter-form" class="filter-form">
+        <div class="filter-form__fields">
+            <div class="filter-form__field">
+                <label for="filter-maker" class="form-label form-label--sm">メーカー</label>
+                <select id="filter-maker"
+                        name="maker"
+                        class="form-select form-select--sm"
+                        hx-get="/market-data/table"
+                        hx-target="#data-table"
+                        hx-trigger="change"
+                        hx-include="#filter-form"
+                        hx-push-url="true"
+                        hx-indicator="#table-loading">
+                    <option value="">すべて</option>
+                    {% for m in makers | default([]) %}
+                    <option value="{{ m.id }}" {% if filters and filters.maker == m.id %}selected{% endif %}>{{ m.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-form__field">
+                <label for="filter-body-type" class="form-label form-label--sm">ボディタイプ</label>
+                <select id="filter-body-type"
+                        name="body_type"
+                        class="form-select form-select--sm"
+                        hx-get="/market-data/table"
+                        hx-target="#data-table"
+                        hx-trigger="change"
+                        hx-include="#filter-form"
+                        hx-push-url="true"
+                        hx-indicator="#table-loading">
+                    <option value="">すべて</option>
+                    <option value="van" {% if filters and filters.body_type == 'van' %}selected{% endif %}>バン</option>
+                    <option value="truck" {% if filters and filters.body_type == 'truck' %}selected{% endif %}>トラック</option>
+                    <option value="dump" {% if filters and filters.body_type == 'dump' %}selected{% endif %}>ダンプ</option>
+                    <option value="refrigerator" {% if filters and filters.body_type == 'refrigerator' %}selected{% endif %}>冷凍・冷蔵車</option>
+                    <option value="tanker" {% if filters and filters.body_type == 'tanker' %}selected{% endif %}>タンクローリー</option>
+                    <option value="bus" {% if filters and filters.body_type == 'bus' %}selected{% endif %}>バス</option>
+                    <option value="other" {% if filters and filters.body_type == 'other' %}selected{% endif %}>その他</option>
+                </select>
+            </div>
+
+            <div class="filter-form__field filter-form__field--range">
+                <label class="form-label form-label--sm">年式</label>
+                <div class="filter-form__range">
+                    <input type="number"
+                           name="year_from"
+                           class="form-input form-input--sm"
+                           placeholder="開始"
+                           min="2000"
+                           max="2026"
+                           value="{{ filters.year_from if filters and filters.year_from else '' }}"
+                           hx-get="/market-data/table"
+                           hx-target="#data-table"
+                           hx-trigger="change"
+                           hx-include="#filter-form"
+                           hx-push-url="true"
+                           hx-indicator="#table-loading">
+                    <span class="filter-form__range-sep">~</span>
+                    <input type="number"
+                           name="year_to"
+                           class="form-input form-input--sm"
+                           placeholder="終了"
+                           min="2000"
+                           max="2026"
+                           value="{{ filters.year_to if filters and filters.year_to else '' }}"
+                           hx-get="/market-data/table"
+                           hx-target="#data-table"
+                           hx-trigger="change"
+                           hx-include="#filter-form"
+                           hx-push-url="true"
+                           hx-indicator="#table-loading">
+                </div>
+            </div>
+
+            <div class="filter-form__field filter-form__field--range">
+                <label class="form-label form-label--sm">価格帯 (万円)</label>
+                <div class="filter-form__range">
+                    <input type="number"
+                           name="price_from"
+                           class="form-input form-input--sm"
+                           placeholder="下限"
+                           min="0"
+                           step="10"
+                           value="{{ filters.price_from if filters and filters.price_from else '' }}"
+                           hx-get="/market-data/table"
+                           hx-target="#data-table"
+                           hx-trigger="change"
+                           hx-include="#filter-form"
+                           hx-push-url="true"
+                           hx-indicator="#table-loading">
+                    <span class="filter-form__range-sep">~</span>
+                    <input type="number"
+                           name="price_to"
+                           class="form-input form-input--sm"
+                           placeholder="上限"
+                           min="0"
+                           step="10"
+                           value="{{ filters.price_to if filters and filters.price_to else '' }}"
+                           hx-get="/market-data/table"
+                           hx-target="#data-table"
+                           hx-trigger="change"
+                           hx-include="#filter-form"
+                           hx-push-url="true"
+                           hx-indicator="#table-loading">
+                </div>
+            </div>
+
+            <div class="filter-form__field filter-form__field--search">
+                <label for="filter-keyword" class="form-label form-label--sm">キーワード</label>
+                <input type="search"
+                       id="filter-keyword"
+                       name="keyword"
+                       class="form-input form-input--sm"
+                       placeholder="車種名など"
+                       value="{{ filters.keyword if filters and filters.keyword else '' }}"
+                       hx-get="/market-data/table"
+                       hx-target="#data-table"
+                       hx-trigger="change, keyup changed delay:400ms"
+                       hx-include="#filter-form"
+                       hx-push-url="true"
+                       hx-indicator="#table-loading">
+            </div>
+        </div>
+
+        <div class="filter-form__actions">
+            <button type="reset"
+                    class="btn btn--text btn--sm"
+                    hx-get="/market-data/table"
+                    hx-target="#data-table"
+                    hx-indicator="#table-loading">
+                フィルターをリセット
+            </button>
+        </div>
+    </form>
+</section>
+
+{# ===== Results Table ===== #}
+<section class="card" aria-label="相場データ一覧">
+    <div class="card__body card__body--flush">
+        <div id="data-table"
+             hx-get="/market-data/table"
+             hx-trigger="load"
+             hx-include="#filter-form"
+             hx-indicator="#table-loading">
+
+            <div id="table-loading" class="htmx-indicator loading-placeholder loading-placeholder--lg">
+                <span class="spinner"></span>
+                <span>データを読み込んでいます...</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+{#
+  Expected partial HTML returned by /market-data/table:
+
+  <div class="table-responsive">
+      <table class="data-table data-table--hover">
+          <thead>
+              <tr>
+                  <th><a href="?sort=maker" hx-get="/market-data/table?sort=maker" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">メーカー</a></th>
+                  <th><a href="?sort=model" hx-get="/market-data/table?sort=model" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">車種</a></th>
+                  <th><a href="?sort=year" hx-get="/market-data/table?sort=year" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">年式</a></th>
+                  <th>ボディタイプ</th>
+                  <th><a href="?sort=mileage" hx-get="/market-data/table?sort=mileage" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">走行距離</a></th>
+                  <th><a href="?sort=price" hx-get="/market-data/table?sort=price" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">価格</a></th>
+                  <th>更新日</th>
+                  <th></th>
+              </tr>
+          </thead>
+          <tbody>
+              {% for item in items %}
+              <tr>
+                  <td>{{ item.maker }}</td>
+                  <td>{{ item.model }}</td>
+                  <td>{{ item.year }}年</td>
+                  <td>{{ item.body_type_display }}</td>
+                  <td>{{ "{:,.0f}".format(item.mileage) }} km</td>
+                  <td>&yen;{{ "{:,.0f}".format(item.price) }}</td>
+                  <td>{{ item.updated_at | dateformat }}</td>
+                  <td><a href="/market-data/{{ item.id }}" class="btn btn--text btn--sm">詳細</a></td>
+              </tr>
+              {% endfor %}
+          </tbody>
+      </table>
+  </div>
+
+  <nav class="pagination" aria-label="ページネーション">
+      {% if pagination.has_prev %}
+      <a href="?page={{ pagination.page - 1 }}"
+         class="pagination__link"
+         hx-get="/market-data/table?page={{ pagination.page - 1 }}"
+         hx-target="#data-table"
+         hx-include="#filter-form"
+         hx-push-url="true">前へ</a>
+      {% endif %}
+
+      {% for p in pagination.pages %}
+      <a href="?page={{ p }}"
+         class="pagination__link {% if p == pagination.page %}pagination__link--active{% endif %}"
+         hx-get="/market-data/table?page={{ p }}"
+         hx-target="#data-table"
+         hx-include="#filter-form"
+         hx-push-url="true">{{ p }}</a>
+      {% endfor %}
+
+      {% if pagination.has_next %}
+      <a href="?page={{ pagination.page + 1 }}"
+         class="pagination__link"
+         hx-get="/market-data/table?page={{ pagination.page + 1 }}"
+         hx-target="#data-table"
+         hx-include="#filter-form"
+         hx-push-url="true">次へ</a>
+      {% endif %}
+  </nav>
+
+  <div class="stats-bar stats-bar--inline">
+      <span>{{ stats.total_count }}件中 {{ stats.from }}-{{ stats.to }}件を表示</span>
+  </div>
+#}
+{% endblock %}

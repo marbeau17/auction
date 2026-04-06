@@ -1,0 +1,96 @@
+name: CI Pipeline
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pip install pytest pytest-asyncio pytest-cov httpx
+      - name: Run unit tests
+        run: pytest tests/unit -v --tb=short --cov=app --cov=scraper --cov-report=xml --cov-report=term-missing
+        env:
+          APP_ENV: test
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_ANON_KEY: test-key
+          SUPABASE_SERVICE_ROLE_KEY: test-key
+          SUPABASE_JWT_SECRET: test-secret-key-at-least-32-chars-long
+          APP_SECRET_KEY: test-secret
+      - name: Run integration tests
+        run: pytest tests/integration -v --tb=short
+        env:
+          APP_ENV: test
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_ANON_KEY: test-key
+          SUPABASE_SERVICE_ROLE_KEY: test-key
+          SUPABASE_JWT_SECRET: test-secret-key-at-least-32-chars-long
+          APP_SECRET_KEY: test-secret
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  monkey-test:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pip install pytest pytest-asyncio httpx
+      - name: Run monkey tests
+        run: pytest tests/e2e/test_monkey.py -v --tb=short -x
+        env:
+          APP_ENV: test
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_ANON_KEY: test-key
+          SUPABASE_SERVICE_ROLE_KEY: test-key
+          SUPABASE_JWT_SECRET: test-secret-key-at-least-32-chars-long
+          APP_SECRET_KEY: test-secret
+
+  e2e-test:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pip install pytest pytest-asyncio httpx
+      - name: Run E2E tests
+        run: pytest tests/e2e/test_full_workflow.py -v --tb=short
+        env:
+          APP_ENV: test
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_ANON_KEY: test-key
+          SUPABASE_SERVICE_ROLE_KEY: test-key
+          SUPABASE_JWT_SECRET: test-secret-key-at-least-32-chars-long
+          APP_SECRET_KEY: test-secret

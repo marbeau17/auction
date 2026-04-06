@@ -1,0 +1,187 @@
+<div id="simulation-result" class="simulation-result">
+  {# Summary Cards #}
+  <div class="result-summary-cards">
+    <div class="result-card result-card--primary">
+      <span class="result-card__label">推奨買取価格</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.recommended_purchase_price) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">上限買取価格</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.max_purchase_price) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">月額リース料</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.monthly_lease_fee) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">実質利回り</span>
+      <span class="result-card__value">{{ "%.1f"|format(result.effective_yield_rate * 100) }}%</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">リース料総額</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.total_lease_fee) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">残価見込</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.estimated_residual_value) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">損益分岐</span>
+      <span class="result-card__value">{{ result.breakeven_months if result.breakeven_months else "-" }}ヶ月</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">総合判定</span>
+      <span class="result-card__value result-card__assessment result-card__assessment--{{ result.assessment }}">
+        {{ result.assessment }}
+      </span>
+    </div>
+  </div>
+
+  {# Market Reference #}
+  <div class="result-market-ref">
+    <h4>相場比較</h4>
+    <p>相場中央値: &yen;{{ "{:,}".format(result.market_median_price) }}
+      (サンプル数: {{ result.market_sample_count }}件)</p>
+    <p>乖離率:
+      <span class="{% if result.market_deviation_rate < 0 %}text-success{% else %}text-warning{% endif %}">
+        {{ "%.1f"|format(result.market_deviation_rate * 100) }}%
+      </span>
+    </p>
+  </div>
+
+  {# Chart Area #}
+  <div class="result-chart-section">
+    <h4>月次損益推移</h4>
+    <canvas id="scheduleChart"
+            data-labels='{{ schedule_labels|tojson }}'
+            data-income='{{ schedule_income|tojson }}'
+            data-profit='{{ schedule_profit|tojson }}'
+            data-asset='{{ schedule_asset|tojson }}'
+            width="800" height="400">
+    </canvas>
+  </div>
+
+  {# Monthly Schedule Table #}
+  <div class="result-schedule-section">
+    <h4>月次リーススケジュール</h4>
+    <div class="table-responsive">
+      <table class="table table--striped">
+        <thead>
+          <tr>
+            <th>月</th>
+            <th>簿価残高</th>
+            <th>リース収入</th>
+            <th>累計収入</th>
+            <th>減価償却費</th>
+            <th>金融コスト</th>
+            <th>月次損益</th>
+            <th>累計損益</th>
+            <th>中途解約損</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in result.monthly_schedule %}
+          <tr>
+            <td>{{ item.month }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.asset_value) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.lease_income) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_income) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.depreciation_expense) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.financing_cost) }}</td>
+            <td class="text-right {% if item.monthly_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+              &yen;{{ "{:,}".format(item.monthly_profit) }}
+            </td>
+            <td class="text-right {% if item.cumulative_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+              &yen;{{ "{:,}".format(item.cumulative_profit) }}
+            </td>
+            <td class="text-right {% if item.termination_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+              &yen;{{ "{:,}".format(item.termination_loss) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# Action Buttons #}
+  <div class="result-actions">
+    <button type="button"
+            class="btn btn--secondary"
+            hx-get="/simulation/new"
+            hx-target="#main-content"
+            hx-push-url="true">
+      新規シミュレーション
+    </button>
+    <button type="button"
+            class="btn btn--primary"
+            onclick="window.print()">
+      印刷
+    </button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('scheduleChart');
+  if (!canvas) return;
+
+  const labels = JSON.parse(canvas.dataset.labels || '[]');
+  const income = JSON.parse(canvas.dataset.income || '[]');
+  const profit = JSON.parse(canvas.dataset.profit || '[]');
+  const asset  = JSON.parse(canvas.dataset.asset  || '[]');
+
+  if (window._scheduleChartInstance) {
+    window._scheduleChartInstance.destroy();
+  }
+
+  window._scheduleChartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'リース収入',
+          data: income,
+          backgroundColor: 'rgba(59,130,246,0.6)',
+          order: 2
+        },
+        {
+          label: '月次損益',
+          data: profit,
+          backgroundColor: profit.map(v => v >= 0 ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'),
+          order: 3
+        },
+        {
+          label: '簿価残高',
+          type: 'line',
+          data: asset,
+          borderColor: 'rgba(234,179,8,1)',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 1,
+          yAxisID: 'y1',
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y:  { position: 'left',  title: { display: true, text: '金額 (円)' } },
+        y1: { position: 'right', title: { display: true, text: '簿価 (円)' }, grid: { drawOnChartArea: false } }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': ¥' + ctx.parsed.y.toLocaleString();
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
