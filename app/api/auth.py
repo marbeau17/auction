@@ -86,7 +86,10 @@ async def login(
     On success the JWT pair is stored in HttpOnly cookies and the client is
     redirected to ``/dashboard``.  Both regular and HTMX requests are handled.
     """
-    supabase = get_supabase_client()
+    # Create a fresh client for auth (avoid cached client issues in serverless)
+    from supabase import create_client as _create
+
+    supabase = _create(settings.supabase_url, settings.supabase_anon_key)
 
     try:
         auth_response = supabase.auth.sign_in_with_password(
@@ -94,7 +97,7 @@ async def login(
         )
     except Exception as exc:
         logger.warning("login_failed", email=email, error=str(exc))
-        return _login_error_response(request, "Invalid email or password.")
+        return _login_error_response(request, "メールアドレスまたはパスワードが正しくありません。")
 
     session = auth_response.session
     if session is None:
