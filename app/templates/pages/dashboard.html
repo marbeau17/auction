@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}ダッシュボード - 商用車リースバック価格最適化システム{% endblock %}
+{% block title %}ダッシュボード - CVLPOS{% endblock %}
+{% block page_title %}ダッシュボード{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -9,19 +10,15 @@
 </div>
 
 {# ===== KPI Cards ===== #}
-<section class="kpi-row"
-         hx-get="/api/v1/dashboard/kpi"
-         hx-trigger="load, every 60s"
-         hx-target="this"
-         hx-swap="innerHTML"
-         aria-label="主要指標">
+<section class="kpi-grid" aria-label="主要指標">
     <div class="kpi-card">
         <div class="kpi-card__icon kpi-card__icon--primary" aria-hidden="true">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
         </div>
         <div class="kpi-card__body">
             <span class="kpi-card__label">今月査定数</span>
-            <span class="kpi-card__value">{{ kpi.assessment_count | default("--") }}</span>
+            <span class="kpi-card__value">{{ kpi.assessment_count | default(0) }}</span>
+            <span class="kpi-card__sub">件</span>
             {% if kpi and kpi.assessment_change is defined %}
             <span class="kpi-card__change {% if kpi.assessment_change >= 0 %}kpi-card__change--up{% else %}kpi-card__change--down{% endif %}">
                 {{ "%+d" | format(kpi.assessment_change) }}% 前月比
@@ -36,7 +33,7 @@
         </div>
         <div class="kpi-card__body">
             <span class="kpi-card__label">平均利回り</span>
-            <span class="kpi-card__value">{{ "%.2f" | format(kpi.avg_yield_rate) if kpi and kpi.avg_yield_rate is defined else "--" }}%</span>
+            <span class="kpi-card__value">{{ "%.1f" | format(kpi.avg_yield_rate | default(0)) }}%</span>
             {% if kpi and kpi.yield_change is defined %}
             <span class="kpi-card__change {% if kpi.yield_change >= 0 %}kpi-card__change--up{% else %}kpi-card__change--down{% endif %}">
                 {{ "%+.2f" | format(kpi.yield_change) }}pp 前月比
@@ -51,7 +48,8 @@
         </div>
         <div class="kpi-card__body">
             <span class="kpi-card__label">相場変動アラート</span>
-            <span class="kpi-card__value">{{ kpi.alert_count | default("--") }}件</span>
+            <span class="kpi-card__value">{{ kpi.alert_count | default(0) }}</span>
+            <span class="kpi-card__sub">件</span>
             {% if kpi and kpi.alert_count is defined and kpi.alert_count > 0 %}
             <a href="/market-data?alerts=1" class="kpi-card__link">詳細を確認</a>
             {% endif %}
@@ -60,7 +58,7 @@
 </section>
 
 {# ===== Quick Actions ===== #}
-<section class="quick-actions" aria-label="クイックアクション">
+<section class="actions-row" aria-label="クイックアクション">
     <a href="/simulation/new" class="btn btn--primary btn--lg">
         <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
             <path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -93,38 +91,8 @@
             <span class="spinner"></span>
             <span>読み込み中...</span>
         </div>
+
+        <p class="empty-state">シミュレーション履歴がありません。新規シミュレーションを実行してください。</p>
     </div>
 </section>
-
-{# ===== Recent Simulations Fragment (rendered by HTMX) ===== #}
-{#
-  The following is the expected partial structure returned by the API:
-
-  <table class="data-table">
-      <thead>
-          <tr>
-              <th>日時</th>
-              <th>メーカー / 車種</th>
-              <th>年式</th>
-              <th>推奨買取価格</th>
-              <th>利回り</th>
-              <th>判定</th>
-              <th></th>
-          </tr>
-      </thead>
-      <tbody>
-          {% for sim in simulations %}
-          <tr>
-              <td>{{ sim.created_at | datetimeformat }}</td>
-              <td>{{ sim.maker }} {{ sim.model }}</td>
-              <td>{{ sim.year }}年</td>
-              <td>{{ sim.recommended_price | numberformat }}円</td>
-              <td>{{ "%.2f" | format(sim.yield_rate) }}%</td>
-              <td><span class="badge badge--{{ sim.verdict_class }}">{{ sim.verdict }}</span></td>
-              <td><a href="/simulation/{{ sim.id }}" class="btn btn--text btn--sm">詳細</a></td>
-          </tr>
-          {% endfor %}
-      </tbody>
-  </table>
-#}
 {% endblock %}

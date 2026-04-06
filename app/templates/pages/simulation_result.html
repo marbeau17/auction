@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}シミュレーション結果 - 商用車リースバック価格最適化システム{% endblock %}
+{% block title %}シミュレーション結果 - CVLPOS{% endblock %}
+{% block page_title %}シミュレーション結果{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -13,7 +14,7 @@
     <div class="result-card result-card--primary">
         <span class="result-card__label">推奨買取価格</span>
         <span class="result-card__value">&yen;{{ "{:,.0f}".format(result.recommended_price) if result and result.recommended_price is defined else "--" }}</span>
-        {% if result and result.book_value is defined %}
+        {% if result and result.book_value is defined and result.book_value > 0 %}
         <span class="result-card__sub">簿価比 {{ "%.1f" | format(result.recommended_price / result.book_value * 100) }}%</span>
         {% endif %}
     </div>
@@ -166,7 +167,6 @@
 {# ===== Action Buttons ===== #}
 <div class="form-actions form-actions--spread">
     <a href="/simulation/new?from={{ result.id if result else '' }}" class="btn btn--outline btn--lg">
-        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M13.5 1.5l3 3-9 9H4.5v-3l9-9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         条件変更
     </a>
 
@@ -186,7 +186,6 @@
            class="btn btn--outline btn--lg"
            target="_blank"
            rel="noopener">
-            <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 15.75h9a1.5 1.5 0 001.5-1.5v-6.75L10.5 2.25H4.5A1.5 1.5 0 003 3.75v10.5a1.5 1.5 0 001.5 1.5z" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 2.25v5.25H15" stroke="currentColor" stroke-width="1.5"/></svg>
             PDF出力
         </a>
     </div>
@@ -219,7 +218,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 labels: chartData.labels,
                 datasets: [
                     {
-                        label: "資産簿価",
+                        label: "\u8cc7\u7523\u7c3f\u4fa1",
                         data: chartData.book_values,
                         borderColor: "#6366f1",
                         backgroundColor: "rgba(99,102,241,0.08)",
@@ -227,7 +226,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         tension: 0.3
                     },
                     {
-                        label: "累積リース収入",
+                        label: "\u7d2f\u7a4d\u30ea\u30fc\u30b9\u53ce\u5165",
                         data: chartData.cumulative_incomes,
                         borderColor: "#10b981",
                         backgroundColor: "rgba(16,185,129,0.08)",

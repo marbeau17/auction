@@ -5,85 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}商用車リースバック価格最適化システム{% endblock %}</title>
+    <link rel="icon" href="/favicon.ico">
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://unpkg.com/htmx.org/dist/htmx.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
-    <script src="/static/js/app.js" defer></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4" defer></script>
     {% block head_extra %}{% endblock %}
 </head>
 <body>
     {# ===== Global Error Handler ===== #}
     <div id="global-error" class="global-error" role="alert" aria-live="assertive" hidden></div>
 
-    {# ===== Header ===== #}
-    <header class="header">
-        <div class="header__inner">
-            <a href="/dashboard" class="header__brand">
-                <span class="header__logo" aria-hidden="true">&#x1F69A;</span>
-                <h1 class="header__title">商用車リースバック価格最適化システム</h1>
-            </a>
-            <div class="header__actions">
-                <div class="header__user-dropdown" data-dropdown>
-                    <button type="button" class="header__user-btn" aria-haspopup="true" aria-expanded="false">
-                        <span class="header__user-name">{{ current_user.display_name if current_user else "" }}</span>
-                        <svg class="icon icon--chevron-down" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                            <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <ul class="dropdown-menu" role="menu" hidden>
-                        <li role="none"><a href="/profile" class="dropdown-menu__item" role="menuitem">プロフィール</a></li>
-                        <li role="none"><a href="/settings" class="dropdown-menu__item" role="menuitem">設定</a></li>
-                        <li role="separator" class="dropdown-menu__divider"></li>
-                        <li role="none">
-                            <form action="/auth/logout" method="post" class="dropdown-menu__form">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="dropdown-menu__item dropdown-menu__item--danger" role="menuitem">ログアウト</button>
-                            </form>
-                        </li>
-                    </ul>
-                </div>
-                <a href="/auth/logout" class="btn btn--outline btn--sm header__logout-btn">ログアウト</a>
-            </div>
-        </div>
-    </header>
-
-    <div class="layout">
+    <div class="app">
         {# ===== Sidebar Navigation ===== #}
-        <nav class="sidebar" aria-label="メインナビゲーション">
-            <ul class="sidebar__nav">
-                <li class="sidebar__item">
-                    <a href="/dashboard" class="sidebar__link {% if active_page == 'dashboard' %}sidebar__link--active{% endif %}">
-                        <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <rect x="2" y="2" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                            <rect x="11" y="2" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                            <rect x="2" y="11" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                            <rect x="11" y="11" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                        </svg>
-                        <span>ダッシュボード</span>
-                    </a>
-                </li>
-                <li class="sidebar__item">
-                    <a href="/simulation/new" class="sidebar__link {% if active_page == 'simulation' %}sidebar__link--active{% endif %}">
-                        <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                        </svg>
-                        <span>シミュレーション</span>
-                    </a>
-                </li>
-                <li class="sidebar__item">
-                    <a href="/market-data" class="sidebar__link {% if active_page == 'market_data' %}sidebar__link--active{% endif %}">
-                        <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <path d="M3 17V7l4 3 4-6 4 4v9H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-                        </svg>
-                        <span>相場データ</span>
-                    </a>
-                </li>
-            </ul>
-        </nav>
+        <aside class="sidebar" aria-label="メインナビゲーション">
+            <a href="/dashboard" class="sidebar__brand">
+                <span aria-hidden="true">&#x1F69A;</span>
+                <span>CVLPOS</span>
+            </a>
+            <nav class="sidebar__nav">
+                <ul>
+                    <li class="sidebar__item">
+                        <a href="/dashboard" class="sidebar__link {% if active_page == 'dashboard' %}sidebar__link--active{% endif %}">
+                            <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                <rect x="2" y="2" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                                <rect x="11" y="2" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                                <rect x="2" y="11" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                                <rect x="11" y="11" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                            </svg>
+                            <span>ダッシュボード</span>
+                        </a>
+                    </li>
+                    <li class="sidebar__item">
+                        <a href="/simulation/new" class="sidebar__link {% if active_page == 'simulation' %}sidebar__link--active{% endif %}">
+                            <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                            <span>シミュレーション</span>
+                        </a>
+                    </li>
+                    <li class="sidebar__item">
+                        <a href="/market-data" class="sidebar__link {% if active_page == 'market_data' %}sidebar__link--active{% endif %}">
+                            <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                <path d="M3 17V7l4 3 4-6 4 4v9H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                            </svg>
+                            <span>相場データ</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            <div class="sidebar__footer">
+                <div class="sidebar__user">{{ current_user.display_name if current_user else "" }}</div>
+                <a href="/auth/logout" class="sidebar__link">ログアウト</a>
+            </div>
+        </aside>
+
+        {# ===== Mobile Overlay ===== #}
+        <div class="sidebar-overlay"></div>
 
         {# ===== Main Content ===== #}
         <main class="main-content" id="main-content">
-            {% block content %}{% endblock %}
+            <header class="app-header">
+                <button class="hamburger" type="button" aria-label="メニュー">&#9776;</button>
+                <h1 class="app-header__title">{% block page_title %}{% endblock %}</h1>
+                <div class="app-header__user">{{ current_user.display_name if current_user else "" }}</div>
+            </header>
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
         </main>
     </div>
 
@@ -92,58 +80,7 @@
         <p class="footer__text">&copy; {{ current_year | default("2026") }} 商用車リースバック価格最適化システム All Rights Reserved.</p>
     </footer>
 
-    {# ===== HTMX Configuration ===== #}
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            // Attach CSRF token to every HTMX request
-            document.body.addEventListener("htmx:configRequest", function (event) {
-                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
-                if (csrfMeta) {
-                    event.detail.headers["X-CSRF-Token"] = csrfMeta.getAttribute("content");
-                }
-            });
-
-            // Global HTMX error handler
-            document.body.addEventListener("htmx:responseError", function (event) {
-                var errorDiv = document.getElementById("global-error");
-                var status = event.detail.xhr.status;
-                var message = "エラーが発生しました。";
-                if (status === 401) {
-                    message = "セッションが切れました。再ログインしてください。";
-                    window.location.href = "/auth/login";
-                    return;
-                } else if (status === 403) {
-                    message = "この操作を行う権限がありません。";
-                } else if (status === 422) {
-                    message = "入力内容に誤りがあります。";
-                } else if (status >= 500) {
-                    message = "サーバーエラーが発生しました。しばらくしてから再度お試しください。";
-                }
-                errorDiv.textContent = message;
-                errorDiv.hidden = false;
-                setTimeout(function () {
-                    errorDiv.hidden = true;
-                }, 8000);
-            });
-
-            // Dropdown toggle
-            document.querySelectorAll("[data-dropdown]").forEach(function (el) {
-                var btn = el.querySelector("button");
-                var menu = el.querySelector(".dropdown-menu");
-                btn.addEventListener("click", function () {
-                    var expanded = btn.getAttribute("aria-expanded") === "true";
-                    btn.setAttribute("aria-expanded", String(!expanded));
-                    menu.hidden = expanded;
-                });
-                document.addEventListener("click", function (e) {
-                    if (!el.contains(e.target)) {
-                        btn.setAttribute("aria-expanded", "false");
-                        menu.hidden = true;
-                    }
-                });
-            });
-        });
-    </script>
+    <script src="/static/js/app.js" defer></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

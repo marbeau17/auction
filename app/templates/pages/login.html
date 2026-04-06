@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <title>ログイン - 商用車リースバック価格最適化システム</title>
-    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+    <title>ログイン - CVLPOS</title>
+    <link rel="icon" href="/favicon.ico">
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://unpkg.com/htmx.org/dist/htmx.min.js" defer></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
 </head>
 <body class="login-page">
     <div class="login-container">
@@ -73,7 +73,7 @@
             </form>
         </div>
 
-        <p class="login-footer">&copy; {{ current_year | default("2026") }} 商用車リースバック価格最適化システム</p>
+        <p class="login-footer">&copy; {{ current_year | default("2026") }} CVLPOS</p>
     </div>
 
     <script>

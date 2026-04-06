@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}相場データ - 商用車リースバック価格最適化システム{% endblock %}
+{% block title %}相場データ - CVLPOS{% endblock %}
+{% block page_title %}相場データ{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -176,75 +177,9 @@
                 <span class="spinner"></span>
                 <span>データを読み込んでいます...</span>
             </div>
+
+            <p class="empty-state">検索条件に一致するデータがありません。</p>
         </div>
     </div>
 </section>
-
-{#
-  Expected partial HTML returned by /market-data/table:
-
-  <div class="table-responsive">
-      <table class="data-table data-table--hover">
-          <thead>
-              <tr>
-                  <th><a href="?sort=maker" hx-get="/market-data/table?sort=maker" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">メーカー</a></th>
-                  <th><a href="?sort=model" hx-get="/market-data/table?sort=model" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">車種</a></th>
-                  <th><a href="?sort=year" hx-get="/market-data/table?sort=year" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">年式</a></th>
-                  <th>ボディタイプ</th>
-                  <th><a href="?sort=mileage" hx-get="/market-data/table?sort=mileage" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">走行距離</a></th>
-                  <th><a href="?sort=price" hx-get="/market-data/table?sort=price" hx-target="#data-table" hx-include="#filter-form" hx-push-url="true" class="data-table__sort">価格</a></th>
-                  <th>更新日</th>
-                  <th></th>
-              </tr>
-          </thead>
-          <tbody>
-              {% for item in items %}
-              <tr>
-                  <td>{{ item.maker }}</td>
-                  <td>{{ item.model }}</td>
-                  <td>{{ item.year }}年</td>
-                  <td>{{ item.body_type_display }}</td>
-                  <td>{{ "{:,.0f}".format(item.mileage) }} km</td>
-                  <td>&yen;{{ "{:,.0f}".format(item.price) }}</td>
-                  <td>{{ item.updated_at | dateformat }}</td>
-                  <td><a href="/market-data/{{ item.id }}" class="btn btn--text btn--sm">詳細</a></td>
-              </tr>
-              {% endfor %}
-          </tbody>
-      </table>
-  </div>
-
-  <nav class="pagination" aria-label="ページネーション">
-      {% if pagination.has_prev %}
-      <a href="?page={{ pagination.page - 1 }}"
-         class="pagination__link"
-         hx-get="/market-data/table?page={{ pagination.page - 1 }}"
-         hx-target="#data-table"
-         hx-include="#filter-form"
-         hx-push-url="true">前へ</a>
-      {% endif %}
-
-      {% for p in pagination.pages %}
-      <a href="?page={{ p }}"
-         class="pagination__link {% if p == pagination.page %}pagination__link--active{% endif %}"
-         hx-get="/market-data/table?page={{ p }}"
-         hx-target="#data-table"
-         hx-include="#filter-form"
-         hx-push-url="true">{{ p }}</a>
-      {% endfor %}
-
-      {% if pagination.has_next %}
-      <a href="?page={{ pagination.page + 1 }}"
-         class="pagination__link"
-         hx-get="/market-data/table?page={{ pagination.page + 1 }}"
-         hx-target="#data-table"
-         hx-include="#filter-form"
-         hx-push-url="true">次へ</a>
-      {% endif %}
-  </nav>
-
-  <div class="stats-bar stats-bar--inline">
-      <span>{{ stats.total_count }}件中 {{ stats.from }}-{{ stats.to }}件を表示</span>
-  </div>
-#}
 {% endblock %}

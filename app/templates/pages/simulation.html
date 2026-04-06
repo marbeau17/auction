@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}シミュレーション - 商用車リースバック価格最適化システム{% endblock %}
+{% block title %}シミュレーション - CVLPOS{% endblock %}
+{% block page_title %}シミュレーション{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -58,7 +59,7 @@
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group form-group--half">
+                    <div class="form-group">
                         <label for="year" class="form-label form-label--required">年式</label>
                         <select id="year" name="year" class="form-select" required>
                             <option value="">選択</option>
@@ -67,7 +68,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-group form-group--half">
+                    <div class="form-group">
                         <label for="mileage" class="form-label form-label--required">走行距離 (km)</label>
                         <input type="number"
                                id="mileage"
@@ -83,7 +84,7 @@
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group form-group--half">
+                    <div class="form-group">
                         <label for="vehicle_class" class="form-label form-label--required">クラス</label>
                         <select id="vehicle_class" name="vehicle_class" class="form-select" required>
                             <option value="">選択</option>
@@ -94,7 +95,7 @@
                             <option value="special" {% if form and form.vehicle_class == 'special' %}selected{% endif %}>特殊</option>
                         </select>
                     </div>
-                    <div class="form-group form-group--half">
+                    <div class="form-group">
                         <label for="body_type" class="form-label form-label--required">ボディタイプ</label>
                         <select id="body_type" name="body_type" class="form-select" required>
                             <option value="">選択</option>
@@ -110,7 +111,7 @@
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group form-group--half">
+                    <div class="form-group">
                         <label for="acquisition_price" class="form-label form-label--required">取得価格 (円)</label>
                         <input type="number"
                                id="acquisition_price"
@@ -122,7 +123,7 @@
                                required
                                value="{{ form.acquisition_price if form else '' }}">
                     </div>
-                    <div class="form-group form-group--half">
+                    <div class="form-group">
                         <label for="book_value" class="form-label form-label--required">簿価 (円)</label>
                         <input type="number"
                                id="book_value"
@@ -197,7 +198,7 @@
                      hx-target="this"
                      hx-swap="innerHTML"
                      hx-indicator="#market-ref-loading">
-                    <p class="text-muted">車両情報を入力すると相場データが表示されます</p>
+                    <p class="text-muted text-sm">車両情報を入力すると相場データが表示されます</p>
                 </div>
                 <span id="market-ref-loading" class="htmx-indicator spinner spinner--inline" aria-label="相場データ読み込み中"></span>
             </div>

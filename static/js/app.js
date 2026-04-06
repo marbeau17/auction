@@ -1,10 +1,10 @@
 /**
- * Commercial Vehicle Leaseback Pricing Optimizer
- * Minimal JS — HTMX does the heavy lifting.
+ * CVLPOS - Commercial Vehicle Leaseback Pricing Optimizer
+ * Minimal JS - HTMX does the heavy lifting.
  */
 document.addEventListener('DOMContentLoaded', function () {
 
-  // ── CSRF token injection for every HTMX request ──────────────────────
+  // -- CSRF token injection for every HTMX request --
   document.body.addEventListener('htmx:configRequest', function (event) {
     var meta = document.querySelector('meta[name="csrf-token"]');
     if (meta) {
@@ -12,11 +12,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // ── Global HTTP error handling ───────────────────────────────────────
+  // -- Global HTTP error handling --
   document.body.addEventListener('htmx:responseError', function (event) {
     var status = event.detail.xhr.status;
     if (status === 401) {
-      window.location.href = '/login';
+      window.location.href = '/auth/login';
       return;
     }
     if (status === 403) {
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // ── Re-initialise charts after every HTMX swap ──────────────────────
+  // -- Re-initialise charts after every HTMX swap --
   document.body.addEventListener('htmx:beforeSwap', function (event) {
     destroyCharts(event.detail.target);
   });
@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
     initCharts(event.detail.target);
   });
 
-  // ── Mobile hamburger toggle ─────────────────────────────────────────
+  // -- Mobile hamburger toggle --
   var hamburger = document.querySelector('.hamburger');
   var sidebar = document.querySelector('.sidebar');
   var overlay = document.querySelector('.sidebar-overlay');
@@ -61,13 +61,11 @@ document.addEventListener('DOMContentLoaded', function () {
   // Close sidebar on navigate (mobile)
   document.body.addEventListener('htmx:beforeRequest', closeSidebar);
 
-  // ── Initial chart boot ──────────────────────────────────────────────
+  // -- Initial chart boot --
   initCharts(document);
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Toast
-// ═══════════════════════════════════════════════════════════════════════════
+// ===== Toast =====
 function showToast(message, type) {
   type = type || 'success';
   var container = document.querySelector('.toast-container');
@@ -80,22 +78,17 @@ function showToast(message, type) {
   toast.className = 'toast toast-' + type;
   toast.textContent = message;
   container.appendChild(toast);
-
-  // Remove after animation completes (4s total)
   setTimeout(function () {
     if (toast.parentNode) toast.parentNode.removeChild(toast);
   }, 4200);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Chart.js helpers
-// ═══════════════════════════════════════════════════════════════════════════
+// ===== Chart.js helpers =====
 function initCharts(container) {
   if (typeof Chart === 'undefined') return;
-
   var canvases = container.querySelectorAll('canvas[data-chart]');
   canvases.forEach(function (canvas) {
-    if (canvas._chartInstance) return; // already initialised
+    if (canvas._chartInstance) return;
     try {
       var config = JSON.parse(canvas.getAttribute('data-chart'));
       canvas._chartInstance = new Chart(canvas, config);
@@ -116,9 +109,7 @@ function destroyCharts(container) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Number formatting (Japanese locale)
-// ═══════════════════════════════════════════════════════════════════════════
+// ===== Number formatting (Japanese locale) =====
 function formatCurrency(value) {
   return '\u00a5' + Number(value).toLocaleString('ja-JP');
 }

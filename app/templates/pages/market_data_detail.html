@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ vehicle.maker_name | default("") }} {{ vehicle.model_name | default("") }} - 相場データ詳細{% endblock %}
+{% block page_title %}相場データ詳細{% endblock %}
 
 {% block content %}
 {# ===== Vehicle Info Header ===== #}
@@ -185,9 +186,6 @@
 <div class="form-actions">
     <a href="/simulation/new?maker={{ vehicle.maker_id if vehicle else '' }}&model={{ vehicle.model_id if vehicle else '' }}&year={{ vehicle.year if vehicle else '' }}&body_type={{ vehicle.body_type if vehicle else '' }}"
        class="btn btn--primary btn--lg">
-        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
         この車種でシミュレーション
     </a>
 </div>
