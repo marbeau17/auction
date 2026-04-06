@@ -1,17 +1,56 @@
+from __future__ import annotations
+
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Cookie, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from jose import JWTError, jwt
 
-from app.dependencies import get_current_user
-from app.main import templates
+from app.config import Settings, get_settings
 
 router = APIRouter(tags=["pages"])
 
 
 def _is_htmx(request: Request) -> bool:
-    """Return ``True`` when the request comes from htmx (HX-Request header)."""
     return request.headers.get("HX-Request", "").lower() == "true"
+
+
+async def _get_optional_user(
+    access_token: str | None = Cookie(default=None),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any] | None:
+    """Try to extract user from JWT cookie. Returns None instead of raising 401."""
+    if not access_token:
+        return None
+    try:
+        payload: dict[str, Any] = jwt.decode(
+            access_token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        return {
+            "id": user_id,
+            "email": payload.get("email"),
+            "role": payload.get("role", "authenticated"),
+        }
+    except JWTError:
+        return None
+
+
+def _require_auth(user: dict | None, request: Request):
+    """Redirect to login if user is not authenticated."""
+    if user is None:
+        if _is_htmx(request):
+            from fastapi.responses import Response
+            resp = Response(status_code=200)
+            resp.headers["HX-Redirect"] = "/login"
+            return resp
+        return RedirectResponse(url="/login", status_code=302)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -25,11 +64,10 @@ async def index() -> RedirectResponse:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> HTMLResponse:
-    template_name = (
-        "pages/login.html" if not _is_htmx(request) else "partials/login.html"
-    )
-    return templates.TemplateResponse(template_name, {"request": request})
+async def login_page(request: Request):
+    # Import here to avoid circular import
+    from app.main import templates
+    return templates.TemplateResponse("pages/login.html", {"request": request})
 
 
 # ---------------------------------------------------------------------------
@@ -40,30 +78,28 @@ async def login_page(request: Request) -> HTMLResponse:
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> HTMLResponse:
-    template_name = (
-        "pages/dashboard.html"
-        if not _is_htmx(request)
-        else "partials/dashboard.html"
-    )
+    user: dict[str, Any] | None = Depends(_get_optional_user),
+):
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+    from app.main import templates
     return templates.TemplateResponse(
-        template_name, {"request": request, "user": current_user}
+        "pages/dashboard.html", {"request": request, "user": user}
     )
 
 
 @router.get("/simulation/new", response_class=HTMLResponse)
 async def simulation_new_page(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> HTMLResponse:
-    template_name = (
-        "pages/simulation.html"
-        if not _is_htmx(request)
-        else "partials/simulation.html"
-    )
+    user: dict[str, Any] | None = Depends(_get_optional_user),
+):
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+    from app.main import templates
     return templates.TemplateResponse(
-        template_name, {"request": request, "user": current_user}
+        "pages/simulation.html", {"request": request, "user": user}
     )
 
 
@@ -71,35 +107,29 @@ async def simulation_new_page(
 async def simulation_result_page(
     request: Request,
     simulation_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> HTMLResponse:
-    template_name = (
-        "pages/simulation_result.html"
-        if not _is_htmx(request)
-        else "partials/simulation_result.html"
-    )
+    user: dict[str, Any] | None = Depends(_get_optional_user),
+):
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+    from app.main import templates
     return templates.TemplateResponse(
-        template_name,
-        {
-            "request": request,
-            "user": current_user,
-            "simulation_id": simulation_id,
-        },
+        "pages/simulation_result.html",
+        {"request": request, "user": user, "simulation_id": simulation_id},
     )
 
 
 @router.get("/market-data", response_class=HTMLResponse)
 async def market_data_list_page(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> HTMLResponse:
-    template_name = (
-        "pages/market_data_list.html"
-        if not _is_htmx(request)
-        else "partials/market_data_list.html"
-    )
+    user: dict[str, Any] | None = Depends(_get_optional_user),
+):
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+    from app.main import templates
     return templates.TemplateResponse(
-        template_name, {"request": request, "user": current_user}
+        "pages/market_data_list.html", {"request": request, "user": user}
     )
 
 
@@ -107,14 +137,13 @@ async def market_data_list_page(
 async def market_data_detail_page(
     request: Request,
     item_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> HTMLResponse:
-    template_name = (
-        "pages/market_data_detail.html"
-        if not _is_htmx(request)
-        else "partials/market_data_detail.html"
-    )
+    user: dict[str, Any] | None = Depends(_get_optional_user),
+):
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+    from app.main import templates
     return templates.TemplateResponse(
-        template_name,
-        {"request": request, "user": current_user, "item_id": item_id},
+        "pages/market_data_detail.html",
+        {"request": request, "user": user, "item_id": item_id},
     )
