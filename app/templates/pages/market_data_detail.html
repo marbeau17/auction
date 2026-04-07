@@ -30,13 +30,13 @@
     <div class="result-card result-card--info">
         <span class="result-card__label">販売価格{% if vehicle.price_tax_included %}（税込）{% else %}（税別）{% endif %}</span>
         <span class="result-card__value">
-            {% if vehicle.price_yen is not none %}
+            {% if vehicle.price_yen is not none and vehicle.price_yen %}
             &yen;{{ "{:,.0f}".format(vehicle.price_yen) }}
             {% else %}
             価格未定
             {% endif %}
         </span>
-        {% if vehicle.price_yen is not none %}
+        {% if vehicle.price_yen is not none and vehicle.price_yen %}
         <span class="result-card__sub">{{ "{:,.1f}".format(vehicle.price_yen / 10000) }}万円</span>
         {% endif %}
     </div>
@@ -140,7 +140,7 @@
 
 {# ===== Action: Simulate with this vehicle ===== #}
 <div class="form-actions">
-    <a href="/simulation/new?maker={{ vehicle.maker | default('') | urlencode }}&model={{ vehicle.model_name | default('') | urlencode }}"
+    <a href="/simulation/new?maker={{ vehicle.maker | default('') | urlencode }}&model={{ vehicle.model_name | default('') | urlencode }}&body_type={{ vehicle.body_type | default('') | urlencode }}&year={{ vehicle.model_year | default('') | urlencode }}&price={{ vehicle.price_yen | default('') | urlencode }}"
        class="btn btn--primary btn--lg">
         この車種でシミュレーション
     </a>

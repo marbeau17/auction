@@ -28,7 +28,7 @@ class MasterRepository:
         """
         try:
             response = (
-                self._client.table("makers")
+                self._client.table("manufacturers")
                 .select("*")
                 .order("name")
                 .execute()
@@ -49,7 +49,7 @@ class MasterRepository:
         """
         try:
             response = (
-                self._client.table("makers")
+                self._client.table("manufacturers")
                 .insert(data)
                 .execute()
             )
@@ -78,9 +78,9 @@ class MasterRepository:
         """
         try:
             response = (
-                self._client.table("models")
+                self._client.table("vehicle_models")
                 .select("*")
-                .eq("maker_id", maker_id)
+                .eq("manufacturer_id", maker_id)
                 .order("name")
                 .execute()
             )
@@ -104,9 +104,9 @@ class MasterRepository:
             The created model record.
         """
         try:
-            record = {**data, "maker_id": maker_id}
+            record = {**data, "manufacturer_id": maker_id}
             response = (
-                self._client.table("models")
+                self._client.table("vehicle_models")
                 .insert(record)
                 .execute()
             )

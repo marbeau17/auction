@@ -20,6 +20,14 @@ def _render(request: Request, template: str, context: dict | None = None):
     from app.main import templates
 
     ctx = context or {}
+    # Auto-detect active page from URL path for sidebar highlighting
+    path = request.url.path
+    if path.startswith("/simulation"):
+        ctx.setdefault("active_page", "simulation")
+    elif path.startswith("/market"):
+        ctx.setdefault("active_page", "market_data")
+    else:
+        ctx.setdefault("active_page", "dashboard")
     return templates.TemplateResponse(request, template, ctx)
 
 
@@ -159,6 +167,7 @@ async def simulation_result_page(request: Request, simulation_id: str):
         return redirect
 
     simulation: dict[str, Any] | None = None
+    chart_data: dict[str, str] = {}
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
@@ -170,15 +179,76 @@ async def simulation_result_page(request: Request, simulation_id: str):
             .execute()
         )
         simulation = result.data
+
+        if simulation:
+            # Generate chart data from saved simulation
+            purchase = simulation.get("purchase_price_yen", 0) or 0
+            monthly = simulation.get("lease_monthly_yen", 0) or 0
+            term = simulation.get("lease_term_months", 36) or 36
+            total = simulation.get("total_lease_revenue_yen", 0) or (monthly * term)
+
+            # Simple residual estimate
+            residual_rate = 0.20 if term <= 36 else 0.10
+            residual = int(purchase * residual_rate)
+
+            # Generate monthly schedule for charts
+            dep_per_month = (purchase - residual) / term if term > 0 else 0
+            months: list[str] = []
+            asset_values: list[int] = []
+            cumulative_incomes: list[int] = []
+            nav_ratios: list[float] = []
+
+            cum_income = 0
+            for m in range(1, term + 1):
+                asset = max(int(purchase - dep_per_month * m), residual)
+                cum_income += monthly
+                nav = (asset + cum_income) / purchase * 100 if purchase > 0 else 0
+                months.append(f"{m}月")
+                asset_values.append(asset)
+                cumulative_incomes.append(int(cum_income))
+                nav_ratios.append(round(nav, 1))
+
+            import json
+            chart_data = {
+                "months": json.dumps(months, ensure_ascii=False),
+                "asset_values": json.dumps(asset_values),
+                "cumulative_incomes": json.dumps(cumulative_incomes),
+                "nav_ratios": json.dumps(nav_ratios),
+                "nav_60_line": json.dumps([60] * term),
+            }
     except Exception:
-        simulation = None
+        pass
 
     context = {
         "user": user,
         "simulation_id": simulation_id,
         "simulation": simulation,
+        "chart_data": chart_data,
     }
     return _render(request, "pages/simulation_result.html", context)
+
+
+@router.get("/simulations", response_class=HTMLResponse)
+async def simulation_list_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    simulations = []
+    try:
+        from app.db.supabase_client import get_supabase_client
+        client = get_supabase_client(service_role=True)
+        result = client.table("simulations").select("*").order("created_at", desc=True).limit(50).execute()
+        simulations = result.data or []
+    except Exception:
+        pass
+
+    return _render(request, "pages/simulation_list.html", {
+        "user": user,
+        "simulations": simulations,
+        "total_count": len(simulations),
+    })
 
 
 @router.get("/market-data", response_class=HTMLResponse)
@@ -391,16 +461,19 @@ async def market_data_detail_page(request: Request, item_id: str):
         vehicle = result.data
 
         if vehicle:
-            # Fetch similar vehicles (same body_type, different ID)
-            similar = (
+            # Fetch similar vehicles (same maker or body_type)
+            similar_query = (
                 client.table("vehicles")
                 .select("*")
                 .eq("is_active", True)
                 .neq("id", item_id)
-                .limit(5)
-                .execute()
             )
-            similar_vehicles = similar.data or []
+            if vehicle.get("maker"):
+                similar_query = similar_query.eq("maker", vehicle["maker"])
+            elif vehicle.get("body_type"):
+                similar_query = similar_query.eq("body_type", vehicle["body_type"])
+            similar_result = similar_query.limit(5).execute()
+            similar_vehicles = similar_result.data or []
     except Exception:
         pass
 

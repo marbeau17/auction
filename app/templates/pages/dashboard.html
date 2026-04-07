@@ -93,7 +93,7 @@
                 </thead>
                 <tbody>
                     {% for sim in recent_simulations %}
-                    <tr>
+                    <tr class="data-table__row--clickable" onclick="window.location='/simulation/{{ sim.id }}/result'" style="cursor:pointer;">
                         <td>
                             <a href="/simulation/{{ sim.id }}/result" class="text-bold">{{ sim.title | default("無題") }}</a>
                         </td>
@@ -127,19 +127,21 @@
                         <td>
                             {% if sim.status == 'completed' or sim.status == '完了' %}
                                 <span class="badge badge--success">完了</span>
+                            {% elif sim.status == 'approved' or sim.status == '承認済' %}
+                                <span class="badge badge--success">承認済</span>
                             {% elif sim.status == 'running' or sim.status == '実行中' %}
                                 <span class="badge badge--primary">実行中</span>
                             {% elif sim.status == 'failed' or sim.status == 'エラー' %}
                                 <span class="badge badge--danger">エラー</span>
                             {% elif sim.status == 'draft' or sim.status == '下書き' %}
-                                <span class="badge badge--neutral">下書き</span>
+                                <span class="badge badge--warning">下書き</span>
                             {% else %}
                                 <span class="badge">{{ sim.status | default("-") }}</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if sim.created_at %}
-                                {{ sim.created_at.strftime('%Y/%m/%d') if sim.created_at is not string else sim.created_at }}
+                                {{ sim.created_at[:10] if sim.created_at is string else sim.created_at.strftime('%Y-%m-%d') }}
                             {% else %}
                                 -
                             {% endif %}

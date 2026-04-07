@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}シミュレーション履歴 - CVLPOS{% endblock %}
+{% block page_title %}シミュレーション履歴{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>シミュレーション履歴</h2>
+    <p>全{{ total_count }}件のシミュレーション結果</p>
+</div>
+
+<div class="actions-row" style="margin-bottom:24px">
+    <a href="/simulation/new" class="btn btn--primary">+ 新規シミュレーション</a>
+</div>
+
+<div class="card">
+    <div class="card__body card__body--flush">
+        {% if simulations %}
+        <div style="overflow-x:auto">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>タイトル</th>
+                        <th>車種 / 年式</th>
+                        <th style="text-align:right">買取価格</th>
+                        <th style="text-align:right">月額リース</th>
+                        <th style="text-align:right">利回り</th>
+                        <th>ステータス</th>
+                        <th>実行日</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in simulations %}
+                    <tr style="cursor:pointer" onclick="location.href='/simulation/{{ s.id }}/result'">
+                        <td><a href="/simulation/{{ s.id }}/result">{{ s.title or "無題" }}</a></td>
+                        <td>{{ s.target_model_name or "-" }} {{ s.target_model_year or "" }}年</td>
+                        <td style="text-align:right">¥{{ "{:,}".format(s.purchase_price_yen or 0) }}</td>
+                        <td style="text-align:right">¥{{ "{:,}".format(s.lease_monthly_yen or 0) }}</td>
+                        <td style="text-align:right">{{ "%.1f"|format((s.expected_yield_rate or 0) * 100) }}%</td>
+                        <td>
+                            {% if s.status == 'completed' %}<span class="badge badge--success">完了</span>
+                            {% elif s.status == 'approved' %}<span class="badge badge--success">承認済</span>
+                            {% elif s.status == 'draft' %}<span class="badge badge--warning">下書き</span>
+                            {% else %}<span class="badge">{{ s.status }}</span>{% endif %}
+                        </td>
+                        <td>{{ s.created_at[:10] if s.created_at else "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>シミュレーション履歴がありません</p>
+            <a href="/simulation/new" class="btn btn--primary" style="margin-top:16px">新規シミュレーション</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

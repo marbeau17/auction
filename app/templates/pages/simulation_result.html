@@ -81,6 +81,48 @@
 </div>
 {% endif %}
 
+{# ===== Charts ===== #}
+{% if chart_data %}
+<div class="card" style="margin-top:24px">
+    <div class="card__header"><h3>バリュートランスファー分析</h3></div>
+    <div class="card__body">
+        <div style="position:relative;height:350px"><canvas id="chart-vt"></canvas></div>
+    </div>
+</div>
+<div class="card" style="margin-top:24px">
+    <div class="card__header"><h3>NAV推移</h3></div>
+    <div class="card__body">
+        <div style="position:relative;height:300px"><canvas id="chart-nav"></canvas></div>
+    </div>
+</div>
+
+<script>
+var months = {{ chart_data.months | safe }};
+var assetValues = {{ chart_data.asset_values | safe }};
+var cumulativeIncomes = {{ chart_data.cumulative_incomes | safe }};
+var navRatios = {{ chart_data.nav_ratios | safe }};
+var nav60 = {{ chart_data.nav_60_line | safe }};
+
+new Chart(document.getElementById('chart-vt'), {
+    type: 'line',
+    data: { labels: months, datasets: [
+        {label: '資産簿価', data: assetValues, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3},
+        {label: '累積リース収入', data: cumulativeIncomes, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3}
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { callback: v => '\u00a5' + (v/10000).toFixed(0) + '万' }}}}
+});
+
+new Chart(document.getElementById('chart-nav'), {
+    type: 'line',
+    data: { labels: months, datasets: [
+        {label: 'NAV比率 (%)', data: navRatios, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.3},
+        {label: '60%ライン', data: nav60, borderColor: '#f59e0b', borderDash: [8,4], borderWidth: 2, pointRadius: 0, fill: false}
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 200, ticks: { callback: v => v + '%' }}}}
+});
+</script>
+{% endif %}
+
 {# ===== Actions ===== #}
 <div class="actions-row" style="margin-top: 24px;">
     <a href="/simulation/new" class="btn btn--outline">条件変更して再計算</a>

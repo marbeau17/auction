@@ -638,12 +638,15 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     - Monthly P&L bar chart with cumulative overlay
     - Detailed monthly schedule table (collapsible)
     """
+    import re
+    from statistics import median
+
     from app.core.pricing import (
         _assessment,
         _max_purchase_price,
         _monthly_lease_fee,
-        _residual_value,
     )
+    from app.core.residual_value import ResidualValueCalculator
 
     form = await request.form()
 
@@ -669,8 +672,33 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     max_price = _max_purchase_price(book_value, acquisition_price, body_option_value)
     recommended_price = int(max_price * 0.95)  # 5% below max
 
-    # Calculate residual value
-    residual, residual_rate = _residual_value(recommended_price, lease_term_months)
+    # --- Residual value via ResidualValueCalculator (with mileage adj) --- #
+    rv_calc = ResidualValueCalculator()
+
+    # Parse year from registration_year_month
+    year_match = re.match(r'(\d{4})', str(form.get("registration_year_month", "")))
+    vehicle_year = int(year_match.group(1)) if year_match else 2020
+    elapsed_months = (2026 - vehicle_year) * 12 + lease_term_months  # age at lease end
+
+    # Map vehicle_class to category
+    category_map = {
+        "LARGE": "普通貨物",
+        "MEDIUM": "普通貨物",
+        "SMALL": "小型貨物",
+        "TRAILER_HEAD": "普通貨物",
+        "TRAILER_CHASSIS": "被けん引車",
+    }
+    category = category_map.get(form.get("vehicle_class", ""), "普通貨物")
+
+    rv_result = rv_calc.predict(
+        purchase_price=recommended_price,
+        category=category,
+        body_type=body_type,
+        elapsed_months=elapsed_months,
+        mileage=mileage_km,
+    )
+    residual = rv_result["residual_value"]
+    residual_rate = residual / recommended_price if recommended_price > 0 else 0
 
     # Calculate monthly lease
     monthly_fee = _monthly_lease_fee(
@@ -686,8 +714,27 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
         else 0
     )
 
+    # --- Market deviation calculation --- #
+    market_deviation = 0.0
+    try:
+        from app.db.supabase_client import get_supabase_client
+        client = get_supabase_client(service_role=True)
+        market_q = client.table("vehicles").select("price_yen").eq("is_active", True)
+        if maker:
+            market_q = market_q.eq("maker", maker)
+        if body_type:
+            market_q = market_q.eq("body_type", body_type)
+        market_result = market_q.limit(50).execute()
+        if market_result.data:
+            prices = [v["price_yen"] for v in market_result.data if v.get("price_yen")]
+            if prices:
+                market_median = median(prices)
+                market_deviation = abs(recommended_price - market_median) / market_median if market_median > 0 else 0
+    except Exception:
+        pass
+
     # Assessment
-    assessment = _assessment(effective_yield, target_yield_rate / 100, 0.05)
+    assessment = _assessment(effective_yield, target_yield_rate / 100, market_deviation)
 
     # Breakeven
     net_monthly = monthly_fee - 15000 - 10000
@@ -831,6 +878,27 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
                 <div class="kpi-card__value"><span class="badge badge--{badge_class}">{assessment}</span></div>
             </div>
             {equipment_html}
+        </div>
+
+        <!-- Save button -->
+        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+            <form hx-post="/api/v1/simulations/save" hx-target="#save-result" hx-swap="innerHTML">
+                <input type="hidden" name="maker" value="{maker}">
+                <input type="hidden" name="model" value="{model}">
+                <input type="hidden" name="registration_year_month" value="{form.get('registration_year_month', '')}">
+                <input type="hidden" name="mileage_km" value="{mileage_km}">
+                <input type="hidden" name="acquisition_price" value="{acquisition_price}">
+                <input type="hidden" name="book_value" value="{book_value}">
+                <input type="hidden" name="body_type" value="{body_type}">
+                <input type="hidden" name="target_yield_rate" value="{target_yield_rate}">
+                <input type="hidden" name="lease_term_months" value="{lease_term_months}">
+                <input type="hidden" name="recommended_price" value="{recommended_price}">
+                <input type="hidden" name="monthly_fee" value="{monthly_fee}">
+                <input type="hidden" name="total_fee" value="{total_fee}">
+                <input type="hidden" name="effective_yield" value="{effective_yield}">
+                <button type="submit" class="btn btn--primary">&#x1F4BE; 結果を保存</button>
+            </form>
+            <div id="save-result"></div>
         </div>
 
         <!-- Chart 1: Value Transfer -->
@@ -1126,3 +1194,64 @@ async def quick_calculate_form(
 
     html = _render_result_fragment(result)
     return HTMLResponse(content=html)
+
+
+# ---------------------------------------------------------------------------
+# 8. POST /save - Save simulation results to database
+# ---------------------------------------------------------------------------
+
+
+@router.post("/save")
+async def save_simulation(request: Request):
+    """Save simulation results to database."""
+    from app.db.supabase_client import get_supabase_client
+    from app.api.pages import _get_optional_user
+
+    user = await _get_optional_user(request)
+    if not user:
+        return HTMLResponse('<div class="alert alert--error">ログインが必要です</div>', status_code=401)
+
+    form = await request.form()
+
+    try:
+        client = get_supabase_client(service_role=True)
+
+        maker = form.get("maker", "")
+        model = form.get("model", "") or form.get("model_custom", "") or form.get("model_select", "")
+        if model == "__custom__":
+            model = form.get("model_custom", "")
+
+        data = {
+            "user_id": user["id"],
+            "title": f"{maker} {model} シミュレーション",
+            "target_model_name": f"{maker} {model}",
+            "target_model_year": int(form.get("registration_year_month", 2020) or 2020),
+            "target_mileage_km": int(form.get("mileage_km", 0) or 0),
+            "purchase_price_yen": int(form.get("recommended_price", 0) or form.get("acquisition_price", 0) or 0),
+            "market_price_yen": int(form.get("acquisition_price", 0) or 0),
+            "lease_monthly_yen": int(form.get("monthly_fee", 0) or 0),
+            "lease_term_months": int(form.get("lease_term_months", 36) or 36),
+            "total_lease_revenue_yen": int(form.get("total_fee", 0) or 0),
+            "expected_yield_rate": float(form.get("effective_yield", 0) or 0),
+            "status": "completed",
+            "result_summary_json": {
+                "maker": maker,
+                "model": model,
+                "body_type": form.get("body_type", ""),
+                "target_yield_rate": float(form.get("target_yield_rate", 8) or 8),
+                "equipment": form.getlist("equipment_list") if hasattr(form, "getlist") else [],
+            },
+        }
+
+        result = client.table("simulations").insert(data).execute()
+        sim_id = result.data[0]["id"] if result.data else None
+
+        html = f'''
+        <div class="alert alert--success">
+            シミュレーション結果を保存しました。
+            <a href="/simulation/{sim_id}/result" class="btn btn--text btn--sm" style="margin-left:8px">結果を確認 →</a>
+        </div>
+        '''
+        return HTMLResponse(html)
+    except Exception as e:
+        return HTMLResponse(f'<div class="alert alert--error">保存に失敗しました: {str(e)[:100]}</div>')
