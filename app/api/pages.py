@@ -126,7 +126,7 @@ async def simulation_new_page(request: Request):
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
-        makers_resp = client.table("makers").select("*").order("name").execute()
+        makers_resp = client.table("manufacturers").select("*").order("name").execute()
         makers = makers_resp.data or []
         bt_resp = client.table("body_types").select("*").order("name").execute()
         body_types = bt_resp.data or []
@@ -235,7 +235,7 @@ async def market_data_list_page(request: Request):
             stats = {"total_count": total_count, "avg_price": 0, "median_price": 0}
 
         # Fetch makers and body_types for filter dropdowns
-        makers_resp = client.table("makers").select("*").order("name").execute()
+        makers_resp = client.table("manufacturers").select("*").order("name").execute()
         makers = makers_resp.data or []
         bt_resp = client.table("body_types").select("*").order("name").execute()
         body_types = bt_resp.data or []
