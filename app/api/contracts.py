@@ -326,41 +326,95 @@ def _build_mapper_html(simulation, stakeholders, sh_map, templates, contracts, r
         </div>
         '''
 
-    # Contract flow SVG
+    # Contract flow SVG - large, bold, full-width
     svg_html = '''
-    <svg viewBox="0 0 600 180" style="width:100%;max-width:600px;margin:0 auto;display:block" xmlns="http://www.w3.org/2000/svg">
-        <!-- Nodes -->
-        <rect x="10" y="60" width="120" height="50" rx="8" fill="#10b981" opacity="0.15" stroke="#10b981" stroke-width="2"/>
-        <text x="70" y="90" text-anchor="middle" fill="#10b981" font-size="14" font-weight="600">投資家</text>
-
-        <rect x="160" y="60" width="120" height="50" rx="8" fill="#2563eb" opacity="0.15" stroke="#2563eb" stroke-width="2"/>
-        <text x="220" y="90" text-anchor="middle" fill="#2563eb" font-size="14" font-weight="600">SPC</text>
-
-        <rect x="310" y="60" width="120" height="50" rx="8" fill="#f59e0b" opacity="0.15" stroke="#f59e0b" stroke-width="2"/>
-        <text x="370" y="90" text-anchor="middle" fill="#f59e0b" font-size="14" font-weight="600">カーチス</text>
-
-        <rect x="460" y="60" width="120" height="50" rx="8" fill="#8b5cf6" opacity="0.15" stroke="#8b5cf6" stroke-width="2"/>
-        <text x="520" y="90" text-anchor="middle" fill="#8b5cf6" font-size="14" font-weight="600">運送事業者</text>
-
-        <!-- Arrows -->
-        <line x1="130" y1="85" x2="160" y2="85" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
-        <text x="145" y="75" text-anchor="middle" fill="#999" font-size="9">TK契約</text>
-
-        <line x1="280" y1="85" x2="310" y2="85" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
-        <text x="295" y="75" text-anchor="middle" fill="#999" font-size="9">ML契約</text>
-
-        <line x1="430" y1="85" x2="460" y2="85" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
-        <text x="445" y="75" text-anchor="middle" fill="#999" font-size="9">SL契約</text>
-
-        <line x1="520" y1="110" x2="220" y2="140" stroke="#666" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowhead)"/>
-        <text x="370" y="135" text-anchor="middle" fill="#999" font-size="9">売買契約</text>
-
-        <!-- Arrow marker -->
+    <svg viewBox="0 0 1000 420" style="width:100%;min-height:320px;display:block" xmlns="http://www.w3.org/2000/svg">
         <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+            <marker id="arrowhead" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+                <polygon points="0 0, 12 4.5, 0 9" fill="#94a3b8"/>
             </marker>
+            <marker id="arrowhead-green" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+                <polygon points="0 0, 12 4.5, 0 9" fill="#10b981"/>
+            </marker>
+            <marker id="arrowhead-blue" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+                <polygon points="0 0, 12 4.5, 0 9" fill="#2563eb"/>
+            </marker>
+            <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+                <feDropShadow dx="2" dy="3" stdDeviation="4" flood-opacity="0.15"/>
+            </filter>
         </defs>
+
+        <!-- Title -->
+        <text x="500" y="30" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700" letter-spacing="2">リースバック・スキーム構造</text>
+
+        <!-- ===== TOP ROW: 4 Stakeholder Nodes ===== -->
+
+        <!-- Investor -->
+        <rect x="30" y="60" width="200" height="90" rx="16" fill="#10b981" opacity="0.12" stroke="#10b981" stroke-width="3" filter="url(#shadow)"/>
+        <text x="130" y="100" text-anchor="middle" fill="#10b981" font-size="22" font-weight="700">投資家</text>
+        <text x="130" y="125" text-anchor="middle" fill="#6ee7b7" font-size="13">Investor</text>
+
+        <!-- SPC -->
+        <rect x="280" y="60" width="200" height="90" rx="16" fill="#2563eb" opacity="0.12" stroke="#2563eb" stroke-width="3" filter="url(#shadow)"/>
+        <text x="380" y="100" text-anchor="middle" fill="#60a5fa" font-size="22" font-weight="700">SPC</text>
+        <text x="380" y="125" text-anchor="middle" fill="#93c5fd" font-size="13">特別目的会社</text>
+
+        <!-- Carchs -->
+        <rect x="530" y="60" width="200" height="90" rx="16" fill="#f59e0b" opacity="0.12" stroke="#f59e0b" stroke-width="3" filter="url(#shadow)"/>
+        <text x="630" y="100" text-anchor="middle" fill="#fbbf24" font-size="22" font-weight="700">カーチス</text>
+        <text x="630" y="125" text-anchor="middle" fill="#fcd34d" font-size="13">Operator / Asset Manager</text>
+
+        <!-- Transport Company -->
+        <rect x="780" y="60" width="200" height="90" rx="16" fill="#8b5cf6" opacity="0.12" stroke="#8b5cf6" stroke-width="3" filter="url(#shadow)"/>
+        <text x="880" y="100" text-anchor="middle" fill="#a78bfa" font-size="22" font-weight="700">運送事業者</text>
+        <text x="880" y="125" text-anchor="middle" fill="#c4b5fd" font-size="13">End User / Lessee</text>
+
+        <!-- ===== ARROWS between nodes ===== -->
+
+        <!-- Investor → SPC (TK Agreement) -->
+        <line x1="230" y1="105" x2="280" y2="105" stroke="#10b981" stroke-width="3" marker-end="url(#arrowhead-green)"/>
+        <rect x="232" y="70" width="68" height="24" rx="6" fill="#10b981" opacity="0.2"/>
+        <text x="266" y="87" text-anchor="middle" fill="#10b981" font-size="12" font-weight="600">TK契約</text>
+
+        <!-- SPC → Carchs (Master Lease) -->
+        <line x1="480" y1="105" x2="530" y2="105" stroke="#2563eb" stroke-width="3" marker-end="url(#arrowhead-blue)"/>
+        <rect x="481" y="70" width="68" height="24" rx="6" fill="#2563eb" opacity="0.2"/>
+        <text x="515" y="87" text-anchor="middle" fill="#60a5fa" font-size="12" font-weight="600">ML契約</text>
+
+        <!-- Carchs → Transport (Sublease) -->
+        <line x1="730" y1="105" x2="780" y2="105" stroke="#f59e0b" stroke-width="3" marker-end="url(#arrowhead)"/>
+        <rect x="731" y="70" width="68" height="24" rx="6" fill="#f59e0b" opacity="0.2"/>
+        <text x="765" y="87" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="600">SL契約</text>
+
+        <!-- ===== BOTTOM: Sale + Cash flows ===== -->
+
+        <!-- Sale arrow: Transport → SPC (curved bottom) -->
+        <path d="M 880 150 L 880 250 Q 880 280 850 280 L 410 280 Q 380 280 380 250 L 380 150" stroke="#8b5cf6" stroke-width="2.5" stroke-dasharray="8,4" fill="none" marker-end="url(#arrowhead)"/>
+        <rect x="560" y="265" width="120" height="30" rx="8" fill="#8b5cf6" opacity="0.15"/>
+        <text x="620" y="285" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="600">車両売買契約</text>
+
+        <!-- Cash flow: SPC → Transport (instant cash) -->
+        <path d="M 380 150 L 380 200 Q 380 220 400 220 L 860 220 Q 880 220 880 200 L 880 150" stroke="#10b981" stroke-width="2" stroke-dasharray="6,3" fill="none" marker-end="url(#arrowhead-green)"/>
+        <rect x="560" y="205" width="100" height="26" rx="8" fill="#10b981" opacity="0.12"/>
+        <text x="610" y="223" text-anchor="middle" fill="#6ee7b7" font-size="12" font-weight="500">即時現金化</text>
+
+        <!-- ===== BOTTOM ROW: Flow labels ===== -->
+
+        <text x="130" y="340" text-anchor="middle" fill="#94a3b8" font-size="13">出資金</text>
+        <text x="130" y="360" text-anchor="middle" fill="#6ee7b7" font-size="15" font-weight="600">↑ 安定利回り</text>
+
+        <text x="380" y="340" text-anchor="middle" fill="#94a3b8" font-size="13">車両保有</text>
+        <text x="380" y="360" text-anchor="middle" fill="#60a5fa" font-size="15" font-weight="600">資産管理</text>
+
+        <text x="630" y="340" text-anchor="middle" fill="#94a3b8" font-size="13">管理手数料</text>
+        <text x="630" y="360" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="600">運営・仲介</text>
+
+        <text x="880" y="340" text-anchor="middle" fill="#94a3b8" font-size="13">車両利用継続</text>
+        <text x="880" y="360" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="600">オフバランス化</text>
+
+        <!-- Legend -->
+        <rect x="30" y="390" width="940" height="1" fill="#334155"/>
+        <text x="50" y="412" fill="#64748b" font-size="11">━ 契約関係　┅ 資金・車両フロー　TK=匿名組合　ML=マスターリース　SL=サブリース</text>
     </svg>
     '''
 
