@@ -618,40 +618,233 @@ async def compare_simulations(
 
 @router.post(
     "/calculate",
-    response_model=SuccessResponse,
-    summary="Quick calculation without saving",
+    summary="Quick calculation from form data, returns HTML result fragment",
     responses={
-        200: {"description": "Calculation result"},
+        200: {"description": "Calculation result as HTML fragment"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def calculate_simulation_quick(request: Request) -> HTMLResponse:
+    """Quick calculation from form data, returns HTML result fragment.
+
+    Accepts ``application/x-www-form-urlencoded`` data from the simulation
+    form and returns an HTML fragment suitable for HTMX swapping.  Does not
+    persist results and does not require authentication.
+    """
+    from app.core.pricing import (
+        _assessment,
+        _max_purchase_price,
+        _monthly_lease_fee,
+        _residual_value,
+    )
+
+    form = await request.form()
+
+    # Parse form fields with safe defaults
+    maker = form.get("maker", "")
+    model = form.get("model", "")
+    mileage_km = int(form.get("mileage_km", 0) or 0)
+    acquisition_price = int(form.get("acquisition_price", 0) or 0)
+    book_value = int(form.get("book_value", 0) or 0)
+    body_type = form.get("body_type", "")
+    body_option_value = int(form.get("body_option_value", 0) or 0)
+    target_yield_rate = float(form.get("target_yield_rate", 8.0) or 8.0)
+    lease_term_months = int(form.get("lease_term_months", 36) or 36)
+
+    # Calculate max purchase price
+    max_price = _max_purchase_price(book_value, acquisition_price, body_option_value)
+    recommended_price = int(max_price * 0.95)  # 5% below max
+
+    # Calculate residual value
+    residual, residual_rate = _residual_value(recommended_price, lease_term_months)
+
+    # Calculate monthly lease
+    monthly_fee = _monthly_lease_fee(
+        recommended_price, residual, lease_term_months,
+        target_yield_rate / 100, 15000, 10000,
+    )
+
+    total_fee = monthly_fee * lease_term_months
+    effective_yield = (
+        ((total_fee + residual - recommended_price) / recommended_price)
+        * (12 / lease_term_months)
+        if recommended_price > 0
+        else 0
+    )
+
+    # Assessment
+    assessment = _assessment(effective_yield, target_yield_rate / 100, 0.05)
+
+    # Breakeven
+    net_monthly = monthly_fee - 15000 - 10000
+    breakeven = math.ceil(recommended_price / net_monthly) if net_monthly > 0 else None
+
+    # Build HTML response
+    badge_class = {"推奨": "success", "要検討": "warning", "非推奨": "danger"}.get(
+        assessment, ""
+    )
+
+    html = f"""
+    <div class="result-summary">
+        <h3>シミュレーション結果</h3>
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-card__label">推奨買取価格</div>
+                <div class="kpi-card__value">&yen;{recommended_price:,}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">上限買取価格</div>
+                <div class="kpi-card__value">&yen;{max_price:,}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">月額リース料</div>
+                <div class="kpi-card__value">&yen;{monthly_fee:,}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">リース料総額</div>
+                <div class="kpi-card__value">&yen;{total_fee:,}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">想定残価</div>
+                <div class="kpi-card__value">&yen;{residual:,}</div>
+                <div class="kpi-card__sub">残価率 {residual_rate * 100:.0f}%</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">実質利回り</div>
+                <div class="kpi-card__value">{effective_yield * 100:.1f}%</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">損益分岐点</div>
+                <div class="kpi-card__value">{breakeven if breakeven else "--"}ヶ月</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-card__label">判定</div>
+                <div class="kpi-card__value"><span class="badge badge--{badge_class}">{assessment}</span></div>
+            </div>
+        </div>
+        <div class="actions-row" style="margin-top:24px">
+            <p><strong>{maker} {model}</strong> | 目標利回り {target_yield_rate}% | {lease_term_months}ヶ月</p>
+        </div>
+    </div>
+    """
+
+    return HTMLResponse(content=html)
+
+
+# ---------------------------------------------------------------------------
+# 7. POST /calculate-form - Quick calculation from HTML form data (no save)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/calculate-form",
+    summary="Quick calculation from form data without saving",
+    responses={
+        200: {"description": "Calculation result as HTML fragment"},
         401: {"model": ErrorResponse, "description": "Not authenticated"},
         422: {"model": ErrorResponse, "description": "Validation error"},
     },
 )
-async def quick_calculate(
+async def quick_calculate_form(
     request: Request,
-    input_data: SimulationInput,
     current_user: dict[str, Any] = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client),
-) -> HTMLResponse | JSONResponse:
-    """Run a pricing simulation **without** persisting the result.
+) -> HTMLResponse:
+    """Run a pricing simulation from HTML form data without persisting.
 
-    Designed for HTMX live-preview on the simulation form: returns an HTML
-    fragment when ``HX-Request`` is present, JSON otherwise.
+    Accepts standard form-encoded data from the simulation input page and
+    returns an HTML fragment for HTMX to swap into the result preview area.
+    Uses the standalone pricing helper functions so it works without a full
+    Supabase market-data lookup.
     """
+    from app.core.pricing import (
+        _assessment,
+        _build_schedule,
+        _max_purchase_price,
+        _monthly_lease_fee,
+        _residual_value,
+    )
+
+    form = await request.form()
+
     try:
-        result = await calculate_simulation(input_data=input_data, supabase=supabase)
-    except Exception:
-        logger.exception("quick_calculate_failed", user_id=current_user["id"])
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="計算中にエラーが発生しました",
+        maker = form.get("maker", "")
+        model = form.get("model", "")
+        year = form.get("year", "")
+        mileage = int(form.get("mileage", 0) or 0)
+        vehicle_class = form.get("vehicle_class", "")
+        body_type = form.get("body_type", "")
+        acquisition_price = int(form.get("acquisition_price", 0) or 0)
+        book_value = int(form.get("book_value", 0) or 0)
+        target_yield_rate_pct = float(form.get("target_yield_rate", 0) or 0)
+        target_yield_rate = target_yield_rate_pct / 100.0
+        lease_term_months = int(form.get("lease_term_months", 0) or 0)
+        residual_rate_pct = form.get("residual_rate", "")
+        residual_rate = float(residual_rate_pct) / 100.0 if residual_rate_pct else None
+        insurance_monthly = int(form.get("insurance_monthly", 0) or 0)
+        maintenance_monthly = int(form.get("maintenance_monthly", 0) or 0)
+        body_option_value = int(form.get("body_option_value", 0) or 0)
+    except (ValueError, TypeError) as exc:
+        logger.warning("calculate_form_parse_error", error=str(exc))
+        return HTMLResponse(
+            content='<div class="alert alert--error">入力値に不正な値があります。数値フィールドを確認してください。</div>',
+            status_code=422,
         )
 
-    if _is_htmx(request):
-        html = _render_result_fragment(result)
-        return HTMLResponse(content=html)
+    if lease_term_months <= 0 or acquisition_price <= 0:
+        return HTMLResponse(
+            content='<div class="alert alert--error">取得価格とリース期間は必須です。</div>',
+            status_code=422,
+        )
 
-    return JSONResponse(
-        content=SuccessResponse(
-            data=result.model_dump(mode="json"),
-        ).model_dump(mode="json"),
+    # Use book_value as a rough market proxy when no DB lookup is available
+    market_median = book_value if book_value > 0 else acquisition_price
+
+    max_price = _max_purchase_price(book_value, market_median, body_option_value)
+    recommended_price = int(max_price * 0.95)
+    rv, rv_rate = _residual_value(recommended_price, lease_term_months, residual_rate)
+    monthly_fee = _monthly_lease_fee(
+        recommended_price, rv, lease_term_months, target_yield_rate,
+        insurance_monthly, maintenance_monthly,
     )
+    total_fee = monthly_fee * lease_term_months
+    effective_yield = (
+        (total_fee + rv - recommended_price) / recommended_price / (lease_term_months / 12)
+        if recommended_price > 0 and lease_term_months > 0
+        else 0.0
+    )
+    market_deviation = (
+        (recommended_price - market_median) / market_median
+        if market_median > 0
+        else 0.0
+    )
+    assessment = _assessment(effective_yield, target_yield_rate, market_deviation)
+
+    schedule = _build_schedule(
+        recommended_price, rv, lease_term_months, monthly_fee,
+        target_yield_rate, insurance_monthly, maintenance_monthly,
+    )
+
+    breakeven_months = None
+    for item in schedule:
+        if item.cumulative_profit >= 0:
+            breakeven_months = item.month
+            break
+
+    result = SimulationResult(
+        max_purchase_price=max_price,
+        recommended_purchase_price=recommended_price,
+        estimated_residual_value=rv,
+        residual_rate_result=rv_rate,
+        monthly_lease_fee=monthly_fee,
+        total_lease_fee=total_fee,
+        breakeven_months=breakeven_months,
+        effective_yield_rate=effective_yield,
+        market_median_price=market_median,
+        market_sample_count=0,
+        market_deviation_rate=market_deviation,
+        assessment=assessment,
+        monthly_schedule=schedule,
+    )
+
+    html = _render_result_fragment(result)
+    return HTMLResponse(content=html)

@@ -16,14 +16,9 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
         </div>
         <div class="kpi-card__body">
-            <span class="kpi-card__label">今月査定数</span>
-            <span class="kpi-card__value">{{ kpi.assessment_count | default(0) }}</span>
+            <span class="kpi-card__label">シミュレーション数</span>
+            <span class="kpi-card__value">{{ "{:,}".format(kpi.simulation_count | default(0)) }}</span>
             <span class="kpi-card__sub">件</span>
-            {% if kpi and kpi.assessment_change is defined %}
-            <span class="kpi-card__change {% if kpi.assessment_change >= 0 %}kpi-card__change--up{% else %}kpi-card__change--down{% endif %}">
-                {{ "%+d" | format(kpi.assessment_change) }}% 前月比
-            </span>
-            {% endif %}
         </div>
     </div>
 
@@ -33,12 +28,7 @@
         </div>
         <div class="kpi-card__body">
             <span class="kpi-card__label">平均利回り</span>
-            <span class="kpi-card__value">{{ "%.1f" | format(kpi.avg_yield_rate | default(0)) }}%</span>
-            {% if kpi and kpi.yield_change is defined %}
-            <span class="kpi-card__change {% if kpi.yield_change >= 0 %}kpi-card__change--up{% else %}kpi-card__change--down{% endif %}">
-                {{ "%+.2f" | format(kpi.yield_change) }}pp 前月比
-            </span>
-            {% endif %}
+            <span class="kpi-card__value">{{ "%.1f" | format(kpi.avg_yield | default(0)) }}%</span>
         </div>
     </div>
 
@@ -48,9 +38,9 @@
         </div>
         <div class="kpi-card__body">
             <span class="kpi-card__label">相場変動アラート</span>
-            <span class="kpi-card__value">{{ kpi.alert_count | default(0) }}</span>
+            <span class="kpi-card__value">{{ "{:,}".format(kpi.price_alerts | default(0)) }}</span>
             <span class="kpi-card__sub">件</span>
-            {% if kpi and kpi.alert_count is defined and kpi.alert_count > 0 %}
+            {% if kpi and kpi.price_alerts is defined and kpi.price_alerts > 0 %}
             <a href="/market-data?alerts=1" class="kpi-card__link">詳細を確認</a>
             {% endif %}
         </div>
@@ -79,20 +69,89 @@
         <h3 class="card__title">最近のシミュレーション</h3>
         <a href="/simulations" class="card__header-link">すべて表示</a>
     </div>
-    <div class="card__body"
+    <div class="card__body card__body--flush"
          id="recent-simulations"
-         hx-get="/api/v1/simulations?per_page=5"
-         hx-trigger="load"
-         hx-target="this"
-         hx-swap="innerHTML"
-         hx-indicator="#simulations-loading">
+         hx-get="/dashboard"
+         hx-trigger="every 60s"
+         hx-target="#recent-simulations"
+         hx-select="#recent-simulations"
+         hx-swap="outerHTML">
 
-        <div id="simulations-loading" class="htmx-indicator loading-placeholder">
-            <span class="spinner"></span>
-            <span>読み込み中...</span>
+        {% if recent_simulations %}
+        <div class="table-responsive">
+            <table class="data-table data-table--hover">
+                <thead>
+                    <tr>
+                        <th>タイトル</th>
+                        <th>車種 / 年式</th>
+                        <th class="text-right">買取価格</th>
+                        <th class="text-right">月額リース</th>
+                        <th class="text-right">利回り</th>
+                        <th>ステータス</th>
+                        <th>実行日</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sim in recent_simulations %}
+                    <tr>
+                        <td>
+                            <a href="/simulation/{{ sim.id }}/result" class="text-bold">{{ sim.title | default("無題") }}</a>
+                        </td>
+                        <td>
+                            <span>{{ sim.target_model_name | default("-") }}</span>
+                            {% if sim.target_model_year %}
+                            <br><small class="text-muted">{{ sim.target_model_year }}年式</small>
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            {% if sim.purchase_price_yen is not none %}
+                                &yen;{{ "{:,}".format(sim.purchase_price_yen) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            {% if sim.lease_monthly_yen is not none %}
+                                &yen;{{ "{:,}".format(sim.lease_monthly_yen) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            {% if sim.expected_yield_rate is not none %}
+                                {{ "%.1f" | format(sim.expected_yield_rate) }}%
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if sim.status == 'completed' or sim.status == '完了' %}
+                                <span class="badge badge--success">完了</span>
+                            {% elif sim.status == 'running' or sim.status == '実行中' %}
+                                <span class="badge badge--primary">実行中</span>
+                            {% elif sim.status == 'failed' or sim.status == 'エラー' %}
+                                <span class="badge badge--danger">エラー</span>
+                            {% elif sim.status == 'draft' or sim.status == '下書き' %}
+                                <span class="badge badge--neutral">下書き</span>
+                            {% else %}
+                                <span class="badge">{{ sim.status | default("-") }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if sim.created_at %}
+                                {{ sim.created_at.strftime('%Y/%m/%d') if sim.created_at is not string else sim.created_at }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-
+        {% else %}
         <p class="empty-state">シミュレーション履歴がありません。新規シミュレーションを実行してください。</p>
+        {% endif %}
     </div>
 </section>
 {% endblock %}

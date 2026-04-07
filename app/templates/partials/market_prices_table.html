@@ -1,0 +1,77 @@
+{# HTMX partial: market prices table with stats OOB swap #}
+
+{# Out-of-band stats update #}
+<div id="stats-count" hx-swap-oob="innerHTML">#{{ meta.total_count | default(0) }}件</div>
+<div id="stats-avg" hx-swap-oob="innerHTML">&yen;{{ "{:,.0f}".format(stats.avg) if stats and stats.avg else "--" }}</div>
+<div id="stats-median" hx-swap-oob="innerHTML">&yen;{{ "{:,.0f}".format(stats.median) if stats and stats.median else "--" }}</div>
+
+{# Main table content #}
+<div id="vehicle-table-container">
+  <div class="table-responsive">
+    <table class="table table--hover">
+      <thead>
+        <tr>
+          <th>メーカー</th>
+          <th>車種</th>
+          <th>年式</th>
+          <th class="text-right">走行距離</th>
+          <th class="text-right">価格</th>
+          <th>架装</th>
+          <th>所在地</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for vehicle in vehicles %}
+        <tr class="table__row--clickable"
+            hx-get="/market-data/{{ vehicle.id }}"
+            hx-target="#main-content"
+            hx-push-url="true"
+            hx-swap="innerHTML"
+            role="link"
+            tabindex="0">
+          <td>{{ vehicle.maker }}</td>
+          <td>{{ vehicle.model_name }}</td>
+          <td>{{ vehicle.model_year }}年</td>
+          <td class="text-right">{{ "{:,}".format(vehicle.mileage_km) if vehicle.mileage_km is not none else "-" }} km</td>
+          <td class="text-right">
+            {% if vehicle.price_yen is not none %}
+              &yen;{{ "{:,}".format(vehicle.price_yen) }}
+              {% if vehicle.price_tax_included %}
+                <small class="text-muted">(税込)</small>
+              {% else %}
+                <small class="text-muted">(税別)</small>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">ASK</span>
+            {% endif %}
+          </td>
+          <td>{{ vehicle.body_type or "-" }}</td>
+          <td>{{ vehicle.location_prefecture or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="table__empty">
+            該当する車両が見つかりませんでした。
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Pagination #}
+  {% if meta and meta.total_pages > 1 %}
+  <div class="pagination-bar">
+    <span class="pagination-bar__info">
+      {{ meta.total_count }}件中 {{ meta.page }}/{{ meta.total_pages }}ページ
+    </span>
+    {% include "components/pagination.html" %}
+  </div>
+  {% elif meta %}
+  <div class="pagination-bar">
+    <span class="pagination-bar__info">
+      {{ meta.total_count }}件中 {{ meta.page }}/{{ meta.total_pages }}ページ
+    </span>
+  </div>
+  {% endif %}
+</div>

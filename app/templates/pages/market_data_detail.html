@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}{{ vehicle.maker_name | default("") }} {{ vehicle.model_name | default("") }} - 相場データ詳細{% endblock %}
+{% block title %}{% if vehicle %}{{ vehicle.maker | default("") }} {{ vehicle.model_name | default("") }} - 相場データ詳細{% else %}車両が見つかりません{% endif %}{% endblock %}
 {% block page_title %}相場データ詳細{% endblock %}
 
 {% block content %}
+{% if vehicle %}
 {# ===== Vehicle Info Header ===== #}
 <div class="page-header page-header--with-back">
     <a href="/market-data" class="page-header__back">
@@ -11,93 +12,46 @@
         相場データ一覧
     </a>
     <div class="page-header__content">
-        <h2 class="page-header__title">{{ vehicle.maker_name | default("--") }} {{ vehicle.model_name | default("") }}</h2>
+        <h2 class="page-header__title">{{ vehicle.maker | default("--") }} {{ vehicle.model_name | default("") }}</h2>
         <div class="page-header__tags">
-            <span class="tag">{{ vehicle.year | default("--") }}年式</span>
-            <span class="tag">{{ vehicle.body_type_display | default("--") }}</span>
-            {% if vehicle and vehicle.vehicle_class_display %}
-            <span class="tag">{{ vehicle.vehicle_class_display }}</span>
+            <span class="tag">{{ vehicle.model_year | default("--") }}年式</span>
+            {% if vehicle.body_type %}
+            <span class="tag">{{ vehicle.body_type }}</span>
+            {% endif %}
+            {% if vehicle.tonnage %}
+            <span class="tag">{{ vehicle.tonnage }}t</span>
             {% endif %}
         </div>
     </div>
 </div>
 
-{# ===== Price Stats Cards ===== #}
-<section class="result-summary" aria-label="価格統計">
+{# ===== Price Card ===== #}
+<section class="result-summary" aria-label="価格情報">
     <div class="result-card result-card--info">
-        <span class="result-card__label">平均価格</span>
-        <span class="result-card__value">&yen;{{ "{:,.0f}".format(price_stats.avg) if price_stats and price_stats.avg is defined else "--" }}</span>
-        <span class="result-card__sub">{{ price_stats.sample_count | default("--") }}件の取引データ</span>
-    </div>
-
-    <div class="result-card result-card--success">
-        <span class="result-card__label">最安価格</span>
-        <span class="result-card__value">&yen;{{ "{:,.0f}".format(price_stats.min) if price_stats and price_stats.min is defined else "--" }}</span>
-    </div>
-
-    <div class="result-card result-card--warning">
-        <span class="result-card__label">最高価格</span>
-        <span class="result-card__value">&yen;{{ "{:,.0f}".format(price_stats.max) if price_stats and price_stats.max is defined else "--" }}</span>
+        <span class="result-card__label">販売価格{% if vehicle.price_tax_included %}（税込）{% else %}（税別）{% endif %}</span>
+        <span class="result-card__value">
+            {% if vehicle.price_yen is not none %}
+            &yen;{{ "{:,.0f}".format(vehicle.price_yen) }}
+            {% else %}
+            価格未定
+            {% endif %}
+        </span>
+        {% if vehicle.price_yen is not none %}
+        <span class="result-card__sub">{{ "{:,.1f}".format(vehicle.price_yen / 10000) }}万円</span>
+        {% endif %}
     </div>
 </section>
 
-{# ===== Price Trend Chart ===== #}
-<section class="card" aria-label="価格推移チャート">
+{# ===== Vehicle Specs Table ===== #}
+<section class="card" aria-label="車両スペック">
     <div class="card__header">
-        <h3 class="card__title">価格推移</h3>
-        <div class="tab-group" role="tablist" aria-label="期間選択">
-            <button type="button"
-                    role="tab"
-                    class="tab-group__tab tab-group__tab--active"
-                    aria-selected="true"
-                    hx-get="/api/v1/market-data/{{ vehicle.id if vehicle else '' }}/trend?period=3m"
-                    hx-target="#trend-chart-container"
-                    hx-swap="innerHTML"
-                    hx-indicator="#trend-loading">3M</button>
-            <button type="button"
-                    role="tab"
-                    class="tab-group__tab"
-                    aria-selected="false"
-                    hx-get="/api/v1/market-data/{{ vehicle.id if vehicle else '' }}/trend?period=6m"
-                    hx-target="#trend-chart-container"
-                    hx-swap="innerHTML"
-                    hx-indicator="#trend-loading">6M</button>
-            <button type="button"
-                    role="tab"
-                    class="tab-group__tab"
-                    aria-selected="false"
-                    hx-get="/api/v1/market-data/{{ vehicle.id if vehicle else '' }}/trend?period=1y"
-                    hx-target="#trend-chart-container"
-                    hx-swap="innerHTML"
-                    hx-indicator="#trend-loading">1Y</button>
-            <button type="button"
-                    role="tab"
-                    class="tab-group__tab"
-                    aria-selected="false"
-                    hx-get="/api/v1/market-data/{{ vehicle.id if vehicle else '' }}/trend?period=all"
-                    hx-target="#trend-chart-container"
-                    hx-swap="innerHTML"
-                    hx-indicator="#trend-loading">ALL</button>
-        </div>
-    </div>
-    <div class="card__body">
-        <span id="trend-loading" class="htmx-indicator spinner" aria-label="グラフ読み込み中"></span>
-        <div id="trend-chart-container" class="chart-container">
-            <canvas id="trend-chart" aria-label="価格推移グラフ" role="img"></canvas>
-        </div>
-    </div>
-</section>
-
-{# ===== Vehicle Attributes ===== #}
-<section class="card" aria-label="車両属性">
-    <div class="card__header">
-        <h3 class="card__title">車両属性</h3>
+        <h3 class="card__title">車両スペック</h3>
     </div>
     <div class="card__body">
         <dl class="detail-grid">
             <div class="detail-grid__item">
                 <dt>メーカー</dt>
-                <dd>{{ vehicle.maker_name | default("--") }}</dd>
+                <dd>{{ vehicle.maker | default("--") }}</dd>
             </div>
             <div class="detail-grid__item">
                 <dt>車種</dt>
@@ -105,44 +59,44 @@
             </div>
             <div class="detail-grid__item">
                 <dt>年式</dt>
-                <dd>{{ vehicle.year | default("--") }}年</dd>
+                <dd>{{ vehicle.model_year | default("--") }}年</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>走行距離</dt>
+                <dd>{{ "{:,.0f}".format(vehicle.mileage_km) if vehicle.mileage_km is not none else "--" }} km</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>積載量</dt>
+                <dd>{% if vehicle.tonnage is not none %}{{ vehicle.tonnage }} t{% else %}--{% endif %}</dd>
             </div>
             <div class="detail-grid__item">
                 <dt>ボディタイプ</dt>
-                <dd>{{ vehicle.body_type_display | default("--") }}</dd>
+                <dd>{{ vehicle.body_type | default("--") }}</dd>
             </div>
             <div class="detail-grid__item">
-                <dt>クラス</dt>
-                <dd>{{ vehicle.vehicle_class_display | default("--") }}</dd>
-            </div>
-            <div class="detail-grid__item">
-                <dt>排気量</dt>
-                <dd>{{ "{:,.0f}".format(vehicle.displacement) if vehicle and vehicle.displacement is defined else "--" }} cc</dd>
-            </div>
-            <div class="detail-grid__item">
-                <dt>最大積載量</dt>
-                <dd>{{ "{:,.0f}".format(vehicle.max_payload) if vehicle and vehicle.max_payload is defined else "--" }} kg</dd>
-            </div>
-            <div class="detail-grid__item">
-                <dt>駆動方式</dt>
-                <dd>{{ vehicle.drive_type | default("--") }}</dd>
+                <dt>ミッション</dt>
+                <dd>{{ vehicle.transmission | default("--") }}</dd>
             </div>
             <div class="detail-grid__item">
                 <dt>燃料</dt>
-                <dd>{{ vehicle.fuel_type_display | default("--") }}</dd>
+                <dd>{{ vehicle.fuel_type | default("--") }}</dd>
             </div>
             <div class="detail-grid__item">
-                <dt>トランスミッション</dt>
-                <dd>{{ vehicle.transmission_display | default("--") }}</dd>
+                <dt>所在地</dt>
+                <dd>{{ vehicle.location_prefecture | default("--") }}</dd>
+            </div>
+            <div class="detail-grid__item">
+                <dt>掲載ステータス</dt>
+                <dd>{{ vehicle.listing_status | default("--") }}</dd>
             </div>
         </dl>
     </div>
 </section>
 
 {# ===== Similar Vehicles ===== #}
-<section class="card" aria-label="類似車両比較">
+<section class="card" aria-label="類似車両">
     <div class="card__header">
-        <h3 class="card__title">類似車両比較</h3>
+        <h3 class="card__title">類似車両</h3>
     </div>
     <div class="card__body card__body--flush">
         <div class="table-responsive">
@@ -153,27 +107,29 @@
                         <th>年式</th>
                         <th>走行距離</th>
                         <th class="text-right">価格</th>
-                        <th class="text-right">価格差</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% if similar_vehicles is defined and similar_vehicles %}
+                    {% if similar_vehicles %}
                     {% for sv in similar_vehicles %}
                     <tr>
-                        <td>{{ sv.maker_name }} {{ sv.model_name }}</td>
-                        <td>{{ sv.year }}年</td>
-                        <td>{{ "{:,.0f}".format(sv.mileage) }} km</td>
-                        <td class="text-right">&yen;{{ "{:,.0f}".format(sv.price) }}</td>
-                        <td class="text-right {% if sv.price_diff >= 0 %}text-success{% else %}text-danger{% endif %}">
-                            {{ "%+,.0f" | format(sv.price_diff) }}円
+                        <td>{{ sv.maker | default("--") }} {{ sv.model_name | default("") }}</td>
+                        <td>{{ sv.model_year | default("--") }}年</td>
+                        <td>{{ "{:,.0f}".format(sv.mileage_km) if sv.mileage_km is not none else "--" }} km</td>
+                        <td class="text-right">
+                            {% if sv.price_yen is not none %}
+                            &yen;{{ "{:,.0f}".format(sv.price_yen) }}
+                            {% else %}
+                            --
+                            {% endif %}
                         </td>
                         <td><a href="/market-data/{{ sv.id }}" class="btn btn--text btn--sm">詳細</a></td>
                     </tr>
                     {% endfor %}
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center text-muted">類似車両データがありません</td>
+                        <td colspan="5" class="text-center text-muted">類似車両データがありません</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -184,91 +140,27 @@
 
 {# ===== Action: Simulate with this vehicle ===== #}
 <div class="form-actions">
-    <a href="/simulation/new?maker={{ vehicle.maker_id if vehicle else '' }}&model={{ vehicle.model_id if vehicle else '' }}&year={{ vehicle.year if vehicle else '' }}&body_type={{ vehicle.body_type if vehicle else '' }}"
+    <a href="/simulation/new?maker={{ vehicle.maker | default('') | urlencode }}&model={{ vehicle.model_name | default('') | urlencode }}"
        class="btn btn--primary btn--lg">
         この車種でシミュレーション
     </a>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    // Period tab switching
-    var tabs = document.querySelectorAll(".tab-group__tab");
-    tabs.forEach(function (tab) {
-        tab.addEventListener("click", function () {
-            tabs.forEach(function (t) {
-                t.classList.remove("tab-group__tab--active");
-                t.setAttribute("aria-selected", "false");
-            });
-            tab.classList.add("tab-group__tab--active");
-            tab.setAttribute("aria-selected", "true");
-        });
-    });
-
-    // Initial trend chart
-    var trendData = {{ trend_data | tojson if trend_data is defined else '{}' }};
-    var trendCtx = document.getElementById("trend-chart");
-    if (trendCtx && trendData.labels) {
-        new Chart(trendCtx.getContext("2d"), {
-            type: "line",
-            data: {
-                labels: trendData.labels,
-                datasets: [
-                    {
-                        label: "\u5e73\u5747\u4fa1\u683c",
-                        data: trendData.avg_prices,
-                        borderColor: "#6366f1",
-                        backgroundColor: "rgba(99,102,241,0.08)",
-                        fill: true,
-                        tension: 0.3
-                    },
-                    {
-                        label: "\u6700\u5b89\u5024",
-                        data: trendData.min_prices,
-                        borderColor: "#10b981",
-                        borderDash: [4, 4],
-                        fill: false,
-                        tension: 0.3
-                    },
-                    {
-                        label: "\u6700\u9ad8\u5024",
-                        data: trendData.max_prices,
-                        borderColor: "#f59e0b",
-                        borderDash: [4, 4],
-                        fill: false,
-                        tension: 0.3
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: "top" },
-                    tooltip: {
-                        callbacks: {
-                            label: function (context) {
-                                return context.dataset.label + ": \u00a5" + context.parsed.y.toLocaleString();
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: { title: { display: true, text: "\u671f\u9593" } },
-                    y: {
-                        title: { display: true, text: "\u4fa1\u683c (\u5186)" },
-                        ticks: {
-                            callback: function (value) {
-                                return "\u00a5" + value.toLocaleString();
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-});
-</script>
+{% else %}
+{# ===== Vehicle Not Found ===== #}
+<div class="page-header page-header--with-back">
+    <a href="/market-data" class="page-header__back">
+        <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15 10H5m0 0l5 5m-5-5l5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        相場データ一覧
+    </a>
+</div>
+<section class="card" aria-label="エラー">
+    <div class="card__body">
+        <p class="text-center text-muted" style="padding: 3rem 1rem;">車両が見つかりません</p>
+        <div class="form-actions">
+            <a href="/market-data" class="btn btn--secondary">一覧に戻る</a>
+        </div>
+    </div>
+</section>
+{% endif %}
 {% endblock %}
