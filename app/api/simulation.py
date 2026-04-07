@@ -778,10 +778,20 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     # Assemble full HTML with KPI cards, charts, and schedule table
     # -----------------------------------------------------------------------
     html = f"""
-    <style>.hidden {{ display: none; }}</style>
+    <style>
+    .hidden {{ display: none; }}
+    .sim-result {{ display: block; width: 100%; max-width: 100%; }}
+    .sim-result .card {{ display: block; width: 100%; margin-top: 24px; }}
+    .sim-result .card__body {{ display: block; }}
+    .sim-result .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; width: 100%; }}
+    @media (max-width: 1024px) {{ .sim-result .kpi-grid {{ grid-template-columns: repeat(2, 1fr); }} }}
+    @media (max-width: 600px) {{ .sim-result .kpi-grid {{ grid-template-columns: 1fr; }} }}
+    .sim-result .chart-wrap {{ position: relative; width: 100%; height: 350px; }}
+    @media (max-width: 768px) {{ .sim-result .chart-wrap {{ height: 250px; }} }}
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 
-    <div class="result-summary">
+    <div class="sim-result">
         <h3>&#x1F4CA; シミュレーション結果</h3>
         <p class="text-muted">{maker} {model} | {lease_term_months}ヶ月 | 目標利回り {target_yield_rate}%</p>
 
@@ -827,7 +837,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
         <div class="card" style="margin-top:24px">
             <div class="card__header"><h3>バリュートランスファー分析</h3></div>
             <div class="card__body">
-                <div style="height:350px;position:relative"><canvas id="chart-value-transfer"></canvas></div>
+                <div class="chart-wrap"><canvas id="chart-value-transfer"></canvas></div>
             </div>
         </div>
 
@@ -835,7 +845,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
         <div class="card" style="margin-top:24px">
             <div class="card__header"><h3>NAV（純資産価値）推移</h3></div>
             <div class="card__body">
-                <div style="height:300px;position:relative"><canvas id="chart-nav"></canvas></div>
+                <div class="chart-wrap"><canvas id="chart-nav"></canvas></div>
             </div>
         </div>
 
@@ -843,7 +853,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
         <div class="card" style="margin-top:24px">
             <div class="card__header"><h3>月次損益推移</h3></div>
             <div class="card__body">
-                <div style="height:300px;position:relative"><canvas id="chart-pnl"></canvas></div>
+                <div class="chart-wrap"><canvas id="chart-pnl"></canvas></div>
             </div>
         </div>
 
@@ -876,7 +886,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
                 </div>
             </div>
         </div>
-    </div>
+    </div><!-- end sim-result -->
 
     <script>
     (function() {{
