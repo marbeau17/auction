@@ -642,7 +642,11 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
 
     # Parse form fields with safe defaults
     maker = form.get("maker", "")
-    model = form.get("model", "")
+    # Model: prefer hidden input, fall back to custom text or dropdown
+    model = form.get("model", "") or form.get("model_custom", "") or form.get("model_select", "")
+    # Normalize: if __custom__ was selected but hidden field is empty, use custom text
+    if model == "__custom__":
+        model = form.get("model_custom", "")
     mileage_km = int(form.get("mileage_km", 0) or 0)
     acquisition_price = int(form.get("acquisition_price", 0) or 0)
     book_value = int(form.get("book_value", 0) or 0)
@@ -650,6 +654,9 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     body_option_value = int(form.get("body_option_value", 0) or 0)
     target_yield_rate = float(form.get("target_yield_rate", 8.0) or 8.0)
     lease_term_months = int(form.get("lease_term_months", 36) or 36)
+
+    # Equipment options (multiple checkboxes)
+    equipment_list = form.getlist("equipment")
 
     # Calculate max purchase price
     max_price = _max_purchase_price(book_value, acquisition_price, body_option_value)
@@ -683,6 +690,18 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     badge_class = {"推奨": "success", "要検討": "warning", "非推奨": "danger"}.get(
         assessment, ""
     )
+
+    # Equipment list display
+    equipment_html = ""
+    if equipment_list:
+        items = ", ".join(equipment_list)
+        equipment_html = f"""
+            <div class="kpi-card" style="grid-column: span 2;">
+                <div class="kpi-card__label">装備オプション</div>
+                <div class="kpi-card__value" style="font-size:0.875rem">{items}</div>
+                <div class="kpi-card__sub">合計 &yen;{body_option_value:,}</div>
+            </div>
+        """
 
     html = f"""
     <div class="result-summary">
@@ -721,6 +740,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
                 <div class="kpi-card__label">判定</div>
                 <div class="kpi-card__value"><span class="badge badge--{badge_class}">{assessment}</span></div>
             </div>
+            {equipment_html}
         </div>
         <div class="actions-row" style="margin-top:24px">
             <p><strong>{maker} {model}</strong> | 目標利回り {target_yield_rate}% | {lease_term_months}ヶ月</p>

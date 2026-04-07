@@ -326,6 +326,35 @@ async def list_depreciation_curves(
     return JSONResponse(content={"status": "success", "data": curves})
 
 
+@router.get("/models-by-maker")
+async def get_models_by_maker(maker_name: str = ""):
+    """Return <option> elements for models of a given maker."""
+    from app.db.supabase_client import get_supabase_client
+
+    client = get_supabase_client(service_role=True)
+
+    # Find manufacturer by name
+    mfr = client.table("manufacturers").select("id").eq("name", maker_name).maybe_single().execute()
+    if not mfr.data:
+        return HTMLResponse('<option value="">車種を選択</option>')
+
+    models = (
+        client.table("vehicle_models")
+        .select("name")
+        .eq("manufacturer_id", mfr.data["id"])
+        .eq("is_active", True)
+        .order("display_order")
+        .execute()
+    )
+
+    html = '<option value="">車種を選択してください</option>\n'
+    for m in (models.data or []):
+        html += f'<option value="{m["name"]}">{m["name"]}</option>\n'
+    html += '<option value="__custom__">その他（手動入力）</option>'
+
+    return HTMLResponse(html)
+
+
 @router.post(
     "/depreciation-curves",
     response_model=DepreciationCurveResponse,

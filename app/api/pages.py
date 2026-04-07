@@ -123,6 +123,8 @@ async def simulation_new_page(request: Request):
     makers: list[dict[str, Any]] = []
     body_types: list[dict[str, Any]] = []
     categories: list[dict[str, Any]] = []
+    models: list[dict[str, Any]] = []
+    equipment_options: list[dict[str, Any]] = []
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
@@ -132,6 +134,10 @@ async def simulation_new_page(request: Request):
         body_types = bt_resp.data or []
         cat_resp = client.table("vehicle_categories").select("*").order("name").execute()
         categories = cat_resp.data or []
+        models_resp = client.table("vehicle_models").select("id,name,manufacturer_id,category_code").eq("is_active", True).order("display_order").execute()
+        models = models_resp.data or []
+        options_resp = client.table("equipment_options").select("*").eq("is_active", True).order("category,display_order").execute()
+        equipment_options = options_resp.data or []
     except Exception:
         pass
 
@@ -140,6 +146,8 @@ async def simulation_new_page(request: Request):
         "makers": makers,
         "body_types": body_types,
         "categories": categories,
+        "models": models,
+        "equipment_options": equipment_options,
     })
 
 
