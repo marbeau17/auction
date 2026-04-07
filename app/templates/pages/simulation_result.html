@@ -96,30 +96,40 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-var months = {{ chart_data.months | safe }};
-var assetValues = {{ chart_data.asset_values | safe }};
-var cumulativeIncomes = {{ chart_data.cumulative_incomes | safe }};
-var navRatios = {{ chart_data.nav_ratios | safe }};
-var nav60 = {{ chart_data.nav_60_line | safe }};
+(function() {
+    var months = {{ chart_data.months | safe }};
+    var assetValues = {{ chart_data.asset_values | safe }};
+    var cumulativeIncomes = {{ chart_data.cumulative_incomes | safe }};
+    var navRatios = {{ chart_data.nav_ratios | safe }};
+    var nav60 = {{ chart_data.nav_60_line | safe }};
 
-new Chart(document.getElementById('chart-vt'), {
-    type: 'line',
-    data: { labels: months, datasets: [
-        {label: '資産簿価', data: assetValues, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3},
-        {label: '累積リース収入', data: cumulativeIncomes, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3}
-    ]},
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { callback: v => '\u00a5' + (v/10000).toFixed(0) + '万' }}}}
-});
+    function initCharts() {
+        if (typeof Chart === 'undefined') { setTimeout(initCharts, 200); return; }
 
-new Chart(document.getElementById('chart-nav'), {
-    type: 'line',
-    data: { labels: months, datasets: [
-        {label: 'NAV比率 (%)', data: navRatios, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.3},
-        {label: '60%ライン', data: nav60, borderColor: '#f59e0b', borderDash: [8,4], borderWidth: 2, pointRadius: 0, fill: false}
-    ]},
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 200, ticks: { callback: v => v + '%' }}}}
-});
+        new Chart(document.getElementById('chart-vt'), {
+            type: 'line',
+            data: { labels: months, datasets: [
+                {label: '資産簿価', data: assetValues, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3},
+                {label: '累積リース収入', data: cumulativeIncomes, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3}
+            ]},
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { callback: function(v) { return '\u00a5' + (v/10000).toFixed(0) + '万'; }}}}}
+        });
+
+        new Chart(document.getElementById('chart-nav'), {
+            type: 'line',
+            data: { labels: months, datasets: [
+                {label: 'NAV比率 (%)', data: navRatios, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.3},
+                {label: '60%ライン', data: nav60, borderColor: '#f59e0b', borderDash: [8,4], borderWidth: 2, pointRadius: 0, fill: false}
+            ]},
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 200, ticks: { callback: function(v) { return v + '%'; }}}}}
+        });
+    }
+
+    if (document.readyState === 'complete') { initCharts(); }
+    else { window.addEventListener('load', initCharts); }
+})();
 </script>
 {% endif %}
 
