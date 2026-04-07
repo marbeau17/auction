@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}契約書管理 - CVLPOS{% endblock %}
+{% block page_title %}契約書管理{% endblock %}
+
+{% block content %}
+<div id="mapper-content"
+     hx-get="/api/v1/contracts/mapper/{{ simulation_id }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <div class="loading-placeholder">
+        <span class="spinner"></span>
+        <span>契約情報を読み込み中...</span>
+    </div>
+</div>
+{% endblock %}

@@ -132,9 +132,10 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # -- Routers ------------------------------------------------------------
-    from app.api import auth, dashboard, market_prices, masters, pages, simulation  # noqa: E402
+    from app.api import auth, contracts, dashboard, market_prices, masters, pages, simulation  # noqa: E402
 
     app.include_router(auth.router)
+    app.include_router(contracts.router)
     app.include_router(dashboard.router)
     app.include_router(simulation.router)
     app.include_router(market_prices.router)

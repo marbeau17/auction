@@ -289,6 +289,20 @@ async def simulation_result_page(request: Request, simulation_id: str):
     return _render(request, "pages/simulation_result.html", context)
 
 
+@router.get("/simulation/{simulation_id}/contracts", response_class=HTMLResponse)
+async def contract_mapper_page(request: Request, simulation_id: str):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    # The actual content is loaded via HTMX from the contracts API
+    return _render(request, "pages/contract_mapper.html", {
+        "user": user,
+        "simulation_id": simulation_id,
+    })
+
+
 @router.get("/simulations", response_class=HTMLResponse)
 async def simulation_list_page(request: Request):
     user = await _get_optional_user(request)
