@@ -181,6 +181,57 @@ async def generate_contracts(simulation_id: str, request: Request):
     )
 
 
+# GET /api/v1/contracts/addressbook
+@router.get("/addressbook")
+async def list_addressbook(role_type: str = ""):
+    """List address book entries, optionally filtered by role."""
+    client = _get_client()
+    q = client.table("stakeholder_addressbook").select("*").order("company_name")
+    if role_type:
+        q = q.eq("role_type", role_type)
+    result = q.execute()
+    return JSONResponse({"data": result.data or []})
+
+
+# GET /api/v1/contracts/addressbook/options/{role_type}
+@router.get("/addressbook/options/{role_type}")
+async def addressbook_options(role_type: str):
+    """Return <option> HTML elements for a role's address book entries."""
+    client = _get_client()
+    result = client.table("stakeholder_addressbook").select("*").eq("role_type", role_type).order("company_name").execute()
+    entries = result.data or []
+
+    html = '<option value="">-- アドレス帳から選択 --</option>\n'
+    for e in entries:
+        html += f'<option value="{e["id"]}" data-name="{e["company_name"]}" data-rep="{e.get("representative_name","")}" data-addr="{e.get("address","")}" data-phone="{e.get("phone","")}" data-reg="{e.get("registration_number","")}">{e["company_name"]}</option>\n'
+    html += '<option value="__new__">＋ 新規入力</option>'
+    return HTMLResponse(html)
+
+
+# POST /api/v1/contracts/addressbook/save
+@router.post("/addressbook/save")
+async def save_to_addressbook(request: Request):
+    """Save current stakeholder info to the address book."""
+    form = await request.form()
+    client = _get_client()
+
+    data = {
+        "role_type": form.get("role_type", ""),
+        "company_name": form.get("company_name", ""),
+        "representative_name": form.get("representative_name", ""),
+        "address": form.get("address", ""),
+        "phone": form.get("phone", ""),
+        "email": form.get("email_addr", ""),
+        "registration_number": form.get("registration_number", ""),
+    }
+
+    try:
+        client.table("stakeholder_addressbook").insert(data).execute()
+        return HTMLResponse('<span class="badge badge--success" style="font-size:0.75rem">アドレス帳に保存しました</span>')
+    except Exception as e:
+        return HTMLResponse(f'<span class="badge badge--danger" style="font-size:0.75rem">保存失敗</span>')
+
+
 # --- Helper functions ---
 
 def _role_label(role: str) -> str:
@@ -289,6 +340,19 @@ def _build_mapper_html(simulation, stakeholders, sh_map, templates, contracts, r
                 <h4 style="margin:0">{role_label} {status_badge}</h4>
             </div>
             <div class="card__body">
+                <!-- Address Book Selector -->
+                <div class="form-group" style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border,#334155)">
+                    <label class="form-label" style="font-size:0.8rem;color:var(--text-muted)">📒 アドレス帳から選択</label>
+                    <select class="form-select" onchange="fillFromAddressbook(this, \'{role_key}\')" id="addressbook-{role_key}">
+                        <option value="">-- アドレス帳から選択 --</option>
+                    </select>
+                    <script>
+                    fetch('/api/v1/contracts/addressbook/options/{role_key}')
+                        .then(r => r.text())
+                        .then(html => document.getElementById('addressbook-{role_key}').innerHTML = html);
+                    </script>
+                </div>
+
                 <form hx-post="/api/v1/contracts/stakeholders" hx-target="#save-result-{role_key}" hx-swap="innerHTML">
                     <input type="hidden" name="simulation_id" value="{sim_id}">
                     <input type="hidden" name="role_type" value="{role_key}">
@@ -319,7 +383,9 @@ def _build_mapper_html(simulation, stakeholders, sh_map, templates, contracts, r
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
                         <button type="submit" class="btn btn--primary btn--sm">保存</button>
+                        <button type="button" class="btn btn--outline btn--sm" onclick="saveToAddressbook(\'{role_key}\')">📒 アドレス帳に追加</button>
                         <div id="save-result-{role_key}"></div>
+                        <div id="ab-save-result-{role_key}"></div>
                     </div>
                 </form>
             </div>
@@ -513,4 +579,39 @@ def _build_mapper_html(simulation, stakeholders, sh_map, templates, contracts, r
         </div>
     </div>
     """}
+
+    <script>
+    function fillFromAddressbook(select, roleKey) {{
+        var opt = select.options[select.selectedIndex];
+        if (!opt || !opt.dataset.name) return;
+
+        var card = select.closest('.card');
+        var form = card.querySelector('form');
+
+        form.querySelector('[name="company_name"]').value = opt.dataset.name || '';
+        form.querySelector('[name="representative_name"]').value = opt.dataset.rep || '';
+        form.querySelector('[name="address"]').value = opt.dataset.addr || '';
+        form.querySelector('[name="phone"]').value = opt.dataset.phone || '';
+        form.querySelector('[name="registration_number"]').value = opt.dataset.reg || '';
+    }}
+
+    function saveToAddressbook(roleKey) {{
+        var card = document.querySelector('#addressbook-' + roleKey).closest('.card');
+        var form = card.querySelector('form');
+        var formData = new FormData(form);
+
+        fetch('/api/v1/contracts/addressbook/save', {{
+            method: 'POST',
+            body: formData,
+        }})
+        .then(r => r.text())
+        .then(html => {{
+            document.getElementById('ab-save-result-' + roleKey).innerHTML = html;
+            // Refresh the dropdown
+            fetch('/api/v1/contracts/addressbook/options/' + roleKey)
+                .then(r => r.text())
+                .then(h => document.getElementById('addressbook-' + roleKey).innerHTML = h);
+        }});
+    }}
+    </script>
     '''
