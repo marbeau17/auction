@@ -9,6 +9,7 @@ header is present; otherwise they return JSON.
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime
 from typing import Any, Literal, Optional
@@ -630,6 +631,12 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     Accepts ``application/x-www-form-urlencoded`` data from the simulation
     form and returns an HTML fragment suitable for HTMX swapping.  Does not
     persist results and does not require authentication.
+
+    Returns rich HTML with Chart.js visualizations including:
+    - Value transfer analysis (asset value vs cumulative lease income)
+    - NAV (net asset value) ratio progression
+    - Monthly P&L bar chart with cumulative overlay
+    - Detailed monthly schedule table (collapsible)
     """
     from app.core.pricing import (
         _assessment,
@@ -703,9 +710,82 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
             </div>
         """
 
+    # -----------------------------------------------------------------------
+    # Monthly schedule calculation
+    # -----------------------------------------------------------------------
+    dep_per_month = (recommended_price - residual) / lease_term_months if lease_term_months > 0 else 0
+    schedule: list[dict[str, Any]] = []
+    cumulative_income = 0
+    cumulative_profit = 0
+    mr = (target_yield_rate / 100) / 12
+
+    for month in range(1, lease_term_months + 1):
+        asset_value = max(int(recommended_price - dep_per_month * month), residual)
+        cumulative_income += monthly_fee
+        prev_asset = recommended_price - dep_per_month * (month - 1)
+        dep_expense = int(prev_asset - asset_value)
+        fin_cost = int(prev_asset * mr)
+        net_income = monthly_fee - 15000 - 10000  # minus insurance & maintenance
+        profit = net_income - dep_expense - fin_cost
+        cumulative_profit += profit
+        net_fund_value = asset_value + cumulative_income
+        nav_ratio = net_fund_value / recommended_price if recommended_price > 0 else 0
+
+        schedule.append({
+            "month": month,
+            "asset_value": asset_value,
+            "cumulative_income": int(cumulative_income),
+            "monthly_profit": int(profit),
+            "cumulative_profit": int(cumulative_profit),
+            "net_fund_value": int(net_fund_value),
+            "nav_ratio": round(nav_ratio, 3),
+            "dep_expense": dep_expense,
+            "fin_cost": fin_cost,
+        })
+
+    # -----------------------------------------------------------------------
+    # Prepare chart data as JSON
+    # -----------------------------------------------------------------------
+    months_labels = json.dumps([f"{s['month']}月" for s in schedule], ensure_ascii=False)
+    asset_values = json.dumps([s["asset_value"] for s in schedule])
+    cumulative_incomes = json.dumps([s["cumulative_income"] for s in schedule])
+    monthly_profits = json.dumps([s["monthly_profit"] for s in schedule])
+    cumulative_profits = json.dumps([s["cumulative_profit"] for s in schedule])
+    nav_ratios = json.dumps([s["nav_ratio"] * 100 for s in schedule])
+    nav_60_line = json.dumps([60] * lease_term_months)
+
+    # -----------------------------------------------------------------------
+    # Build schedule table rows
+    # -----------------------------------------------------------------------
+    schedule_rows = ""
+    for s in schedule:
+        profit_style = "color:#10b981" if s["monthly_profit"] >= 0 else "color:#ef4444"
+        schedule_rows += (
+            f'<tr>'
+            f'<td>{s["month"]}月</td>'
+            f'<td style="text-align:right">&yen;{s["asset_value"]:,}</td>'
+            f'<td style="text-align:right">&yen;{monthly_fee:,}</td>'
+            f'<td style="text-align:right">&yen;{s["cumulative_income"]:,}</td>'
+            f'<td style="text-align:right">&yen;{s["dep_expense"]:,}</td>'
+            f'<td style="text-align:right">&yen;{s["fin_cost"]:,}</td>'
+            f'<td style="text-align:right;{profit_style}">&yen;{s["monthly_profit"]:,}</td>'
+            f'<td style="text-align:right">&yen;{s["cumulative_profit"]:,}</td>'
+            f'<td style="text-align:right">{s["nav_ratio"] * 100:.1f}%</td>'
+            f'</tr>'
+        )
+
+    # -----------------------------------------------------------------------
+    # Assemble full HTML with KPI cards, charts, and schedule table
+    # -----------------------------------------------------------------------
     html = f"""
+    <style>.hidden {{ display: none; }}</style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
     <div class="result-summary">
-        <h3>シミュレーション結果</h3>
+        <h3>&#x1F4CA; シミュレーション結果</h3>
+        <p class="text-muted">{maker} {model} | {lease_term_months}ヶ月 | 目標利回り {target_yield_rate}%</p>
+
+        <!-- KPI Cards -->
         <div class="kpi-grid">
             <div class="kpi-card">
                 <div class="kpi-card__label">推奨買取価格</div>
@@ -742,10 +822,178 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
             </div>
             {equipment_html}
         </div>
-        <div class="actions-row" style="margin-top:24px">
-            <p><strong>{maker} {model}</strong> | 目標利回り {target_yield_rate}% | {lease_term_months}ヶ月</p>
+
+        <!-- Chart 1: Value Transfer -->
+        <div class="card" style="margin-top:24px">
+            <div class="card__header"><h3>バリュートランスファー分析</h3></div>
+            <div class="card__body">
+                <div style="height:350px;position:relative"><canvas id="chart-value-transfer"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Chart 2: NAV Ratio -->
+        <div class="card" style="margin-top:24px">
+            <div class="card__header"><h3>NAV（純資産価値）推移</h3></div>
+            <div class="card__body">
+                <div style="height:300px;position:relative"><canvas id="chart-nav"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Chart 3: Monthly P&L -->
+        <div class="card" style="margin-top:24px">
+            <div class="card__header"><h3>月次損益推移</h3></div>
+            <div class="card__body">
+                <div style="height:300px;position:relative"><canvas id="chart-pnl"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Schedule Table (collapsible) -->
+        <div class="card" style="margin-top:24px">
+            <div class="card__header" style="display:flex;justify-content:space-between;align-items:center">
+                <h3>月次リーススケジュール</h3>
+                <button onclick="this.closest('.card').querySelector('.card__body').classList.toggle('hidden')" class="btn btn--text btn--sm">展開/折りたたみ</button>
+            </div>
+            <div class="card__body hidden">
+                <div style="overflow-x:auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>月</th>
+                                <th>資産簿価</th>
+                                <th>リース収入</th>
+                                <th>累積収入</th>
+                                <th>減価償却費</th>
+                                <th>金融費用</th>
+                                <th>月次損益</th>
+                                <th>累積損益</th>
+                                <th>NAV比率</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {schedule_rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
+
+    <script>
+    (function() {{
+        var monthsLabels = {months_labels};
+        var assetValues = {asset_values};
+        var cumulativeIncomes = {cumulative_incomes};
+        var monthlyProfits = {monthly_profits};
+        var cumulativeProfits = {cumulative_profits};
+        var navRatios = {nav_ratios};
+        var nav60Line = {nav_60_line};
+
+        var yenFormatter = function(v) {{ return '\\u00a5' + (v / 10000).toFixed(0) + '万'; }};
+
+        // Chart 1: Value Transfer
+        new Chart(document.getElementById('chart-value-transfer'), {{
+            type: 'line',
+            data: {{
+                labels: monthsLabels,
+                datasets: [
+                    {{
+                        label: '資産簿価',
+                        data: assetValues,
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99,102,241,0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }},
+                    {{
+                        label: '累積リース収入',
+                        data: cumulativeIncomes,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{ legend: {{ position: 'top' }} }},
+                scales: {{
+                    y: {{ ticks: {{ callback: yenFormatter }} }}
+                }}
+            }}
+        }});
+
+        // Chart 2: NAV Ratio
+        new Chart(document.getElementById('chart-nav'), {{
+            type: 'line',
+            data: {{
+                labels: monthsLabels,
+                datasets: [
+                    {{
+                        label: 'NAV比率 (%)',
+                        data: navRatios,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37,99,235,0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }},
+                    {{
+                        label: '60%ライン（安全基準）',
+                        data: nav60Line,
+                        borderColor: '#f59e0b',
+                        borderDash: [8, 4],
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false
+                    }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{ legend: {{ position: 'top' }} }},
+                scales: {{
+                    y: {{ min: 0, max: 200, ticks: {{ callback: function(v) {{ return v + '%'; }} }} }}
+                }}
+            }}
+        }});
+
+        // Chart 3: Monthly P&L
+        new Chart(document.getElementById('chart-pnl'), {{
+            type: 'bar',
+            data: {{
+                labels: monthsLabels,
+                datasets: [
+                    {{
+                        label: '月次損益',
+                        data: monthlyProfits,
+                        backgroundColor: monthlyProfits.map(function(v) {{ return v >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; }}),
+                        borderRadius: 3
+                    }},
+                    {{
+                        label: '累積損益',
+                        data: cumulativeProfits,
+                        type: 'line',
+                        borderColor: '#2563eb',
+                        backgroundColor: 'transparent',
+                        tension: 0.3,
+                        yAxisID: 'y1'
+                    }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{ legend: {{ position: 'top' }} }},
+                scales: {{
+                    y: {{ ticks: {{ callback: yenFormatter }} }},
+                    y1: {{ position: 'right', ticks: {{ callback: yenFormatter }}, grid: {{ display: false }} }}
+                }}
+            }}
+        }});
+    }})();
+    </script>
     """
 
     return HTMLResponse(content=html)
