@@ -882,7 +882,8 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
 
         <!-- Save button -->
         <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
-            <form hx-post="/api/v1/simulations/save" hx-target="#save-result" hx-swap="innerHTML">
+            <form hx-post="/api/v1/simulations/save" hx-target="#save-result" hx-swap="innerHTML"
+                  hx-indicator="#save-spinner" hx-disabled-elt="#save-btn">
                 <input type="hidden" name="maker" value="{maker}">
                 <input type="hidden" name="model" value="{model}">
                 <input type="hidden" name="registration_year_month" value="{form.get('registration_year_month', '')}">
@@ -893,13 +894,30 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
                 <input type="hidden" name="target_yield_rate" value="{target_yield_rate}">
                 <input type="hidden" name="lease_term_months" value="{lease_term_months}">
                 <input type="hidden" name="recommended_price" value="{recommended_price}">
+                <input type="hidden" name="max_price" value="{max_price}">
                 <input type="hidden" name="monthly_fee" value="{monthly_fee}">
                 <input type="hidden" name="total_fee" value="{total_fee}">
                 <input type="hidden" name="effective_yield" value="{effective_yield}">
-                <button type="submit" class="btn btn--primary">&#x1F4BE; 結果を保存</button>
+                <input type="hidden" name="residual" value="{residual}">
+                <input type="hidden" name="residual_rate" value="{residual_rate}">
+                <input type="hidden" name="assessment" value="{assessment}">
+                <input type="hidden" name="breakeven" value="{breakeven if breakeven else ''}">
+                <input type="hidden" name="vehicle_class" value="{form.get('vehicle_class', '')}">
+                {(''.join(f'<input type="hidden" name="equipment" value="' + eq + '">' for eq in equipment_list)) if equipment_list else ''}
+                <button type="submit" id="save-btn" class="btn btn--primary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 24px;font-size:1rem;">
+                    <svg id="save-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span>結果を保存</span>
+                    <svg id="save-spinner" class="htmx-indicator" width="18" height="18" viewBox="0 0 24 24" style="display:none;animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                </button>
             </form>
             <div id="save-result"></div>
         </div>
+        <style>
+        @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+        .htmx-request #save-icon {{ display: none !important; }}
+        .htmx-request .htmx-indicator {{ display: inline-block !important; }}
+        #save-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
+        </style>
 
         <!-- Chart 1: Value Transfer -->
         <div class="card" style="margin-top:24px">
@@ -1205,11 +1223,41 @@ async def quick_calculate_form(
 async def save_simulation(request: Request):
     """Save simulation results to database."""
     from app.db.supabase_client import get_supabase_client
-    from app.api.pages import _get_optional_user
 
-    user = await _get_optional_user(request)
-    if not user:
-        return HTMLResponse('<div class="alert alert--error">ログインが必要です</div>', status_code=401)
+    # Direct cookie-based auth (more reliable in HTMX context)
+    access_token = request.cookies.get("access_token")
+    if not access_token:
+        return HTMLResponse(
+            '<div class="alert alert--error">ログインが必要です。<a href="/login">ログイン</a></div>',
+            status_code=200,  # 200 so HTMX swaps it
+        )
+
+    try:
+        from jose import jwt
+        from app.dependencies import _get_jwks
+        from app.config import get_settings
+
+        settings = get_settings()
+        header = jwt.get_unverified_header(access_token)
+        if header.get("alg") == "ES256":
+            jwks = _get_jwks(settings.supabase_url)
+            payload = jwt.decode(
+                access_token, jwks, algorithms=["ES256"], audience="authenticated"
+            )
+        else:
+            payload = jwt.decode(
+                access_token,
+                settings.supabase_jwt_secret,
+                algorithms=["HS256"],
+                options={"verify_aud": False},
+            )
+        user_id = payload.get("sub")
+        if not user_id:
+            return HTMLResponse('<div class="alert alert--error">認証エラー</div>')
+    except Exception:
+        return HTMLResponse(
+            '<div class="alert alert--error">セッション切れ。<a href="/login">再ログイン</a></div>'
+        )
 
     form = await request.form()
 
@@ -1221,25 +1269,43 @@ async def save_simulation(request: Request):
         if model == "__custom__":
             model = form.get("model_custom", "")
 
+        # Parse registration year from year-month string
+        import re
+
+        year_match = re.match(r"(\d{4})", str(form.get("registration_year_month", "")))
+        model_year = int(year_match.group(1)) if year_match else 2020
+
+        # Parse equipment list from form
+        equipment_list = form.getlist("equipment") if hasattr(form, "getlist") else []
+
         data = {
-            "user_id": user["id"],
+            "user_id": user_id,
             "title": f"{maker} {model} シミュレーション",
             "target_model_name": f"{maker} {model}",
-            "target_model_year": int(form.get("registration_year_month", 2020) or 2020),
+            "target_model_year": model_year,
             "target_mileage_km": int(form.get("mileage_km", 0) or 0),
-            "purchase_price_yen": int(form.get("recommended_price", 0) or form.get("acquisition_price", 0) or 0),
-            "market_price_yen": int(form.get("acquisition_price", 0) or 0),
-            "lease_monthly_yen": int(form.get("monthly_fee", 0) or 0),
+            "purchase_price_yen": int(float(form.get("recommended_price", 0) or 0)),
+            "market_price_yen": int(float(form.get("acquisition_price", 0) or 0)),
+            "lease_monthly_yen": int(float(form.get("monthly_fee", 0) or 0)),
             "lease_term_months": int(form.get("lease_term_months", 36) or 36),
-            "total_lease_revenue_yen": int(form.get("total_fee", 0) or 0),
+            "total_lease_revenue_yen": int(float(form.get("total_fee", 0) or 0)),
             "expected_yield_rate": float(form.get("effective_yield", 0) or 0),
             "status": "completed",
             "result_summary_json": {
                 "maker": maker,
                 "model": model,
                 "body_type": form.get("body_type", ""),
+                "vehicle_class": form.get("vehicle_class", ""),
                 "target_yield_rate": float(form.get("target_yield_rate", 8) or 8),
-                "equipment": form.getlist("equipment_list") if hasattr(form, "getlist") else [],
+                "max_price": int(float(form.get("max_price", 0) or 0)),
+                "residual_value": int(float(form.get("residual", 0) or 0)),
+                "residual_rate": float(form.get("residual_rate", 0) or 0),
+                "assessment": form.get("assessment", ""),
+                "breakeven_months": (
+                    int(form.get("breakeven")) if form.get("breakeven") else None
+                ),
+                "book_value": int(float(form.get("book_value", 0) or 0)),
+                "equipment": equipment_list,
             },
         }
 
@@ -1247,11 +1313,16 @@ async def save_simulation(request: Request):
         sim_id = result.data[0]["id"] if result.data else None
 
         html = f'''
-        <div class="alert alert--success">
-            シミュレーション結果を保存しました。
-            <a href="/simulation/{sim_id}/result" class="btn btn--text btn--sm" style="margin-left:8px">結果を確認 →</a>
+        <div class="alert alert--success" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span>シミュレーション結果を保存しました。</span>
+            <a href="/simulation/{sim_id}/result" class="btn btn--outline btn--sm" style="margin-left:4px;">結果を確認 &rarr;</a>
+            <a href="/simulations" class="btn btn--text btn--sm">履歴一覧</a>
         </div>
         '''
         return HTMLResponse(html)
     except Exception as e:
-        return HTMLResponse(f'<div class="alert alert--error">保存に失敗しました: {str(e)[:100]}</div>')
+        logger.error("save_simulation_error", error=str(e))
+        return HTMLResponse(
+            f'<div class="alert alert--error">保存に失敗しました: {str(e)[:100]}</div>'
+        )
