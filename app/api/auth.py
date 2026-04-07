@@ -229,3 +229,44 @@ async def refresh(
 
     logger.info("token_refreshed")
     return response
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/forgot-password  – render the forgot-password page
+# ---------------------------------------------------------------------------
+
+
+@router.get("/forgot-password")
+async def forgot_password_page(request: Request):
+    from app.main import templates
+
+    return templates.TemplateResponse(request, "pages/forgot_password.html")
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/forgot-password  – send password-reset email
+# ---------------------------------------------------------------------------
+
+
+@router.post("/forgot-password")
+async def forgot_password(request: Request):
+    form = await request.form()
+    email = form.get("email", "")
+
+    if not email:
+        return HTMLResponse(
+            '<div class="alert alert--error">メールアドレスを入力してください</div>'
+        )
+
+    try:
+        from supabase import create_client
+
+        settings = get_settings()
+        client = create_client(settings.supabase_url, settings.supabase_anon_key)
+        client.auth.reset_password_email(email)
+    except Exception:
+        pass  # Don't reveal if email exists
+
+    return HTMLResponse(
+        '<div class="alert alert--success">リセットリンクをメールに送信しました。メールをご確認ください。</div>'
+    )

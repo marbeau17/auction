@@ -233,9 +233,14 @@ class PricingEngine:
         )
 
         # --- Parse registration date to compute vehicle age ---
-        reg_ym = input_data.get("registration_year_month", "")
+        reg_ym = str(input_data.get("registration_year_month", ""))
         if reg_ym:
-            reg_year, reg_month = (int(x) for x in reg_ym.split("-"))
+            # Handle both "2024" (year-only) and "2024-01" (year-month) formats
+            if "-" in reg_ym:
+                reg_year, reg_month = (int(x) for x in reg_ym.split("-"))
+            else:
+                reg_year = int(reg_ym) if reg_ym.isdigit() else 2020
+                reg_month = 1
             now = datetime.now()
             elapsed_months_at_start = (
                 (now.year - reg_year) * 12 + (now.month - reg_month)
@@ -1171,7 +1176,11 @@ async def _fetch_market_comparables(
     Returns ``(median_price, sample_count)``.  Falls back to ``(0, 0)`` when
     no comparables are found or on query failure.
     """
-    year = int(registration_year_month.split("-")[0])
+    # Handle both "2024" (year-only) and "2024-01" (year-month) formats
+    if "-" in str(registration_year_month):
+        year = int(str(registration_year_month).split("-")[0])
+    else:
+        year = int(registration_year_month) if str(registration_year_month).isdigit() else 2020
     year_low = year - 2
     year_high = year + 2
     mileage_low = max(0, mileage_km - 50_000)

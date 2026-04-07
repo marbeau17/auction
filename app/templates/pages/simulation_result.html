@@ -11,6 +11,10 @@
         ID: {{ simulation.id[:8] }}... |
         {{ simulation.created_at[:10] if simulation.created_at else "" }} |
         ステータス: <span class="badge badge--{% if simulation.status == 'completed' %}success{% elif simulation.status == 'approved' %}success{% elif simulation.status == 'draft' %}warning{% else %}neutral{% endif %}">{{ simulation.status }}</span>
+        {% if simulation.assessment %}
+        | 評価:
+        <span class="badge badge--{% if simulation.assessment == 'A' or simulation.assessment == 'excellent' %}success{% elif simulation.assessment == 'B' or simulation.assessment == 'good' %}info{% elif simulation.assessment == 'C' or simulation.assessment == 'fair' %}warning{% else %}danger{% endif %}">{{ simulation.assessment }}</span>
+        {% endif %}
     </p>
 </div>
 
@@ -43,10 +47,25 @@
     <div class="card__body">
         <table class="data-table">
             <tbody>
+                {% if simulation.maker %}
+                <tr><th>メーカー</th><td>{{ simulation.maker }}</td></tr>
+                {% endif %}
+                {% if simulation.model %}
+                <tr><th>モデル</th><td>{{ simulation.model }}</td></tr>
+                {% endif %}
                 <tr><th>車種名</th><td>{{ simulation.target_model_name or "--" }}</td></tr>
+                {% if simulation.body_type_display %}
+                <tr><th>ボディタイプ</th><td>{{ simulation.body_type_display }}</td></tr>
+                {% endif %}
+                {% if simulation.vehicle_class %}
+                <tr><th>車両クラス</th><td>{{ simulation.vehicle_class }}</td></tr>
+                {% endif %}
                 <tr><th>年式</th><td>{{ simulation.target_model_year or "--" }}年</td></tr>
                 <tr><th>走行距離</th><td>{{ "{:,}".format(simulation.target_mileage_km or 0) }} km</td></tr>
                 <tr><th>市場参考価格</th><td>&yen;{{ "{:,}".format(simulation.market_price_yen or 0) }}</td></tr>
+                {% if simulation.max_price %}
+                <tr><th>上限価格</th><td>&yen;{{ "{:,}".format(simulation.max_price | int) }}</td></tr>
+                {% endif %}
                 <tr><th>リース期間</th><td>{{ simulation.lease_term_months or "--" }}ヶ月</td></tr>
             </tbody>
         </table>
@@ -72,11 +91,47 @@
                 {% if r.monthly_lease is defined %}
                 <tr><th>月額リース料</th><td>&yen;{{ "{:,}".format(r.monthly_lease | int) }}</td></tr>
                 {% endif %}
-                {% if r.actual_yield_rate is defined %}
+                {% if simulation.residual_value %}
+                <tr><th>残価</th><td>&yen;{{ "{:,}".format(simulation.residual_value | int) }}</td></tr>
+                {% endif %}
+                {% if simulation.residual_rate %}
+                <tr><th>残価率</th><td>{{ "%.1f" | format(simulation.residual_rate * 100) }}%</td></tr>
+                {% endif %}
+                {% if simulation.actual_yield_rate %}
+                <tr><th>実質利回り</th><td>{{ "%.2f" | format(simulation.actual_yield_rate * 100) }}%</td></tr>
+                {% elif r.actual_yield_rate is defined %}
                 <tr><th>実質利回り</th><td>{{ "%.2f" | format(r.actual_yield_rate * 100) }}%</td></tr>
+                {% endif %}
+                {% if simulation.breakeven_months is not none %}
+                <tr><th>損益分岐月</th><td>{{ simulation.breakeven_months }}ヶ月</td></tr>
                 {% endif %}
             </tbody>
         </table>
+    </div>
+</div>
+{% endif %}
+
+{# ===== Equipment List ===== #}
+{% if simulation.equipment %}
+<div class="card" style="margin-top: 24px;">
+    <div class="card__header">
+        <h3>装備オプション</h3>
+    </div>
+    <div class="card__body">
+        <ul style="list-style: none; padding: 0; margin: 0;">
+            {% for item in simulation.equipment %}
+            <li style="padding: 6px 0; border-bottom: 1px solid var(--color-border, #e5e7eb);">
+                {% if item is mapping %}
+                    {{ item.name or item.label or item }}
+                    {% if item.price is defined %}
+                    <span style="float: right; color: var(--color-text-secondary, #6b7280);">&yen;{{ "{:,}".format(item.price | int) }}</span>
+                    {% endif %}
+                {% else %}
+                    {{ item }}
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
     </div>
 </div>
 {% endif %}
@@ -96,6 +151,15 @@
     </div>
 </div>
 
+{% if chart_data.monthly_profits is defined %}
+<div class="card" style="margin-top:24px">
+    <div class="card__header"><h3>月次損益推移</h3></div>
+    <div class="card__body">
+        <div style="position:relative;height:300px"><canvas id="chart-pnl"></canvas></div>
+    </div>
+</div>
+{% endif %}
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 (function() {
@@ -104,6 +168,10 @@
     var cumulativeIncomes = {{ chart_data.cumulative_incomes | safe }};
     var navRatios = {{ chart_data.nav_ratios | safe }};
     var nav60 = {{ chart_data.nav_60_line | safe }};
+    {% if chart_data.monthly_profits is defined %}
+    var monthlyProfits = {{ chart_data.monthly_profits | safe }};
+    var cumulativeProfits = {{ chart_data.cumulative_profits | safe }};
+    {% endif %}
 
     function initCharts() {
         if (typeof Chart === 'undefined') { setTimeout(initCharts, 200); return; }
@@ -125,6 +193,25 @@
             ]},
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 200, ticks: { callback: function(v) { return v + '%'; }}}}}
         });
+
+        {% if chart_data.monthly_profits is defined %}
+        var pnlCanvas = document.getElementById('chart-pnl');
+        if (pnlCanvas) {
+            var pnlColors = monthlyProfits.map(function(v) { return v >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; });
+            new Chart(pnlCanvas, {
+                type: 'bar',
+                data: { labels: months, datasets: [
+                    {label: '月次損益', data: monthlyProfits, backgroundColor: pnlColors, borderRadius: 2, order: 2},
+                    {label: '累積損益', data: cumulativeProfits, type: 'line', borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2, order: 1}
+                ]},
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { y: { ticks: { callback: function(v) { return '\u00a5' + (v/10000).toFixed(0) + '万'; }}}},
+                    plugins: { tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': \u00a5' + ctx.raw.toLocaleString(); }}}}
+                }
+            });
+        }
+        {% endif %}
     }
 
     if (document.readyState === 'complete') { initCharts(); }

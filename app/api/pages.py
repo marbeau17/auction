@@ -4,10 +4,13 @@ import math
 import statistics
 from typing import Any, Optional
 
+import structlog
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
+
+logger = structlog.get_logger()
 
 router = APIRouter(tags=["pages"])
 
@@ -20,6 +23,7 @@ def _render(request: Request, template: str, context: dict | None = None):
     from app.main import templates
 
     ctx = context or {}
+    ctx.setdefault("csrf_token", request.cookies.get("csrf_token", ""))
     # Auto-detect active page from URL path for sidebar highlighting
     path = request.url.path
     if path.startswith("/simulation"):
@@ -59,7 +63,8 @@ async def _get_optional_user(request: Request) -> dict[str, Any] | None:
             "email": payload.get("email"),
             "role": user_meta.get("role", payload.get("role", "authenticated")),
         }
-    except Exception:
+    except Exception as exc:
+        logger.debug("user_auth_token_invalid", error=str(exc))
         return None
 
 
@@ -110,14 +115,17 @@ async def dashboard_page(request: Request):
         # Recent simulations
         recent = client.table("simulations").select("*").order("created_at", desc=True).limit(5).execute()
         recent_sims = recent.data or []
-    except Exception:
+    except Exception as exc:
+        logger.warning("dashboard_data_error", error=str(exc))
         recent_sims = []
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     context = {
         "user": user,
         "kpi": kpi,
         "recent_simulations": recent_sims,
         "stats": kpi,
+        "error_message": locals().get("error_message"),
     }
     return _render(request, "pages/dashboard.html", context)
 
@@ -146,8 +154,9 @@ async def simulation_new_page(request: Request):
         models = models_resp.data or []
         options_resp = client.table("equipment_options").select("*").eq("is_active", True).order("category,display_order").execute()
         equipment_options = options_resp.data or []
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("simulation_new_form_data_failed", error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/simulation.html", {
         "user": user,
@@ -156,6 +165,7 @@ async def simulation_new_page(request: Request):
         "categories": categories,
         "models": models,
         "equipment_options": equipment_options,
+        "error_message": locals().get("error_message"),
     })
 
 
@@ -181,49 +191,100 @@ async def simulation_result_page(request: Request, simulation_id: str):
         simulation = result.data
 
         if simulation:
+            # Merge result_summary_json into top-level for template access
+            rsj = simulation.get("result_summary_json") or {}
+            simulation["maker"] = rsj.get("maker", "")
+            simulation["model"] = rsj.get("model", "")
+            simulation["body_type_display"] = rsj.get("body_type", "")
+            simulation["vehicle_class"] = rsj.get("vehicle_class", "")
+            simulation["max_price"] = rsj.get("max_price", 0)
+            simulation["residual_value"] = rsj.get("residual_value", 0)
+            simulation["residual_rate"] = rsj.get("residual_rate", 0)
+            simulation["assessment"] = rsj.get("assessment", "")
+            simulation["breakeven_months"] = rsj.get("breakeven_months")
+            simulation["actual_yield_rate"] = rsj.get("actual_yield_rate", 0)
+            simulation["equipment"] = rsj.get("equipment", [])
+
             # Generate chart data from saved simulation
             purchase = simulation.get("purchase_price_yen", 0) or 0
             monthly = simulation.get("lease_monthly_yen", 0) or 0
             term = simulation.get("lease_term_months", 36) or 36
-            total = simulation.get("total_lease_revenue_yen", 0) or (monthly * term)
 
-            # Simple residual estimate
-            residual_rate = 0.20 if term <= 36 else 0.10
-            residual = int(purchase * residual_rate)
+            if purchase > 0 and monthly > 0 and term > 0:
+                residual_rate_val = rsj.get("residual_rate", 0.20)
+                residual = int(purchase * residual_rate_val) if residual_rate_val else int(purchase * 0.20)
+                dep_per_month = (purchase - residual) / term
+                mr = (rsj.get("target_yield_rate", 8) / 100) / 12
 
-            # Generate monthly schedule for charts
-            dep_per_month = (purchase - residual) / term if term > 0 else 0
-            months: list[str] = []
-            asset_values: list[int] = []
-            cumulative_incomes: list[int] = []
-            nav_ratios: list[float] = []
+                months: list[str] = []
+                asset_values: list[int] = []
+                cumulative_incomes: list[int] = []
+                nav_ratios: list[float] = []
+                monthly_profits: list[int] = []
+                cumulative_profits: list[int] = []
 
-            cum_income = 0
-            for m in range(1, term + 1):
-                asset = max(int(purchase - dep_per_month * m), residual)
-                cum_income += monthly
-                nav = (asset + cum_income) / purchase * 100 if purchase > 0 else 0
-                months.append(f"{m}月")
-                asset_values.append(asset)
-                cumulative_incomes.append(int(cum_income))
-                nav_ratios.append(round(nav, 1))
+                # Use saved monthly_schedule from result_summary_json if available
+                saved_schedule = rsj.get("monthly_schedule")
+                if saved_schedule and isinstance(saved_schedule, list) and len(saved_schedule) > 0:
+                    cum_income = 0
+                    cum_profit = 0
+                    for row in saved_schedule:
+                        m = row.get("month", 0)
+                        asset = row.get("book_value", 0)
+                        lease_income = row.get("lease_income", monthly)
+                        cum_income += lease_income
+                        profit = row.get("net_profit", 0)
+                        cum_profit += profit
+                        nav = (asset + cum_income) / purchase * 100 if purchase > 0 else 0
 
-            import json
-            chart_data = {
-                "months": json.dumps(months, ensure_ascii=False),
-                "asset_values": json.dumps(asset_values),
-                "cumulative_incomes": json.dumps(cumulative_incomes),
-                "nav_ratios": json.dumps(nav_ratios),
-                "nav_60_line": json.dumps([60] * term),
-            }
-    except Exception:
-        pass
+                        months.append(f"{m}月")
+                        asset_values.append(int(asset))
+                        cumulative_incomes.append(int(cum_income))
+                        nav_ratios.append(round(nav, 1))
+                        monthly_profits.append(int(profit))
+                        cumulative_profits.append(int(cum_profit))
+                    term = len(saved_schedule)
+                else:
+                    # Fallback: recalculate from simulation fields
+                    cum_income = 0
+                    cum_profit = 0
+                    for m in range(1, term + 1):
+                        asset = max(int(purchase - dep_per_month * m), residual)
+                        cum_income += monthly
+                        prev_asset = purchase - dep_per_month * (m - 1)
+                        dep_exp = int(prev_asset - asset)
+                        fin_cost = int(prev_asset * mr)
+                        profit = int(monthly - 15000 - 10000 - dep_exp - fin_cost)
+                        cum_profit += profit
+                        nav = (asset + cum_income) / purchase * 100 if purchase > 0 else 0
+
+                        months.append(f"{m}月")
+                        asset_values.append(asset)
+                        cumulative_incomes.append(int(cum_income))
+                        nav_ratios.append(round(nav, 1))
+                        monthly_profits.append(profit)
+                        cumulative_profits.append(int(cum_profit))
+
+                import json
+                chart_data = {
+                    "months": json.dumps(months, ensure_ascii=False),
+                    "asset_values": json.dumps(asset_values),
+                    "cumulative_incomes": json.dumps(cumulative_incomes),
+                    "nav_ratios": json.dumps(nav_ratios),
+                    "nav_60_line": json.dumps([60] * term),
+                    "monthly_profits": json.dumps(monthly_profits),
+                    "cumulative_profits": json.dumps(cumulative_profits),
+                }
+    except Exception as exc:
+        logger.warning("simulation_result_fetch_failed", simulation_id=simulation_id, error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     context = {
         "user": user,
         "simulation_id": simulation_id,
         "simulation": simulation,
         "chart_data": chart_data,
+        "error_message": locals().get("error_message"),
     }
     return _render(request, "pages/simulation_result.html", context)
 
@@ -241,13 +302,15 @@ async def simulation_list_page(request: Request):
         client = get_supabase_client(service_role=True)
         result = client.table("simulations").select("*").order("created_at", desc=True).limit(50).execute()
         simulations = result.data or []
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("simulation_list_fetch_failed", error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/simulation_list.html", {
         "user": user,
         "simulations": simulations,
         "total_count": len(simulations),
+        "error_message": locals().get("error_message"),
     })
 
 
@@ -258,9 +321,14 @@ async def market_data_list_page(request: Request):
     if redirect:
         return redirect
 
+    page = int(request.query_params.get("page", 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+
     # Pre-fetch vehicles for initial render
     vehicles: list[dict[str, Any]] = []
     total_count = 0
+    total_pages = 0
     stats: dict[str, Any] = {"total_count": 0, "avg_price": 0, "median_price": 0}
     makers: list[dict[str, Any]] = []
     body_types: list[dict[str, Any]] = []
@@ -270,25 +338,18 @@ async def market_data_list_page(request: Request):
 
         client = get_supabase_client(service_role=True)
 
-        # Count
-        count_result = (
-            client.table("vehicles")
-            .select("id", count="exact")
-            .eq("is_active", True)
-            .execute()
-        )
-        total_count = count_result.count or 0
-
-        # Data (first page)
+        # Data with count
         result = (
             client.table("vehicles")
-            .select("*")
+            .select("*", count="exact")
             .eq("is_active", True)
             .order("scraped_at", desc=True)
-            .limit(20)
+            .range(offset, offset + per_page - 1)
             .execute()
         )
         vehicles = result.data or []
+        total_count = result.count or 0
+        total_pages = (total_count + per_page - 1) // per_page
 
         # Stats
         stats_result = (
@@ -317,8 +378,9 @@ async def market_data_list_page(request: Request):
         makers = makers_resp.data or []
         bt_resp = client.table("body_types").select("*").order("name").execute()
         body_types = bt_resp.data or []
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("market_data_list_fetch_failed", error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(
         request,
@@ -329,7 +391,11 @@ async def market_data_list_page(request: Request):
             "makers": makers,
             "body_types": body_types,
             "total_count": total_count,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
             "stats": stats,
+            "error_message": locals().get("error_message"),
         },
     )
 
@@ -423,7 +489,8 @@ async def market_data_table_fragment(
 
         total_pages = math.ceil(total_count / per_page) if total_count else 0
 
-    except Exception:
+    except Exception as exc:
+        logger.warning("market_data_table_fetch_failed", error=str(exc))
         vehicles = []
         total_count = 0
         total_pages = 0
@@ -474,11 +541,13 @@ async def market_data_detail_page(request: Request, item_id: str):
                 similar_query = similar_query.eq("body_type", vehicle["body_type"])
             similar_result = similar_query.limit(5).execute()
             similar_vehicles = similar_result.data or []
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("market_data_detail_fetch_failed", item_id=item_id, error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/market_data_detail.html", {
         "user": user,
         "vehicle": vehicle,
         "similar_vehicles": similar_vehicles,
+        "error_message": locals().get("error_message"),
     })

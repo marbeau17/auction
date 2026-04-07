@@ -740,6 +740,62 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     net_monthly = monthly_fee - 15000 - 10000
     breakeven = math.ceil(recommended_price / net_monthly) if net_monthly > 0 else None
 
+    # Auto-save if user is authenticated
+    saved_sim_id = None
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        try:
+            from jose import jwt
+            from app.dependencies import _get_jwks
+            from app.config import get_settings
+            header = jwt.get_unverified_header(access_token)
+            settings = get_settings()
+            if header.get("alg") == "ES256":
+                jwks = _get_jwks(settings.supabase_url)
+                payload = jwt.decode(access_token, jwks, algorithms=["ES256"], audience="authenticated")
+            else:
+                payload = jwt.decode(access_token, settings.supabase_jwt_secret, algorithms=["HS256"], options={"verify_aud": False})
+            user_id = payload.get("sub")
+
+            if user_id:
+                from app.db.supabase_client import get_supabase_client
+                client = get_supabase_client(service_role=True)
+
+                year_raw = str(form.get("registration_year_month", "2020"))
+                year_match_save = re.match(r'(\d{4})', year_raw)
+                year_val = int(year_match_save.group(1)) if year_match_save else 2020
+
+                save_data = {
+                    "user_id": user_id,
+                    "title": f"{maker} {model} シミュレーション",
+                    "target_model_name": f"{maker} {model}",
+                    "target_model_year": year_val,
+                    "target_mileage_km": mileage_km,
+                    "purchase_price_yen": recommended_price,
+                    "market_price_yen": acquisition_price,
+                    "lease_monthly_yen": monthly_fee,
+                    "lease_term_months": lease_term_months,
+                    "total_lease_revenue_yen": total_fee,
+                    "expected_yield_rate": round(effective_yield, 4),
+                    "status": "completed",
+                    "result_summary_json": {
+                        "maker": maker, "model": model, "body_type": body_type,
+                        "vehicle_class": form.get("vehicle_class", ""),
+                        "max_price": max_price, "residual_value": residual,
+                        "residual_rate": round(residual_rate, 4),
+                        "assessment": assessment,
+                        "breakeven_months": breakeven,
+                        "target_yield_rate": target_yield_rate,
+                        "actual_yield_rate": round(effective_yield, 4),
+                        "equipment": equipment_list,
+                    },
+                }
+                result = client.table("simulations").insert(save_data).execute()
+                if result.data:
+                    saved_sim_id = result.data[0]["id"]
+        except Exception:
+            pass  # Don't fail the calculation if save fails
+
     # Build HTML response
     badge_class = {"推奨": "success", "要検討": "warning", "非推奨": "danger"}.get(
         assessment, ""
@@ -822,6 +878,58 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
         )
 
     # -----------------------------------------------------------------------
+    # Save button or auto-saved indicator
+    # -----------------------------------------------------------------------
+    if saved_sim_id:
+        save_html = f'''
+        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+            <span class="badge badge--success" style="padding:8px 16px; font-size:0.9rem">&#x2713; 自動保存済み</span>
+            <a href="/simulation/{saved_sim_id}/result" class="btn btn--text btn--sm">保存結果を確認 &rarr;</a>
+        </div>
+        '''
+    else:
+        equipment_hidden = (''.join(f'<input type="hidden" name="equipment" value="' + eq + '">' for eq in equipment_list)) if equipment_list else ''
+        save_html = f'''
+        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+            <form hx-post="/api/v1/simulations/save" hx-target="#save-result" hx-swap="innerHTML"
+                  hx-indicator="#save-spinner" hx-disabled-elt="#save-btn">
+                <input type="hidden" name="maker" value="{maker}">
+                <input type="hidden" name="model" value="{model}">
+                <input type="hidden" name="registration_year_month" value="{form.get('registration_year_month', '')}">
+                <input type="hidden" name="mileage_km" value="{mileage_km}">
+                <input type="hidden" name="acquisition_price" value="{acquisition_price}">
+                <input type="hidden" name="book_value" value="{book_value}">
+                <input type="hidden" name="body_type" value="{body_type}">
+                <input type="hidden" name="target_yield_rate" value="{target_yield_rate}">
+                <input type="hidden" name="lease_term_months" value="{lease_term_months}">
+                <input type="hidden" name="recommended_price" value="{recommended_price}">
+                <input type="hidden" name="max_price" value="{max_price}">
+                <input type="hidden" name="monthly_fee" value="{monthly_fee}">
+                <input type="hidden" name="total_fee" value="{total_fee}">
+                <input type="hidden" name="effective_yield" value="{effective_yield}">
+                <input type="hidden" name="residual" value="{residual}">
+                <input type="hidden" name="residual_rate" value="{residual_rate}">
+                <input type="hidden" name="assessment" value="{assessment}">
+                <input type="hidden" name="breakeven" value="{breakeven if breakeven else ''}">
+                <input type="hidden" name="vehicle_class" value="{form.get('vehicle_class', '')}">
+                {equipment_hidden}
+                <button type="submit" id="save-btn" class="btn btn--primary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 24px;font-size:1rem;">
+                    <svg id="save-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span>結果を保存</span>
+                    <svg id="save-spinner" class="htmx-indicator" width="18" height="18" viewBox="0 0 24 24" style="display:none;animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+                </button>
+            </form>
+            <div id="save-result"></div>
+        </div>
+        <style>
+        @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+        .htmx-request #save-icon {{ display: none !important; }}
+        .htmx-request .htmx-indicator {{ display: inline-block !important; }}
+        #save-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
+        </style>
+        '''
+
+    # -----------------------------------------------------------------------
     # Assemble full HTML with KPI cards, charts, and schedule table
     # -----------------------------------------------------------------------
     html = f"""
@@ -880,44 +988,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
             {equipment_html}
         </div>
 
-        <!-- Save button -->
-        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
-            <form hx-post="/api/v1/simulations/save" hx-target="#save-result" hx-swap="innerHTML"
-                  hx-indicator="#save-spinner" hx-disabled-elt="#save-btn">
-                <input type="hidden" name="maker" value="{maker}">
-                <input type="hidden" name="model" value="{model}">
-                <input type="hidden" name="registration_year_month" value="{form.get('registration_year_month', '')}">
-                <input type="hidden" name="mileage_km" value="{mileage_km}">
-                <input type="hidden" name="acquisition_price" value="{acquisition_price}">
-                <input type="hidden" name="book_value" value="{book_value}">
-                <input type="hidden" name="body_type" value="{body_type}">
-                <input type="hidden" name="target_yield_rate" value="{target_yield_rate}">
-                <input type="hidden" name="lease_term_months" value="{lease_term_months}">
-                <input type="hidden" name="recommended_price" value="{recommended_price}">
-                <input type="hidden" name="max_price" value="{max_price}">
-                <input type="hidden" name="monthly_fee" value="{monthly_fee}">
-                <input type="hidden" name="total_fee" value="{total_fee}">
-                <input type="hidden" name="effective_yield" value="{effective_yield}">
-                <input type="hidden" name="residual" value="{residual}">
-                <input type="hidden" name="residual_rate" value="{residual_rate}">
-                <input type="hidden" name="assessment" value="{assessment}">
-                <input type="hidden" name="breakeven" value="{breakeven if breakeven else ''}">
-                <input type="hidden" name="vehicle_class" value="{form.get('vehicle_class', '')}">
-                {(''.join(f'<input type="hidden" name="equipment" value="' + eq + '">' for eq in equipment_list)) if equipment_list else ''}
-                <button type="submit" id="save-btn" class="btn btn--primary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 24px;font-size:1rem;">
-                    <svg id="save-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    <span>結果を保存</span>
-                    <svg id="save-spinner" class="htmx-indicator" width="18" height="18" viewBox="0 0 24 24" style="display:none;animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
-                </button>
-            </form>
-            <div id="save-result"></div>
-        </div>
-        <style>
-        @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
-        .htmx-request #save-icon {{ display: none !important; }}
-        .htmx-request .htmx-indicator {{ display: inline-block !important; }}
-        #save-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
-        </style>
+        {save_html}
 
         <!-- Chart 1: Value Transfer -->
         <div class="card" style="margin-top:24px">

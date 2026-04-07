@@ -101,7 +101,9 @@ def create_app() -> FastAPI:
     allowed_origins: list[str] = [
         f"http://localhost:{settings.app_port}",
         "http://localhost:3000",
+        "https://auction-ten-iota.vercel.app",
     ]
+    # Also add any custom domain if configured
     if settings.supabase_url:
         allowed_origins.append(settings.supabase_url)
 
@@ -109,9 +111,22 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "HX-Request", "HX-Target", "HX-Trigger"],
     )
+
+    # -- Security headers ---------------------------------------------------
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+    # -- CSRF ---------------------------------------------------------------
+    from app.middleware.csrf import CSRFMiddleware
+    app.add_middleware(CSRFMiddleware)
 
     # -- Static files -------------------------------------------------------
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
