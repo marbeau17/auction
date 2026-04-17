@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVLPOS 松竹梅プラン - オンボーディングフロー</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background: #0f172a; }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 8px rgba(59,130,246,0.4); }
+            50% { box-shadow: 0 0 24px rgba(59,130,246,0.8); }
+        }
+        @keyframes progress-fill {
+            from { width: 0%; }
+        }
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slide-in-right {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes dot-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.4); opacity: 1; }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .anim-fade-in-up {
+            animation: fade-in-up 0.5s ease-out forwards;
+        }
+        .anim-slide-in-right {
+            animation: slide-in-right 0.4s ease-out forwards;
+        }
+        .anim-pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        .anim-dot-pulse {
+            animation: dot-pulse 1.5s ease-in-out infinite;
+        }
+        .progress-bar-animated {
+            animation: progress-fill 1s ease-out forwards;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            background-size: 200% 100%;
+            animation: progress-fill 1s ease-out forwards, shimmer 2s linear infinite;
+        }
+        .timeline-line {
+            background: linear-gradient(180deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.6) 50%, rgba(59,130,246,0.1) 100%);
+        }
+        .step-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .step-card:hover {
+            transform: translateX(4px);
+        }
+        .tier-tab {
+            transition: all 0.3s ease;
+        }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        /* ===== アイコンSVG ===== */
+        const Icons = {
+            Phone: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
+            Car: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>,
+            Search: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+            FileText: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>,
+            CheckCircle: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            Shield: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+            DollarSign: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+            Rocket: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>,
+            Calendar: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+            Settings: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+            Users: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+            BarChart: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>,
+            Clipboard: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>,
+            ChevronDown: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>,
+            ChevronRight: ({s=20,c=""}) => <svg width={s} height={s} className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+        };
+
+        /* ===== ティアデータ ===== */
+        const TIERS = {
+            ume: {
+                id: 'ume',
+                name: '梅プラン',
+                label: '梅',
+                subtitle: 'スタンダード',
+                totalDays: 10,
+                color: 'emerald',
+                colorHex: '#10b981',
+                gradientFrom: '#059669',
+                gradientTo: '#34d399',
+                bgClass: 'from-emerald-900/30 to-emerald-800/10',
+                borderClass: 'border-emerald-500/30',
+                textClass: 'text-emerald-400',
+                badgeBg: 'bg-emerald-500/20',
+                steps: [
+                    { day: 'Day 0', title: 'お問い合わせ・ご相談', desc: '電話・メール・Webフォームでの初回コンタクト。ご要望のヒアリングと概要説明を行います。', icon: 'Phone', milestone: true, docs: ['お問い合わせフォーム'] },
+                    { day: 'Day 1-2', title: '車両情報のご提供', desc: '対象車両の車検証コピー、走行距離、メンテナンス履歴などの基本情報をご提出いただきます。', icon: 'Car', docs: ['車検証コピー', '走行距離記録', 'メンテナンス記録'] },
+                    { day: 'Day 3-5', title: '標準査定', desc: '業界標準のデータベースを用いた車両査定を実施。市場価格との比較分析を行います。', icon: 'Search', docs: [] },
+                    { day: 'Day 5', title: 'シミュレーション提示', desc: 'リースバック条件のシミュレーション結果をご提示。月額リース料・買取価格の概算をお伝えします。', icon: 'FileText', milestone: true, docs: ['シミュレーション結果書'] },
+                    { day: 'Day 6-7', title: '条件確認', desc: 'ご提示した条件についてのご質問対応と最終条件の確認を行います。', icon: 'CheckCircle', docs: ['条件確認書'] },
+                    { day: 'Day 8-9', title: '契約締結（3種類）', desc: 'リースバック基本契約、車両売買契約、リース契約の3種類の契約を締結いたします。', icon: 'Shield', milestone: true, docs: ['リースバック基本契約書', '車両売買契約書', 'リース契約書', '印鑑証明書', '会社登記簿謄本'] },
+                    { day: 'Day 10', title: '資金化・リース開始', desc: '買取代金のお振込みを実行。同日よりリース期間がスタートします。', icon: 'DollarSign', milestone: true, docs: ['振込先口座情報', '受領確認書'] },
+                ]
+            },
+            take: {
+                id: 'take',
+                name: '竹プラン',
+                label: '竹',
+                subtitle: 'プロフェッショナル',
+                totalDays: 15,
+                color: 'blue',
+                colorHex: '#3b82f6',
+                gradientFrom: '#2563eb',
+                gradientTo: '#60a5fa',
+                bgClass: 'from-blue-900/30 to-blue-800/10',
+                borderClass: 'border-blue-500/30',
+                textClass: 'text-blue-400',
+                badgeBg: 'bg-blue-500/20',
+                steps: [
+                    { day: 'Day 0', title: 'お問い合わせ・ご相談', desc: '専用窓口での初回コンタクト。ビジネスニーズの詳細ヒアリングと最適プランのご提案を行います。', icon: 'Phone', milestone: true, docs: ['お問い合わせフォーム', 'ヒアリングシート'] },
+                    { day: 'Day 1-3', title: '車両情報+市場データ分析', desc: '車両詳細情報のご提出に加え、市場流通データ・オークション相場の分析を並行して実施します。', icon: 'Car', docs: ['車検証コピー', '走行距離記録', 'メンテナンス記録', '車両写真（外装・内装）', '修理歴証明書'] },
+                    { day: 'Day 4-7', title: 'AI分析+3シナリオ査定', desc: 'AI価格予測エンジンを活用し、楽観・基本・保守的の3つのシナリオでの査定を実施します。', icon: 'BarChart', docs: [] },
+                    { day: 'Day 8', title: '詳細シミュレーション提示（NAV曲線付き）', desc: 'Net Asset Value曲線を含む詳細シミュレーションを提示。将来価値の推移を可視化します。', icon: 'FileText', milestone: true, docs: ['詳細シミュレーション報告書', 'NAV曲線分析レポート'] },
+                    { day: 'Day 9-10', title: '条件調整', desc: 'お客様のご要望に基づき、リース期間・月額・残存価値等の条件を柔軟に調整します。', icon: 'Settings', docs: ['条件調整依頼書', '修正シミュレーション'] },
+                    { day: 'Day 11-13', title: '契約締結（5種類）', desc: '基本3契約に加え、サービスレベル契約（SLA）、メンテナンス保証契約を含む5種類の契約を締結。', icon: 'Shield', milestone: true, docs: ['リースバック基本契約書', '車両売買契約書', 'リース契約書', 'SLA契約書', 'メンテナンス保証契約書', '印鑑証明書', '会社登記簿謄本', '決算書（直近2期分）'] },
+                    { day: 'Day 14', title: '資金化', desc: '買取代金のお振込みを実行。振込完了通知とともにリース期間がスタートします。', icon: 'DollarSign', milestone: true, docs: ['振込先口座情報', '受領確認書'] },
+                    { day: 'Day 15', title: '請求管理セットアップ', desc: '月次請求の自動化設定、支払いスケジュールの確定、オンラインポータルのアカウント発行を行います。', icon: 'Clipboard', docs: ['口座振替依頼書', 'ポータルアカウント情報'] },
+                ]
+            },
+            matsu: {
+                id: 'matsu',
+                name: '松プラン',
+                label: '松',
+                subtitle: 'エンタープライズ',
+                totalDays: 30,
+                color: 'amber',
+                colorHex: '#f59e0b',
+                gradientFrom: '#d97706',
+                gradientTo: '#fbbf24',
+                bgClass: 'from-amber-900/30 to-amber-800/10',
+                borderClass: 'border-amber-500/30',
+                textClass: 'text-amber-400',
+                badgeBg: 'bg-amber-500/20',
+                steps: [
+                    { day: 'Day 0', title: 'お問い合わせ・ご相談', desc: 'エグゼクティブ専用デスクでの初回コンタクト。経営課題を踏まえた戦略的ヒアリングを実施します。', icon: 'Phone', milestone: true, docs: ['お問い合わせフォーム', '経営課題ヒアリングシート'] },
+                    { day: 'Day 1-5', title: '車両実地査定+市場分析', desc: '専門査定士による現車確認。テレマティクスデータ解析、グローバル市場動向を含む包括的分析を実施。', icon: 'Car', docs: ['車検証コピー', '全車両台帳', 'テレマティクスデータ', '車両写真（全方位）', '修理歴・事故歴証明書', '稼働率データ'] },
+                    { day: 'Day 6-10', title: 'フル分析+カスタムシナリオ', desc: 'モンテカルロシミュレーション、ストレステストを含むフル分析。お客様固有のシナリオを複数構築します。', icon: 'BarChart', docs: [] },
+                    { day: 'Day 11-12', title: '専任AM選定+提案書', desc: '専任アカウントマネージャーをアサインし、経営層向けのカスタム提案書を作成・プレゼンテーションします。', icon: 'Users', milestone: true, docs: ['カスタム提案書', '経営層向けプレゼン資料'] },
+                    { day: 'Day 13-15', title: '条件カスタマイズ交渉', desc: '法務・財務チームを含む条件交渉。税務最適化、オフバランス効果のシミュレーションも提供します。', icon: 'Settings', docs: ['条件交渉議事録', '税務シミュレーション', '会計処理方針確認書'] },
+                    { day: 'Day 16-20', title: '契約締結（9種類）', desc: '基本5契約に加え、秘密保持契約、データ利活用契約、出口戦略契約、損害賠償条項を含む9種類の包括契約。', icon: 'Shield', milestone: true, docs: ['リースバック基本契約書', '車両売買契約書', 'リース契約書', 'SLA契約書', 'メンテナンス保証契約書', '秘密保持契約書（NDA）', 'データ利活用契約書', '出口戦略契約書', '損害賠償条項付随契約書', '印鑑証明書', '会社登記簿謄本', '決算書（直近3期分）', '事業計画書'] },
+                    { day: 'Day 21-25', title: '段階的資金化', desc: 'キャッシュフローに最適化した段階的な資金化を実行。大口案件のリスク分散と資金効率を両立します。', icon: 'DollarSign', milestone: true, docs: ['段階的振込スケジュール', '各回振込確認書'] },
+                    { day: 'Day 26-30', title: 'ダッシュボード+レポート設定', desc: 'リアルタイム資産管理ダッシュボード、月次/四半期レポートの自動配信設定、KPIアラートの構築を行います。', icon: 'Rocket', docs: ['ダッシュボードアクセス情報', 'レポート配信設定書', 'KPI設定シート'] },
+                ]
+            }
+        };
+
+        /* ===== 営業日計算ユーティリティ ===== */
+        function addBusinessDays(startDate, days) {
+            const result = new Date(startDate);
+            let added = 0;
+            while (added < days) {
+                result.setDate(result.getDate() + 1);
+                const dow = result.getDay();
+                if (dow !== 0 && dow !== 6) added++;
+            }
+            return result;
+        }
+
+        function formatDate(date) {
+            const m = date.getMonth() + 1;
+            const d = date.getDate();
+            const dow = ['日','月','火','水','木','金','土'][date.getDay()];
+            return `${m}/${d}（${dow}）`;
+        }
+
+        function parseDayRange(dayStr) {
+            const nums = dayStr.match(/\d+/g);
+            if (!nums) return { start: 0, end: 0 };
+            if (nums.length === 1) return { start: parseInt(nums[0]), end: parseInt(nums[0]) };
+            return { start: parseInt(nums[0]), end: parseInt(nums[1]) };
+        }
+
+        /* ===== プログレスバー ===== */
+        function ProgressBar({ tier, activeStep }) {
+            const pct = ((activeStep + 1) / tier.steps.length) * 100;
+            return (
+                <div className="mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs text-slate-400">進捗</span>
+                        <span className="text-xs text-slate-400">{activeStep + 1} / {tier.steps.length} ステップ</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-700/50 rounded-full overflow-hidden">
+                        <div
+                            className="h-full rounded-full transition-all duration-700 ease-out"
+                            style={{
+                                width: `${pct}%`,
+                                background: `linear-gradient(90deg, ${tier.gradientFrom}, ${tier.gradientTo})`
+                            }}
+                        />
+                    </div>
+                </div>
+            );
+        }
+
+        /* ===== タイムラインステップ ===== */
+        function TimelineStep({ step, index, isActive, isExpanded, onClick, tier, startDate, totalSteps }) {
+            const IconComponent = Icons[step.icon];
+            const range = parseDayRange(step.day);
+            const estStart = startDate ? formatDate(addBusinessDays(startDate, range.start)) : null;
+            const estEnd = range.start !== range.end && startDate ? formatDate(addBusinessDays(startDate, range.end)) : null;
+
+            return (
+                <div
+                    className={`step-card relative anim-fade-in-up`}
+                    style={{ animationDelay: `${index * 80}ms` }}
+                >
+                    {/* 接続線 */}
+                    {index < totalSteps - 1 && (
+                        <div
+                            className="absolute left-[23px] top-[52px] w-[2px]"
+                            style={{
+                                height: isExpanded ? '100%' : '48px',
+                                background: `linear-gradient(180deg, ${tier.colorHex}88, ${tier.colorHex}22)`,
+                                transition: 'height 0.3s ease'
+                            }}
+                        />
+                    )}
+
+                    <div
+                        onClick={onClick}
+                        className={`relative flex items-start gap-4 p-4 rounded-xl cursor-pointer border transition-all duration-300 ${
+                            isActive
+                                ? `bg-gradient-to-r ${tier.bgClass} ${tier.borderClass}`
+                                : 'border-transparent hover:bg-slate-800/40 hover:border-slate-700/50'
+                        }`}
+                    >
+                        {/* ノードドット */}
+                        <div className="flex-shrink-0 relative">
+                            <div
+                                className={`w-[48px] h-[48px] rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                    step.milestone ? 'anim-pulse-glow' : ''
+                                }`}
+                                style={{
+                                    background: isActive
+                                        ? `linear-gradient(135deg, ${tier.gradientFrom}, ${tier.gradientTo})`
+                                        : 'rgba(51,65,85,0.5)',
+                                    boxShadow: isActive ? `0 0 20px ${tier.colorHex}44` : 'none'
+                                }}
+                            >
+                                {IconComponent && <IconComponent s={22} c={isActive ? 'text-white' : 'text-slate-400'} />}
+                            </div>
+                            {step.milestone && (
+                                <div
+                                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 flex items-center justify-center"
+                                    style={{ background: tier.colorHex }}
+                                >
+                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="white"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* コンテンツ */}
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-1">
+                                <span
+                                    className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                    style={{
+                                        background: `${tier.colorHex}22`,
+                                        color: tier.colorHex
+                                    }}
+                                >
+                                    {step.day}
+                                </span>
+                                {estStart && (
+                                    <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                                        <Icons.Calendar s={11} />
+                                        {estStart}{estEnd ? ` - ${estEnd}` : ''}
+                                    </span>
+                                )}
+                            </div>
+                            <h4 className={`font-semibold text-sm ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                                {step.title}
+                            </h4>
+
+                            {/* 展開コンテンツ */}
+                            <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[600px] opacity-100 mt-3' : 'max-h-0 opacity-0'}`}>
+                                <p className="text-sm text-slate-400 leading-relaxed mb-3">
+                                    {step.desc}
+                                </p>
+                                {step.docs && step.docs.length > 0 && (
+                                    <div className="bg-slate-800/60 rounded-lg p-3 border border-slate-700/30">
+                                        <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                            <Icons.Clipboard s={12} />
+                                            必要書類
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {step.docs.map((doc, i) => (
+                                                <span key={i} className="text-xs bg-slate-700/60 text-slate-300 px-2 py-1 rounded-md">
+                                                    {doc}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 展開アイコン */}
+                        <div className={`flex-shrink-0 mt-1 transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`}>
+                            <Icons.ChevronRight s={16} c="text-slate-500" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        /* ===== サイドパネル ===== */
+        function SidePanel({ step, tier, startDate }) {
+            if (!step) return null;
+            const range = parseDayRange(step.day);
+            const estStart = startDate ? formatDate(addBusinessDays(startDate, range.start)) : null;
+            const estEnd = range.start !== range.end && startDate ? formatDate(addBusinessDays(startDate, range.end)) : null;
+            const IconComp = Icons[step.icon];
+
+            return (
+                <div className="anim-slide-in-right">
+                    <div
+                        className="rounded-2xl border p-6"
+                        style={{
+                            borderColor: `${tier.colorHex}33`,
+                            background: `linear-gradient(135deg, ${tier.colorHex}08, transparent)`
+                        }}
+                    >
+                        <div className="flex items-center gap-3 mb-4">
+                            <div
+                                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                                style={{ background: `linear-gradient(135deg, ${tier.gradientFrom}, ${tier.gradientTo})` }}
+                            >
+                                {IconComp && <IconComp s={24} c="text-white" />}
+                            </div>
+                            <div>
+                                <span
+                                    className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                    style={{ background: `${tier.colorHex}22`, color: tier.colorHex }}
+                                >
+                                    {step.day}
+                                </span>
+                                <h3 className="text-white font-bold mt-1">{step.title}</h3>
+                            </div>
+                        </div>
+
+                        {estStart && (
+                            <div className="flex items-center gap-2 mb-4 bg-slate-800/40 rounded-lg px-3 py-2">
+                                <Icons.Calendar s={14} c="text-slate-400" />
+                                <span className="text-sm text-slate-300">
+                                    予定日: {estStart}{estEnd ? ` ~ ${estEnd}` : ''}
+                                </span>
+                            </div>
+                        )}
+
+                        <p className="text-sm text-slate-400 leading-relaxed mb-5">
+                            {step.desc}
+                        </p>
+
+                        {step.docs && step.docs.length > 0 && (
+                            <div>
+                                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                    <Icons.FileText s={14} />
+                                    必要書類・ドキュメント
+                                </h4>
+                                <div className="space-y-2">
+                                    {step.docs.map((doc, i) => (
+                                        <div
+                                            key={i}
+                                            className="flex items-center gap-2 text-sm text-slate-300 bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-700/30 anim-fade-in-up"
+                                            style={{ animationDelay: `${i * 50}ms` }}
+                                        >
+                                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.colorHex }} />
+                                            {doc}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {step.milestone && (
+                            <div className="mt-5 flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-2" style={{ background: `${tier.colorHex}15`, color: tier.colorHex }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+                                マイルストーン
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        /* ===== メインApp ===== */
+        function App() {
+            const [activeTier, setActiveTier] = useState('ume');
+            const [activeStep, setActiveStep] = useState(0);
+            const [expandedStep, setExpandedStep] = useState(0);
+            const [startDate, setStartDate] = useState('');
+            const [animKey, setAnimKey] = useState(0);
+
+            const tier = TIERS[activeTier];
+            const parsedStart = startDate ? new Date(startDate) : null;
+
+            function switchTier(tierId) {
+                setActiveTier(tierId);
+                setActiveStep(0);
+                setExpandedStep(0);
+                setAnimKey(k => k + 1);
+            }
+
+            function toggleStep(index) {
+                setActiveStep(index);
+                setExpandedStep(expandedStep === index ? -1 : index);
+            }
+
+            const completionDate = parsedStart
+                ? formatDate(addBusinessDays(parsedStart, tier.totalDays))
+                : null;
+
+            return (
+                <div className="min-h-screen bg-slate-900 text-white">
+                    {/* ヘッダー */}
+                    <header className="border-b border-slate-800">
+                        <div className="max-w-7xl mx-auto px-6 py-6">
+                            <div className="flex items-center justify-between flex-wrap gap-4">
+                                <div>
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                            <Icons.Rocket s={18} c="text-white" />
+                                        </div>
+                                        <h1 className="text-xl font-bold">CVLPOS オンボーディングフロー</h1>
+                                    </div>
+                                    <p className="text-sm text-slate-400 ml-11">松竹梅プラン別 導入プロセスタイムライン</p>
+                                </div>
+
+                                {/* 開始日入力 */}
+                                <div className="flex items-center gap-3 bg-slate-800/60 rounded-xl px-4 py-2.5 border border-slate-700/50">
+                                    <Icons.Calendar s={16} c="text-slate-400" />
+                                    <div>
+                                        <label className="text-[10px] text-slate-500 uppercase tracking-wider block">開始予定日</label>
+                                        <input
+                                            type="date"
+                                            value={startDate}
+                                            onChange={e => setStartDate(e.target.value)}
+                                            className="bg-transparent text-sm text-white outline-none border-none w-[140px]"
+                                        />
+                                    </div>
+                                    {completionDate && (
+                                        <div className="border-l border-slate-700 pl-3 ml-1">
+                                            <div className="text-[10px] text-slate-500 uppercase tracking-wider">完了予定</div>
+                                            <div className="text-sm font-semibold" style={{ color: tier.colorHex }}>{completionDate}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* ティアタブ */}
+                    <div className="border-b border-slate-800">
+                        <div className="max-w-7xl mx-auto px-6">
+                            <div className="flex gap-1 py-3">
+                                {Object.values(TIERS).map(t => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => switchTier(t.id)}
+                                        className={`tier-tab relative px-6 py-3 rounded-xl text-sm font-semibold flex items-center gap-3 ${
+                                            activeTier === t.id
+                                                ? 'text-white'
+                                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                                        }`}
+                                        style={activeTier === t.id ? {
+                                            background: `linear-gradient(135deg, ${t.gradientFrom}22, ${t.gradientTo}11)`,
+                                            border: `1px solid ${t.colorHex}44`
+                                        } : { border: '1px solid transparent' }}
+                                    >
+                                        <span
+                                            className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold"
+                                            style={activeTier === t.id ? {
+                                                background: `linear-gradient(135deg, ${t.gradientFrom}, ${t.gradientTo})`,
+                                                color: 'white'
+                                            } : {
+                                                background: 'rgba(51,65,85,0.5)',
+                                                color: '#94a3b8'
+                                            }}
+                                        >
+                                            {t.label}
+                                        </span>
+                                        <div className="text-left">
+                                            <div>{t.name}</div>
+                                            <div className="text-[10px] font-normal" style={{ color: activeTier === t.id ? `${t.colorHex}` : '#64748b' }}>
+                                                {t.subtitle} / {t.totalDays}営業日
+                                            </div>
+                                        </div>
+                                        {activeTier === t.id && (
+                                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-0.5 rounded-full" style={{ background: t.colorHex }} />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* メインコンテンツ */}
+                    <div className="max-w-7xl mx-auto px-6 py-8">
+                        {/* サマリーカード */}
+                        <div className="grid grid-cols-4 gap-4 mb-8">
+                            <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/30">
+                                <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">所要日数</div>
+                                <div className="text-2xl font-bold" style={{ color: tier.colorHex }}>{tier.totalDays}<span className="text-sm font-normal text-slate-400">営業日</span></div>
+                            </div>
+                            <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/30">
+                                <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">ステップ数</div>
+                                <div className="text-2xl font-bold text-white">{tier.steps.length}<span className="text-sm font-normal text-slate-400">ステップ</span></div>
+                            </div>
+                            <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/30">
+                                <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">契約書類</div>
+                                <div className="text-2xl font-bold text-white">
+                                    {tier.id === 'ume' ? '3' : tier.id === 'take' ? '5' : '9'}
+                                    <span className="text-sm font-normal text-slate-400">種類</span>
+                                </div>
+                            </div>
+                            <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/30">
+                                <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">マイルストーン</div>
+                                <div className="text-2xl font-bold text-white">
+                                    {tier.steps.filter(s => s.milestone).length}
+                                    <span className="text-sm font-normal text-slate-400">件</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <ProgressBar tier={tier} activeStep={activeStep} />
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            {/* タイムライン */}
+                            <div className="lg:col-span-2" key={animKey}>
+                                <div className="space-y-1">
+                                    {tier.steps.map((step, i) => (
+                                        <TimelineStep
+                                            key={`${activeTier}-${i}`}
+                                            step={step}
+                                            index={i}
+                                            isActive={activeStep === i}
+                                            isExpanded={expandedStep === i}
+                                            onClick={() => toggleStep(i)}
+                                            tier={tier}
+                                            startDate={parsedStart}
+                                            totalSteps={tier.steps.length}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* サイドパネル */}
+                            <div className="hidden lg:block">
+                                <div className="sticky top-8">
+                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">ステップ詳細</h3>
+                                    <SidePanel
+                                        key={`${activeTier}-${activeStep}`}
+                                        step={tier.steps[activeStep]}
+                                        tier={tier}
+                                        startDate={parsedStart}
+                                    />
+
+                                    {/* 全必要書類一覧 */}
+                                    <div className="mt-6 rounded-2xl border border-slate-700/30 bg-slate-800/20 p-5">
+                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                            <Icons.Clipboard s={14} />
+                                            全ステップ必要書類一覧
+                                        </h4>
+                                        <div className="space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin pr-1">
+                                            {tier.steps.filter(s => s.docs && s.docs.length > 0).map((s, si) => (
+                                                <div key={si}>
+                                                    <div className="text-[11px] font-semibold mb-1.5" style={{ color: tier.colorHex }}>
+                                                        {s.day}: {s.title}
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {s.docs.map((doc, di) => (
+                                                            <span key={di} className="text-[11px] bg-slate-700/40 text-slate-400 px-2 py-0.5 rounded">
+                                                                {doc}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* フッター */}
+                    <footer className="border-t border-slate-800 mt-12">
+                        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                            <span className="text-xs text-slate-600">CVLPOS - Commercial Vehicle Lease-back POS</span>
+                            <span className="text-xs text-slate-600">松竹梅プラン オンボーディングフロー v1.0</span>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>

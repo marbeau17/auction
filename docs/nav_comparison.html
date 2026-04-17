@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVLPOS 松竹梅 NAVカーブ比較シミュレーター</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Chart.js + annotation plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: { 50: '#f0f3f9', 100: '#d9e0f0', 200: '#b3c1e0', 300: '#8da2d1', 400: '#6783c1', 500: '#1e3a5f', 600: '#1a3255', 700: '#152a48', 800: '#10213b', 900: '#0b192e' },
+                    }
+                }
+            }
+        };
+    </script>
+
+    <style>
+        body { margin: 0; padding: 0; background: linear-gradient(135deg, #0b192e 0%, #1e3a5f 50%, #152a48 100%); font-family: 'Segoe UI', 'Hiragino Kaku Gothic Pro', sans-serif; min-height: 100vh; }
+        .glass { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        .glass-bright { background: rgba(255,255,255,0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.3); }
+        .tier-ume { border-left: 4px solid #22c55e; }
+        .tier-take { border-left: 4px solid #3b82f6; }
+        .tier-matsu { border-left: 4px solid #f59e0b; }
+        .best-value { box-shadow: 0 0 0 2px #f59e0b, 0 0 20px rgba(245,158,11,0.3); }
+        .radio-pill input:checked + span { background: #3b82f6; color: white; }
+        canvas { max-height: 400px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // ========== 定数・車両プリセット ==========
+        const VEHICLES = [
+            { id: 'elf',    name: 'エルフ 小型',           acquisition: 600,  months: 60 },
+            { id: 'ranger', name: 'レンジャー 中型',       acquisition: 1200, months: 72 },
+            { id: 'super',  name: 'スーパーグレート 大型', acquisition: 2400, months: 84 },
+            { id: 'custom', name: 'カスタム入力',           acquisition: 1000, months: 60 },
+        ];
+
+        // 残価シナリオ (取得価格に対する残価率)
+        const SCENARIOS = {
+            bull: { label: '強気 (Bull)', rate: 0.25 },
+            base: { label: '標準 (Base)', rate: 0.15 },
+            bear: { label: '弱気 (Bear)', rate: 0.08 },
+        };
+
+        // 松竹梅ティアパラメータ
+        const TIERS = {
+            ume:   { key: 'ume',   label: '梅', color: '#22c55e', bgColor: 'rgba(34,197,94,0.15)',  safety: 0.08, yield: 0.085, am: 0.025, placement: 0.035, margin: 0.025, accounting: 5 },
+            take:  { key: 'take',  label: '竹', color: '#3b82f6', bgColor: 'rgba(59,130,246,0.15)', safety: 0.05, yield: 0.08,  am: 0.02,  placement: 0.03,  margin: 0.02,  accounting: 5 },
+            matsu: { key: 'matsu', label: '松', color: '#f59e0b', bgColor: 'rgba(245,158,11,0.15)', safety: 0.03, yield: 0.075, am: 0.015, placement: 0.025, margin: 0.015, accounting: 5 },
+        };
+
+        const TIER_ORDER = ['ume', 'take', 'matsu'];
+
+        // ========== 計算ロジック ==========
+        function calcTier(acquisition, months, residualRate, tier) {
+            // acquisition: 万円, months: 月数
+            const acqYen = acquisition * 10000; // 円換算
+            const residual = Math.round(acqYen * residualRate);
+            const depBase = acqYen - residual;
+
+            const depMonthly       = Math.ceil(depBase / months);
+            const investorMonthly  = Math.ceil(acqYen * tier.yield / 12);
+            const amMonthly        = Math.ceil(acqYen * tier.am / 12);
+            const placementMonthly = Math.ceil(acqYen * tier.placement / months);
+            const accountingMonthly = tier.accounting * 10000; // 5万円
+            const marginMonthly    = Math.ceil(depBase * tier.margin / months);
+
+            const totalMonthly = depMonthly + investorMonthly + amMonthly + placementMonthly + accountingMonthly + marginMonthly;
+
+            // 月次NAV / 累積利益の配列を計算
+            const navCurve = [];
+            const profitCurve = [];
+            let cumulativeIncome = 0;
+            let cumulativeCost = 0;
+            let breakevenMonth = null;
+
+            for (let m = 1; m <= months; m++) {
+                cumulativeIncome += totalMonthly;
+                const bookValue = Math.max(acqYen - depMonthly * m, residual);
+                // コスト = 投資家配当 + AM + プレースメント + 会計 + マージン (減価償却以外のコスト)
+                cumulativeCost += (investorMonthly + amMonthly + placementMonthly + accountingMonthly + marginMonthly);
+                // NAV = 簿価 + 累積リース収入 - 取得価額 (投資家視点)
+                const nav = bookValue + cumulativeIncome - acqYen;
+                navCurve.push(nav / 10000); // 万円に戻す
+
+                // 累積利益 = 累積収入 - (取得価額 - 簿価) = 累積収入 - 減価償却累計
+                const gap = acqYen - bookValue;
+                const profit = cumulativeIncome - gap;
+                profitCurve.push(profit / 10000);
+
+                if (breakevenMonth === null && cumulativeIncome >= gap) {
+                    breakevenMonth = m;
+                }
+            }
+
+            const totalFee = totalMonthly * months;
+            const netProfit = totalFee + residual - acqYen;
+            const years = months / 12;
+            const effectiveYield = acqYen > 0 && years > 0 ? netProfit / acqYen / years : 0;
+            const finalNav = navCurve[navCurve.length - 1];
+
+            return {
+                totalMonthly: totalMonthly / 10000, // 万円
+                totalCost: totalFee / 10000,
+                effectiveYield,
+                breakevenMonth,
+                finalNav,
+                navCurve,
+                profitCurve,
+                breakdown: {
+                    dep: depMonthly / 10000,
+                    investor: investorMonthly / 10000,
+                    am: amMonthly / 10000,
+                    placement: placementMonthly / 10000,
+                    accounting: accountingMonthly / 10000,
+                    margin: marginMonthly / 10000,
+                },
+            };
+        }
+
+        // ========== アイコン ==========
+        const TruckIcon = ({ size = 24, className = '' }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
+                <path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14v10"/>
+                <circle cx="7" cy="18" r="2"/><circle cx="21" cy="18" r="2" style={{display:'none'}}/>
+                <circle cx="20" cy="18" r="2"/>
+            </svg>
+        );
+        const ChartIcon = ({ size = 24, className = '' }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        );
+        const StarIcon = ({ size = 20, className = '' }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        );
+
+        // ========== チャートコンポーネント ==========
+        function NAVChart({ results, months }) {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current) return;
+
+                const labels = Array.from({ length: months }, (_, i) => i + 1);
+
+                // 損益分岐の垂直線アノテーション
+                const annotations = {};
+                TIER_ORDER.forEach((key) => {
+                    const tier = TIERS[key];
+                    const r = results[key];
+                    if (r.breakevenMonth) {
+                        annotations[`line_${key}`] = {
+                            type: 'line',
+                            xMin: r.breakevenMonth - 1,
+                            xMax: r.breakevenMonth - 1,
+                            borderColor: tier.color,
+                            borderWidth: 2,
+                            borderDash: [6, 4],
+                            label: {
+                                display: true,
+                                content: `${tier.label} 損益分岐: ${r.breakevenMonth}月`,
+                                position: key === 'ume' ? 'start' : key === 'take' ? 'center' : 'end',
+                                backgroundColor: tier.color,
+                                color: '#fff',
+                                font: { size: 11, weight: 'bold' },
+                                padding: { x: 6, y: 3 },
+                                borderRadius: 4,
+                            },
+                        };
+                    }
+                });
+
+                if (chartRef.current) chartRef.current.destroy();
+
+                chartRef.current = new Chart(canvasRef.current, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: TIER_ORDER.map((key) => ({
+                            label: `${TIERS[key].label} NAV`,
+                            data: results[key].navCurve,
+                            borderColor: TIERS[key].color,
+                            backgroundColor: TIERS[key].bgColor,
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            tension: 0.3,
+                            fill: false,
+                        })),
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, labels: { color: '#94a3b8', font: { size: 13 }, usePointStyle: true, pointStyle: 'line' } },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.95)',
+                                titleColor: '#e2e8f0',
+                                bodyColor: '#cbd5e1',
+                                borderColor: 'rgba(255,255,255,0.1)',
+                                borderWidth: 1,
+                                callbacks: {
+                                    label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} 万円`,
+                                },
+                            },
+                            annotation: { annotations },
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: '経過月数', color: '#94a3b8', font: { size: 13 } },
+                                ticks: { color: '#64748b', maxTicksLimit: 15 },
+                                grid: { color: 'rgba(148,163,184,0.1)' },
+                            },
+                            y: {
+                                title: { display: true, text: 'NAV (万円)', color: '#94a3b8', font: { size: 13 } },
+                                ticks: { color: '#64748b', callback: (v) => v.toFixed(0) },
+                                grid: { color: 'rgba(148,163,184,0.1)' },
+                            },
+                        },
+                    },
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, [results, months]);
+
+            return <canvas ref={canvasRef} />;
+        }
+
+        function ProfitChart({ results, months }) {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current) return;
+
+                const labels = Array.from({ length: months }, (_, i) => i + 1);
+
+                // ゼロライン
+                const annotations = {
+                    zeroLine: {
+                        type: 'line',
+                        yMin: 0, yMax: 0,
+                        borderColor: 'rgba(239,68,68,0.5)',
+                        borderWidth: 1.5,
+                        borderDash: [4, 4],
+                    },
+                };
+
+                if (chartRef.current) chartRef.current.destroy();
+
+                chartRef.current = new Chart(canvasRef.current, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: TIER_ORDER.map((key) => ({
+                            label: `${TIERS[key].label} 累積利益`,
+                            data: results[key].profitCurve,
+                            borderColor: TIERS[key].color,
+                            backgroundColor: TIERS[key].bgColor,
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            tension: 0.3,
+                            fill: true,
+                        })),
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, labels: { color: '#94a3b8', font: { size: 13 }, usePointStyle: true, pointStyle: 'line' } },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.95)',
+                                titleColor: '#e2e8f0',
+                                bodyColor: '#cbd5e1',
+                                borderColor: 'rgba(255,255,255,0.1)',
+                                borderWidth: 1,
+                                callbacks: {
+                                    label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} 万円`,
+                                },
+                            },
+                            annotation: { annotations },
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: '経過月数', color: '#94a3b8', font: { size: 13 } },
+                                ticks: { color: '#64748b', maxTicksLimit: 15 },
+                                grid: { color: 'rgba(148,163,184,0.1)' },
+                            },
+                            y: {
+                                title: { display: true, text: '累積利益 (万円)', color: '#94a3b8', font: { size: 13 } },
+                                ticks: { color: '#64748b', callback: (v) => v.toFixed(0) },
+                                grid: { color: 'rgba(148,163,184,0.1)' },
+                            },
+                        },
+                    },
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, [results, months]);
+
+            return <canvas ref={canvasRef} />;
+        }
+
+        // ========== サマリーカード ==========
+        function SummaryCard({ tierKey, result, isBest }) {
+            const tier = TIERS[tierKey];
+            const tierClass = tierKey === 'ume' ? 'tier-ume' : tierKey === 'take' ? 'tier-take' : 'tier-matsu';
+
+            return (
+                <div className={`glass-bright rounded-xl p-5 ${tierClass} ${isBest ? 'best-value' : ''} relative transition-all duration-300 hover:scale-[1.02]`}>
+                    {isBest && (
+                        <div className="absolute -top-3 -right-2 bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-lg">
+                            <StarIcon size={14} /> ベストバリュー
+                        </div>
+                    )}
+                    <div className="flex items-center gap-2 mb-4">
+                        <span className="text-2xl font-bold" style={{ color: tier.color }}>{tier.label}</span>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            安全率 {(tier.safety * 100).toFixed(0)}%
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-gray-500 text-xs mb-1">損益分岐月</div>
+                            <div className="text-xl font-bold text-gray-800">
+                                {result.breakevenMonth ? `${result.breakevenMonth}月` : 'N/A'}
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-gray-500 text-xs mb-1">月額リース料</div>
+                            <div className="text-xl font-bold text-gray-800">
+                                {result.totalMonthly.toFixed(1)}<span className="text-xs text-gray-500 ml-0.5">万円</span>
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-gray-500 text-xs mb-1">総リース料</div>
+                            <div className="text-lg font-bold text-gray-800">
+                                {result.totalCost.toFixed(0)}<span className="text-xs text-gray-500 ml-0.5">万円</span>
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-gray-500 text-xs mb-1">実効利回り</div>
+                            <div className="text-lg font-bold" style={{ color: result.effectiveYield >= 0 ? '#16a34a' : '#dc2626' }}>
+                                {(result.effectiveYield * 100).toFixed(2)}%
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs text-gray-500">最終NAV</span>
+                            <span className="text-lg font-bold" style={{ color: tier.color }}>
+                                {result.finalNav.toFixed(1)} 万円
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* 内訳の小表 */}
+                    <details className="mt-3">
+                        <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">月額内訳を表示</summary>
+                        <div className="mt-2 text-xs text-gray-600 space-y-1">
+                            <div className="flex justify-between"><span>減価償却</span><span>{result.breakdown.dep.toFixed(2)} 万円</span></div>
+                            <div className="flex justify-between"><span>投資家配当 ({(tier.yield*100).toFixed(1)}%)</span><span>{result.breakdown.investor.toFixed(2)} 万円</span></div>
+                            <div className="flex justify-between"><span>AM手数料 ({(tier.am*100).toFixed(1)}%)</span><span>{result.breakdown.am.toFixed(2)} 万円</span></div>
+                            <div className="flex justify-between"><span>配置手数料 ({(tier.placement*100).toFixed(1)}%)</span><span>{result.breakdown.placement.toFixed(2)} 万円</span></div>
+                            <div className="flex justify-between"><span>会計費用</span><span>{result.breakdown.accounting.toFixed(2)} 万円</span></div>
+                            <div className="flex justify-between"><span>運営マージン ({(tier.margin*100).toFixed(1)}%)</span><span>{result.breakdown.margin.toFixed(2)} 万円</span></div>
+                        </div>
+                    </details>
+                </div>
+            );
+        }
+
+        // ========== メインアプリ ==========
+        function App() {
+            const [vehicleId, setVehicleId] = useState('ranger');
+            const [customAcq, setCustomAcq] = useState(1000);
+            const [customMonths, setCustomMonths] = useState(60);
+            const [scenario, setScenario] = useState('base');
+
+            const vehicle = VEHICLES.find(v => v.id === vehicleId);
+            const acquisition = vehicleId === 'custom' ? customAcq : vehicle.acquisition;
+            const months = vehicleId === 'custom' ? customMonths : vehicle.months;
+            const residualRate = SCENARIOS[scenario].rate;
+
+            // 全ティア計算
+            const results = useMemo(() => {
+                const r = {};
+                TIER_ORDER.forEach((key) => {
+                    r[key] = calcTier(acquisition, months, residualRate, TIERS[key]);
+                });
+                return r;
+            }, [acquisition, months, residualRate]);
+
+            // ベストバリュー判定 (最終NAVが最大のティア)
+            const bestTier = useMemo(() => {
+                let best = null, bestVal = -Infinity;
+                TIER_ORDER.forEach((key) => {
+                    if (results[key].finalNav > bestVal) {
+                        bestVal = results[key].finalNav;
+                        best = key;
+                    }
+                });
+                return best;
+            }, [results]);
+
+            return (
+                <div className="min-h-screen py-8 px-4">
+                    <div className="max-w-6xl mx-auto">
+
+                        {/* ヘッダー */}
+                        <div className="text-center mb-8">
+                            <div className="inline-flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-1.5 rounded-full text-sm font-medium mb-4">
+                                <ChartIcon size={16} /> CVLPOS シミュレーター
+                            </div>
+                            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
+                                松竹梅 NAVカーブ比較
+                            </h1>
+                            <p className="text-slate-400 text-sm max-w-xl mx-auto">
+                                車両を選択し、市場シナリオを切り替えて、3つのティア（松竹梅）のNAV推移と損益分岐点を比較できます。
+                            </p>
+                        </div>
+
+                        {/* 車両セレクター + シナリオトグル */}
+                        <div className="glass rounded-2xl p-6 mb-6">
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {/* 車両選択 */}
+                                <div>
+                                    <label className="block text-slate-300 text-sm font-medium mb-3">
+                                        <TruckIcon size={16} className="inline mr-1 -mt-0.5" /> 車両選択
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {VEHICLES.map((v) => (
+                                            <button
+                                                key={v.id}
+                                                onClick={() => setVehicleId(v.id)}
+                                                className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                                    vehicleId === v.id
+                                                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                                        : 'bg-white/10 text-slate-300 hover:bg-white/20'
+                                                }`}
+                                            >
+                                                {v.name}
+                                                {v.id !== 'custom' && (
+                                                    <div className="text-xs opacity-70 mt-0.5">{v.acquisition}万円 / {v.months}ヶ月</div>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {vehicleId === 'custom' && (
+                                        <div className="mt-4 grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-xs text-slate-400 mb-1 block">取得価格 (万円)</label>
+                                                <input
+                                                    type="number"
+                                                    value={customAcq}
+                                                    onChange={(e) => setCustomAcq(Math.max(100, Number(e.target.value)))}
+                                                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    min="100"
+                                                    step="50"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-slate-400 mb-1 block">リース月数</label>
+                                                <input
+                                                    type="number"
+                                                    value={customMonths}
+                                                    onChange={(e) => setCustomMonths(Math.max(12, Math.min(120, Number(e.target.value))))}
+                                                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    min="12"
+                                                    max="120"
+                                                    step="6"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* シナリオ + 概要 */}
+                                <div>
+                                    <label className="block text-slate-300 text-sm font-medium mb-3">
+                                        残価シナリオ
+                                    </label>
+                                    <div className="flex gap-2 mb-4">
+                                        {Object.entries(SCENARIOS).map(([key, s]) => (
+                                            <label key={key} className="radio-pill flex-1 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="scenario"
+                                                    value={key}
+                                                    checked={scenario === key}
+                                                    onChange={() => setScenario(key)}
+                                                    className="hidden"
+                                                />
+                                                <span className={`block text-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                                    scenario === key
+                                                        ? 'bg-blue-500 text-white shadow-lg'
+                                                        : 'bg-white/10 text-slate-300 hover:bg-white/20'
+                                                }`}>
+                                                    {s.label}
+                                                    <div className="text-xs opacity-70 mt-0.5">残価率 {(s.rate * 100).toFixed(0)}%</div>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+
+                                    <div className="bg-white/5 rounded-lg p-4 text-sm text-slate-400">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>取得価格: <span className="text-white font-bold">{acquisition} 万円</span></div>
+                                            <div>リース期間: <span className="text-white font-bold">{months} ヶ月</span></div>
+                                            <div>残価: <span className="text-white font-bold">{(acquisition * residualRate).toFixed(0)} 万円</span></div>
+                                            <div>減価対象: <span className="text-white font-bold">{(acquisition * (1 - residualRate)).toFixed(0)} 万円</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* NAVカーブチャート */}
+                        <div className="glass rounded-2xl p-6 mb-6">
+                            <h2 className="text-lg font-bold text-white mb-1">NAV カーブ比較</h2>
+                            <p className="text-xs text-slate-400 mb-4">各ティアのNAV（純資産価値）推移を重ねて表示。垂直破線は各ティアの損益分岐月を示します。</p>
+                            <div style={{ height: '380px' }}>
+                                <NAVChart results={results} months={months} />
+                            </div>
+                        </div>
+
+                        {/* 累積利益チャート */}
+                        <div className="glass rounded-2xl p-6 mb-6">
+                            <h2 className="text-lg font-bold text-white mb-1">累積利益推移</h2>
+                            <p className="text-xs text-slate-400 mb-4">累積リース収入から減価償却累計額を差し引いた利益の推移。赤い破線がゼロライン（利益転換点）です。</p>
+                            <div style={{ height: '350px' }}>
+                                <ProfitChart results={results} months={months} />
+                            </div>
+                        </div>
+
+                        {/* サマリーカード */}
+                        <div className="mb-6">
+                            <h2 className="text-lg font-bold text-white mb-4">ティア別サマリー</h2>
+                            <div className="grid md:grid-cols-3 gap-4">
+                                {TIER_ORDER.map((key) => (
+                                    <SummaryCard
+                                        key={key}
+                                        tierKey={key}
+                                        result={results[key]}
+                                        isBest={key === bestTier}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* ティア比較表 */}
+                        <div className="glass rounded-2xl p-6 mb-6 overflow-x-auto">
+                            <h2 className="text-lg font-bold text-white mb-4">パラメータ比較表</h2>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="text-slate-400 border-b border-white/10">
+                                        <th className="text-left py-2 px-3">項目</th>
+                                        {TIER_ORDER.map((key) => (
+                                            <th key={key} className="text-center py-2 px-3" style={{ color: TIERS[key].color }}>
+                                                {TIERS[key].label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="text-slate-300">
+                                    {[
+                                        { label: '安全率', fmt: (t) => `${(t.safety * 100).toFixed(0)}%` },
+                                        { label: '投資家利回り', fmt: (t) => `${(t.yield * 100).toFixed(1)}%` },
+                                        { label: 'AM手数料率', fmt: (t) => `${(t.am * 100).toFixed(1)}%` },
+                                        { label: '配置手数料率', fmt: (t) => `${(t.placement * 100).toFixed(1)}%` },
+                                        { label: '運営マージン率', fmt: (t) => `${(t.margin * 100).toFixed(1)}%` },
+                                    ].map((row) => (
+                                        <tr key={row.label} className="border-b border-white/5 hover:bg-white/5">
+                                            <td className="py-2 px-3 text-slate-400">{row.label}</td>
+                                            {TIER_ORDER.map((key) => (
+                                                <td key={key} className="text-center py-2 px-3">{row.fmt(TIERS[key])}</td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                    <tr className="border-b border-white/5 hover:bg-white/5">
+                                        <td className="py-2 px-3 text-slate-400">月額リース料</td>
+                                        {TIER_ORDER.map((key) => (
+                                            <td key={key} className="text-center py-2 px-3 font-bold">{results[key].totalMonthly.toFixed(1)} 万円</td>
+                                        ))}
+                                    </tr>
+                                    <tr className="border-b border-white/5 hover:bg-white/5">
+                                        <td className="py-2 px-3 text-slate-400">損益分岐月</td>
+                                        {TIER_ORDER.map((key) => (
+                                            <td key={key} className="text-center py-2 px-3 font-bold">
+                                                {results[key].breakevenMonth ? `${results[key].breakevenMonth}月` : 'N/A'}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                    <tr className="hover:bg-white/5">
+                                        <td className="py-2 px-3 text-slate-400">実効利回り</td>
+                                        {TIER_ORDER.map((key) => (
+                                            <td key={key} className="text-center py-2 px-3 font-bold">{(results[key].effectiveYield * 100).toFixed(2)}%</td>
+                                        ))}
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* フッター */}
+                        <div className="text-center text-slate-500 text-xs py-6">
+                            CVLPOS 松竹梅 NAVカーブ比較シミュレーター v1.0 | 計算結果は概算値です。実際の投資判断には別途精査が必要です。
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>

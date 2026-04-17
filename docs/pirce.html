@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リース価格算出フロー＆シミュレーター</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #f8fafc; font-family: sans-serif; }
+        
+        /* カスタムスライダーのスタイル */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div style="background:linear-gradient(90deg,#1e40af,#7c3aed);color:#fff;text-align:center;padding:10px 16px;font-size:14px;">
+      松竹梅プラン比較はこちら &rarr; <a href="matsu_take_ume_plans.html" style="color:#fbbf24;font-weight:bold;text-decoration:underline;">matsu_take_ume_plans.html</a>
+    </div>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // === アイコン (Lucide equivalents) ===
+        const Car = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+        );
+        const TrendingDown = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>
+        );
+        const PieChartIcon = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        );
+        const PlusCircle = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        );
+        const Coins = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="M16.71 13.88l-1.36 1.36"/></svg>
+        );
+        const ArrowDown = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+        );
+        const LineChartIcon = ({ size=24, className="" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        );
+
+        function App() {
+            // ステート（シミュレーションの入力値）
+            const [vehiclePrice, setVehiclePrice] = useState(10000000); // 車両価格(SPC売却額)
+            const [residualRate, setResidualRate] = useState(20);       // 残価率(%)
+            const [leaseTerm, setLeaseTerm] = useState(60);             // リース期間(ヶ月)
+            const [dividendRate, setDividendRate] = useState(4);        // 配当金割合(年利%)
+            const [marginRate, setMarginRate] = useState(2);            // マージン割合(年利%)
+            const [depreciationFactor, setDepreciationFactor] = useState(2.0); // 減価償却カーブ係数（1.0で直線、>1.0で初期減価大）
+
+            // 計算ロジック
+            const residualValue = Math.floor(vehiclePrice * (residualRate / 100)); // 残存価額
+            const principal = vehiclePrice - residualValue;                        // リース対象額（償却元本）
+            
+            // 期間総コストの計算（年利 × 年数 × 元本ベースではなく車両価格ベースで計算）
+            const dividendCost = Math.floor(vehiclePrice * (dividendRate / 100) * (leaseTerm / 12));
+            const marginCost = Math.floor(vehiclePrice * (marginRate / 100) * (leaseTerm / 12));
+            const totalCost = dividendCost + marginCost;                           // 追加コスト総額
+            
+            const totalPayment = principal + totalCost;                            // リース期間中の総支払額
+            const monthlyPayment = Math.floor(totalPayment / leaseTerm);           // 月額リース料
+
+            // グラフ用パーセンテージ計算
+            const principalPercent = totalPayment > 0 ? (principal / totalPayment) * 100 : 0;
+            const dividendPercent = totalPayment > 0 ? (dividendCost / totalPayment) * 100 : 0;
+            const marginPercent = totalPayment > 0 ? (marginCost / totalPayment) * 100 : 0;
+            const principalVehiclePercent = vehiclePrice > 0 ? (principal / vehiclePrice) * 100 : 0;
+            const residualVehiclePercent = vehiclePrice > 0 ? (residualValue / vehiclePrice) * 100 : 0;
+
+            // 特定の月(t)におけるNAV（帳簿価額）を計算する関数
+            // トラックの定率法等による初期減価を模倣するため、係数を用いた指数的減衰カーブを使用
+            const getNavAt = (t) => {
+                const ratio = Math.pow(1 - (t / leaseTerm), depreciationFactor);
+                return residualValue + principal * ratio;
+            };
+
+            // NAVグラフ用の交点（利益転換点）を二分探索で計算
+            // NAV曲線と累積回収直線が交わる点を求める
+            let left = 0;
+            let right = leaseTerm;
+            for (let i = 0; i < 40; i++) {
+                let mid = (left + right) / 2;
+                if (getNavAt(mid) > monthlyPayment * mid) {
+                    left = mid; // まだNAVが高いので右側を探す
+                } else {
+                    right = mid;
+                }
+            }
+            const crossT = (left + right) / 2;
+
+            // NAVグラフの描画パラメータ
+            const graphW = 500;
+            const graphH = 160;
+            const offsetX = 60;
+            const offsetY = 30;
+            const maxY = Math.max(vehiclePrice, totalPayment) * 1.1; // Y軸の最大値
+
+            const getX = (t) => offsetX + (t / leaseTerm) * graphW;
+            const getY = (val) => offsetY + graphH - (val / maxY) * graphH;
+            
+            const crossX = getX(crossT);
+            const crossY = getY(monthlyPayment * crossT);
+
+            // NAV曲線のSVGパス生成
+            const steps = 50; // 分割数
+            const navPoints = [];
+            for (let i = 0; i <= steps; i++) {
+                const t = (i / steps) * leaseTerm;
+                navPoints.push(`${getX(t)},${getY(getNavAt(t))}`);
+            }
+            const navPathD = `M ${navPoints.join(' L ')}`;
+
+            // 通貨フォーマット関数
+            const format = (num) => new Intl.NumberFormat('ja-JP').format(num);
+
+            return (
+                <div className="flex flex-col min-h-screen text-slate-800">
+                    {/* Header */}
+                    <header className="bg-slate-900 text-white p-6 shadow-md">
+                        <div className="max-w-5xl mx-auto">
+                            <h1 className="text-2xl font-bold tracking-tight">適正リース価格 算出フロー</h1>
+                            <p className="text-slate-400 mt-1 text-sm">パラメーターを調整して、月額リース料の算出プロセスと利益転換のタイミングを確認してください。</p>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        
+                        {/* Left Column: Inputs */}
+                        <aside className="lg:col-span-4 flex flex-col gap-6">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                                <h2 className="text-lg font-bold border-b pb-2 mb-4 border-slate-100 flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                                    パラメーター設定
+                                </h2>
+                                
+                                {/* Input: 車両価格 (SPC売却額) */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-sm font-semibold text-slate-600">車両査定額 <br/><span className="text-[10px] text-blue-500 bg-blue-50 px-1 py-0.5 rounded">(= SPCへの売却額/ファンド組入額)</span></label>
+                                        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">{format(vehiclePrice)} 円</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="1000000" max="50000000" step="1000000" 
+                                        value={vehiclePrice} onChange={(e) => setVehiclePrice(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                {/* Input: 残価率 */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-sm font-semibold text-slate-600">残存価額設定率</label>
+                                        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">{residualRate} %</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0" max="50" step="1" 
+                                        value={residualRate} onChange={(e) => setResidualRate(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                {/* Input: 投資家配当割合 */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-sm font-semibold text-emerald-600">投資家 配当金割合 (年利)</label>
+                                        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">{dividendRate} %</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0" max="15" step="0.5" 
+                                        value={dividendRate} onChange={(e) => setDividendRate(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                {/* Input: マージン割合 */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-sm font-semibold text-orange-600">SPC/管理マージン (年利)</label>
+                                        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">{marginRate} %</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0" max="15" step="0.5" 
+                                        value={marginRate} onChange={(e) => setMarginRate(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                {/* Input: リース期間 */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-sm font-semibold text-slate-600">リース期間</label>
+                                        <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">{leaseTerm} ヶ月</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="12" max="84" step="12" 
+                                        value={leaseTerm} onChange={(e) => setLeaseTerm(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                {/* Input: 減価償却スピード（トラック特性） */}
+                                <div className="mb-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-sm font-semibold text-blue-800">減価償却スピード<br/><span className="text-[10px] text-blue-600 font-normal">（定率法等の初期減価を再現）</span></label>
+                                        <span className="font-bold text-blue-900 bg-white px-2 py-1 rounded border border-blue-200 text-xs">
+                                            {depreciationFactor === 1 ? '定額法(直線)' : `初期減価 大 (${depreciationFactor.toFixed(1)})`}
+                                        </span>
+                                    </div>
+                                    <input 
+                                        type="range" min="1" max="4" step="0.1" 
+                                        value={depreciationFactor} onChange={(e) => setDepreciationFactor(Number(e.target.value))}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* グラフ表示セクション */}
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                                <h3 className="text-sm font-bold text-slate-600 mb-6 flex items-center gap-2">
+                                    <PieChartIcon size={18} className="text-indigo-500" />
+                                    価値とコストの内訳グラフ
+                                </h3>
+                                
+                                {/* 車両価格の構成 (積み上げ棒グラフ) */}
+                                <div className="mb-8">
+                                    <div className="flex justify-between text-xs text-slate-500 mb-2">
+                                        <span className="font-semibold text-slate-600">車両査定額の構成</span>
+                                        <span className="font-bold">{format(vehiclePrice)}円</span>
+                                    </div>
+                                    <div className="flex h-8 w-full rounded-lg overflow-hidden bg-slate-100 shadow-inner">
+                                        <div style={{ width: `${principalVehiclePercent}%` }} className="bg-blue-500 flex items-center justify-center text-xs text-white font-bold transition-all duration-300">
+                                            {principalVehiclePercent > 15 ? `償却対象 ${Math.round(principalVehiclePercent)}%` : ''}
+                                        </div>
+                                        <div style={{ width: `${residualVehiclePercent}%` }} className="bg-slate-300 flex items-center justify-center text-xs text-slate-700 font-bold transition-all duration-300 shadow-inner">
+                                            {residualVehiclePercent > 15 ? `残価 ${Math.round(residualVehiclePercent)}%` : ''}
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                                        <span>{format(principal)}円</span>
+                                        <span>{format(residualValue)}円</span>
+                                    </div>
+                                </div>
+
+                                {/* 総支払額の構成 (ドーナツグラフ) */}
+                                <div className="flex flex-col items-center bg-slate-50 p-5 rounded-xl border border-slate-100">
+                                    <div className="text-xs text-slate-600 font-bold mb-4 w-full text-center tracking-wide">月額リース料(総支払額) の内訳</div>
+                                    
+                                    {/* ドーナツグラフ本体 (CSS conic-gradientを使用) */}
+                                    <div className="relative w-40 h-40 flex items-center justify-center rounded-full shadow-sm transition-all duration-500"
+                                         style={{
+                                             background: `conic-gradient(#3b82f6 0% ${principalPercent}%, #10b981 ${principalPercent}% ${principalPercent + dividendPercent}%, #f97316 ${principalPercent + dividendPercent}% 100%)`
+                                         }}>
+                                        {/* ドーナツの穴 */}
+                                        <div className="absolute w-[6.5rem] h-[6.5rem] bg-slate-50 rounded-full flex flex-col items-center justify-center shadow-inner">
+                                            <span className="text-[10px] text-slate-400">総支払額</span>
+                                            <span className="text-sm font-black text-slate-700">{format(totalPayment)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* 凡例 */}
+                                    <div className="flex justify-center gap-4 mt-5 w-full flex-wrap">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-blue-500 shadow-sm"></div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] text-slate-500">償却分</span>
+                                                <span className="text-xs font-bold text-slate-700">{Math.round(principalPercent)}%</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm"></div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] text-slate-500">投資家配当</span>
+                                                <span className="text-xs font-bold text-slate-700">{Math.round(dividendPercent)}%</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-orange-500 shadow-sm"></div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] text-slate-500">マージン</span>
+                                                <span className="text-xs font-bold text-slate-700">{Math.round(marginPercent)}%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+
+                        {/* Right Column: Flowchart & NAV Curve */}
+                        <div className="lg:col-span-8 flex flex-col gap-2">
+                            
+                            {/* STEP 1 */}
+                            <div className="bg-white rounded-xl shadow-sm border-l-4 border-blue-500 p-5 flex items-start gap-4">
+                                <div className="bg-blue-100 p-3 rounded-lg text-blue-600">
+                                    <Car size={28} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-blue-600 mb-1">STEP 1: 車両価値の査定 ＝ SPCへの売却</h3>
+                                    <p className="text-sm text-slate-600 mb-2">運送事業者が持ち込んだ商用車の現在の「買取価格」を決定します。これがそのまま、ファンド（SPC）への売却・組入額となります。</p>
+                                    <div className="text-2xl font-bold text-slate-800">{format(vehiclePrice)} <span className="text-sm font-normal text-slate-500">円</span></div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-center -my-3 relative z-10"><ArrowDown className="text-slate-300" /></div>
+
+                            {/* STEP 2 */}
+                            <div className="bg-white rounded-xl shadow-sm border-l-4 border-slate-400 p-5 flex items-start gap-4">
+                                <div className="bg-slate-100 p-3 rounded-lg text-slate-600">
+                                    <TrendingDown size={28} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-slate-600 mb-1">STEP 2: 残存価額（残価）の設定</h3>
+                                    <p className="text-sm text-slate-600 mb-2">リース期間満了時における、その車両の「予想売却価値」を見積もります。</p>
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-xl font-bold text-slate-700">{format(residualValue)} <span className="text-sm font-normal text-slate-500">円</span></div>
+                                        <div className="bg-slate-100 text-xs px-2 py-1 rounded text-slate-500 border border-slate-200">
+                                            計算: 車両価格 × {residualRate}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-center -my-3 relative z-10"><ArrowDown className="text-slate-300" /></div>
+
+                            {/* STEP 3 */}
+                            <div className="bg-white rounded-xl shadow-sm border-l-4 border-indigo-500 p-5 flex items-start gap-4">
+                                <div className="bg-indigo-100 p-3 rounded-lg text-indigo-600">
+                                    <PieChartIcon size={28} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-indigo-600 mb-1">STEP 3: リース対象額（元本）の確定</h3>
+                                    <p className="text-sm text-slate-600 mb-2">買取価格から残存価額を差し引きます。これが期間中に償却される価値です。</p>
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-xl font-bold text-indigo-700">{format(principal)} <span className="text-sm font-normal text-indigo-500">円</span></div>
+                                        <div className="bg-indigo-50 text-xs px-2 py-1 rounded text-indigo-600 border border-indigo-100">
+                                            計算: {format(vehiclePrice)} - {format(residualValue)}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-center -my-3 relative z-10"><ArrowDown className="text-slate-300" /></div>
+
+                            {/* STEP 4 */}
+                            <div className="bg-white rounded-xl shadow-sm border-l-4 border-orange-500 p-5 flex items-start gap-4">
+                                <div className="bg-orange-100 p-3 rounded-lg text-orange-600">
+                                    <PlusCircle size={28} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-orange-600 mb-1">STEP 4: 配当とマージンの加算</h3>
+                                    <p className="text-sm text-slate-600 mb-2">投資家への配当（年利{dividendRate}%）、SPC運用費・マージン（年利{marginRate}%）の期間総額を上乗せします。</p>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="text-xl font-bold text-orange-700">{format(totalCost)} <span className="text-sm font-normal text-orange-500">円</span></div>
+                                        <div className="bg-orange-50 text-xs px-2 py-1 rounded text-orange-600 border border-orange-100">
+                                            内訳: 配当 {format(dividendCost)}円 + マージン {format(marginCost)}円
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-center -my-3 relative z-10"><ArrowDown className="text-blue-500" size={32} /></div>
+
+                            {/* STEP 5 (RESULT) */}
+                            <div className="bg-gradient-to-br from-blue-900 to-indigo-900 rounded-xl shadow-lg border border-blue-800 p-6 flex flex-col sm:flex-row items-center sm:items-start gap-6 text-white transform hover:scale-[1.01] transition-transform">
+                                <div className="bg-blue-800 p-4 rounded-full text-blue-200 border-4 border-blue-700 shadow-inner">
+                                    <Coins size={40} />
+                                </div>
+                                <div className="flex-1 text-center sm:text-left w-full">
+                                    <h3 className="text-sm font-bold text-blue-200 tracking-wider uppercase mb-1">STEP 5: 月額リース料の算出</h3>
+                                    <p className="text-sm text-blue-100/70 mb-4 pb-4 border-b border-blue-800">
+                                        [STEP 3] の償却元本と [STEP 4] のコストを足し合わせ、リース期間（{leaseTerm}ヶ月）で割ります。これが運送事業者が毎月支払う「サブリース料」となります。
+                                    </p>
+                                    
+                                    <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-4">
+                                        <div>
+                                            <div className="text-xs text-blue-300 mb-1">適正サブリース料 (月額)</div>
+                                            <div className="text-4xl sm:text-5xl font-black text-white tracking-tight">
+                                                {format(monthlyPayment)} <span className="text-xl font-normal text-blue-300">円/月</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-blue-950/50 p-3 rounded-lg border border-blue-800/50 text-left w-full sm:w-auto">
+                                            <div className="text-[10px] text-blue-400 mb-1">月額の内訳目安</div>
+                                            <div className="flex justify-between gap-4 text-xs">
+                                                <span className="text-blue-200">償却分:</span>
+                                                <span className="font-bold">{format(Math.floor(principal / leaseTerm))} 円</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4 text-xs">
+                                                <span className="text-emerald-300">配当金:</span>
+                                                <span className="font-bold">{format(Math.floor(dividendCost / leaseTerm))} 円</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4 text-xs">
+                                                <span className="text-orange-300">マージン:</span>
+                                                <span className="font-bold">{format(Math.floor(marginCost / leaseTerm))} 円</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* NAV Chart Section */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mt-4">
+                                <h3 className="text-lg font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                    <LineChartIcon size={20} className="text-blue-500" />
+                                    NAV曲線（トラック減価償却考慮）と損益分岐点
+                                </h3>
+                                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                                    トラック特有の短い法定耐用年数や定率法償却により、<strong className="text-blue-600">初期の帳簿価額（NAV）の下落は急激</strong>になります。定額のリース料回収に対してNAVの減価が早いため、利益転換点（損益分岐点）が後ろにズレるリスクをシミュレーションしています。
+                                </p>
+                                
+                                <div className="relative w-full overflow-hidden flex justify-center" style={{ height: '260px' }}>
+                                    <svg viewBox={`0 0 600 250`} className="w-full h-full max-w-xl">
+                                        {/* Grid & Axes */}
+                                        <line x1={offsetX} y1={offsetY} x2={offsetX} y2={offsetY+graphH} stroke="#cbd5e1" strokeWidth="1" />
+                                        <line x1={offsetX} y1={offsetY+graphH} x2={offsetX+graphW} y2={offsetY+graphH} stroke="#cbd5e1" strokeWidth="1" />
+                                        
+                                        {/* NAV Curve (Blue) - 直線ではなく曲線で描画 */}
+                                        <path d={navPathD} stroke="#3b82f6" strokeWidth="3" fill="none" className="transition-all duration-300" />
+                                        
+                                        <circle cx={getX(0)} cy={getY(vehiclePrice)} r="5" fill="#3b82f6" />
+                                        <circle cx={getX(leaseTerm)} cy={getY(residualValue)} r="5" fill="#3b82f6" />
+                                        <text x={getX(0)+10} y={getY(vehiclePrice)-10} fontSize="11" fill="#3b82f6" fontWeight="bold">SPC買取額 {format(vehiclePrice)}円</text>
+                                        <text x={getX(leaseTerm)} y={getY(residualValue)-15} textAnchor="end" fontSize="11" fill="#3b82f6" fontWeight="bold">残価 {format(residualValue)}円</text>
+                                        
+                                        {/* Cumulative Line (Orange) */}
+                                        <line x1={getX(0)} y1={getY(0)} x2={getX(leaseTerm)} y2={getY(monthlyPayment * leaseTerm)} stroke="#f97316" strokeWidth="3" />
+                                        <circle cx={getX(0)} cy={getY(0)} r="5" fill="#f97316" />
+                                        <circle cx={getX(leaseTerm)} cy={getY(monthlyPayment * leaseTerm)} r="5" fill="#f97316" />
+                                        <text x={getX(leaseTerm)} y={getY(monthlyPayment * leaseTerm)-15} textAnchor="end" fontSize="11" fill="#f97316" fontWeight="bold">総回収額 {format(monthlyPayment * leaseTerm)}円</text>
+
+                                        {/* Intersection Point */}
+                                        {crossT < leaseTerm && crossT > 0 && (
+                                            <g className="animate-pulse">
+                                                <line x1={crossX} y1={offsetY} x2={crossX} y2={offsetY+graphH} stroke="#ef4444" strokeWidth="1" strokeDasharray="4 4" />
+                                                <circle cx={crossX} cy={crossY} r="7" fill="#ef4444" />
+                                                <rect x={crossX-45} y={offsetY} width="90" height="22" fill="#ef4444" rx="4" />
+                                                <text x={crossX} y={offsetY+15} textAnchor="middle" fontSize="11" fill="white" fontWeight="bold">転換: {Math.ceil(crossT)}ヶ月目</text>
+                                            </g>
+                                        )}
+                                        
+                                        {/* Labels */}
+                                        <text x={offsetX+graphW/2} y={offsetY+graphH+35} textAnchor="middle" fontSize="12" fill="#64748b" fontWeight="bold">リース期間 (ヶ月)</text>
+                                        <text x={offsetX-15} y={offsetY+graphH/2} textAnchor="middle" transform={`rotate(-90, ${offsetX-45}, ${offsetY+graphH/2})`} fontSize="12" fill="#64748b" fontWeight="bold">金額 (円)</text>
+                                        
+                                        {/* X Axis Ticks */}
+                                        <text x={getX(0)} y={offsetY+graphH+15} textAnchor="middle" fontSize="11" fill="#94a3b8">0</text>
+                                        <text x={getX(leaseTerm)} y={offsetY+graphH+15} textAnchor="middle" fontSize="11" fill="#94a3b8">{leaseTerm}</text>
+                                    </svg>
+                                </div>
+                                
+                                <div className="flex justify-center gap-8 mt-2 border-t border-slate-100 pt-5">
+                                    <div className="flex items-center gap-2 text-sm text-slate-700 font-bold">
+                                        <div className="w-5 h-1 bg-blue-500 rounded"></div>
+                                        NAV（未償却残高）曲線
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-slate-700 font-bold">
+                                        <div className="w-5 h-1 bg-orange-500 rounded"></div>
+                                        累積回収額（リース料累積）
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVLPOS ファンドスキーム図 - 松竹梅</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @keyframes flow-forward {
+            from { stroke-dashoffset: 40; }
+            to { stroke-dashoffset: 0; }
+        }
+        @keyframes flow-reverse {
+            from { stroke-dashoffset: 0; }
+            to { stroke-dashoffset: 40; }
+        }
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 2px rgba(59,130,246,0.3)); }
+            50% { filter: drop-shadow(0 0 8px rgba(59,130,246,0.6)); }
+        }
+        .flow-animate {
+            stroke-dasharray: 12 8;
+            animation: flow-forward 1.2s linear infinite;
+        }
+        .flow-animate-reverse {
+            stroke-dasharray: 12 8;
+            animation: flow-reverse 1.2s linear infinite;
+        }
+        .node-highlight {
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+        .fade-transition {
+            transition: all 0.4s ease-in-out;
+        }
+        body { margin: 0; padding: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback } = React;
+
+        // ---- Tier definitions ----
+        const TIERS = {
+            ume:   { id: 'ume',   label: '梅プラン', color: '#ec4899', desc: 'コア4者構成', entities: ['investor','spc','curtis','transport'] },
+            take:  { id: 'take',  label: '竹プラン', color: '#a855f7', desc: '+ 私募取扱・AM', entities: ['investor','spc','curtis','transport','shibotor','am'] },
+            matsu: { id: 'matsu', label: '松プラン', color: '#f59e0b', desc: '全8者フル体制', entities: ['investor','spc','curtis','transport','shibotor','am','accounting','accounting2','truck'] },
+        };
+
+        // ---- Flow type definitions ----
+        const FLOW_TYPES = {
+            fund:     { id: 'fund',     label: '資金フロー',   color: '#3b82f6', dash: false,  desc: '出資・リース料等の資金移動' },
+            asset:    { id: 'asset',    label: '資産フロー',   color: '#10b981', dash: true,   desc: '車両等のアセット移動' },
+            contract: { id: 'contract', label: '契約関係',     color: '#94a3b8', dash: true,   desc: '各種業務委託・契約' },
+            fee:      { id: 'fee',      label: '報酬フロー',   color: '#f97316', dash: false,  desc: 'AM報酬・手数料等' },
+        };
+
+        // ---- Node positions (viewBox 1000x700) ----
+        const NODES = {
+            investor:    { id: 'investor',    label: '投資家',              sub: '匿名組合員',         x: 500, y: 70,  icon: 'users',    tier: 'ume' },
+            spc:         { id: 'spc',         label: 'SPC',                sub: '合同会社/営業者',     x: 500, y: 350, icon: 'landmark',  tier: 'ume', isCenter: true },
+            shibotor:    { id: 'shibotor',    label: '私募取扱業者',        sub: '募集・販売',          x: 780, y: 130, icon: 'briefcase', tier: 'take' },
+            am:          { id: 'am',          label: 'アセットマネージャー', sub: '運用管理',           x: 870, y: 310, icon: 'settings',  tier: 'take' },
+            accounting:  { id: 'accounting',  label: '会計事務所',          sub: '税務・決算',          x: 830, y: 500, icon: 'calculator',tier: 'matsu' },
+            accounting2: { id: 'accounting2', label: '会計事務委託先',      sub: '一般社団法人',        x: 830, y: 620, icon: 'file',      tier: 'matsu' },
+            curtis:      { id: 'curtis',      label: 'カーチスロジテック',   sub: '賃借人（マスターレッシー）', x: 500, y: 580, icon: 'building', tier: 'ume' },
+            transport:   { id: 'transport',   label: '運送会社',            sub: 'エンドユーザー',      x: 230, y: 580, icon: 'truck',     tier: 'ume' },
+            truck:       { id: 'truck',       label: 'トラック',            sub: '車両資産',            x: 150, y: 350, icon: 'truck2',    tier: 'matsu' },
+        };
+
+        // ---- Edges / flows ----
+        const EDGES = [
+            // 資金フロー
+            { id: 'e1', from: 'investor',  to: 'spc',       type: 'fund',     label: '出資金',           contract: '匿名組合契約',       tier: 'ume' },
+            { id: 'e2', from: 'spc',       to: 'investor',  type: 'fund',     label: '配当金',           contract: '匿名組合契約',       tier: 'ume', offsetY: 30 },
+            { id: 'e3', from: 'curtis',    to: 'spc',       type: 'fund',     label: 'マスターリース料', contract: 'マスターリース契約', tier: 'ume', offsetX: 30 },
+            { id: 'e4', from: 'transport', to: 'curtis',    type: 'fund',     label: 'サブリース料',     contract: 'サブリース契約',     tier: 'ume' },
+            { id: 'e14',from: 'transport', to: 'spc',       type: 'fund',     label: '車両売却代金',     contract: '車両売買契約',       tier: 'ume' },
+
+            // 資産フロー
+            { id: 'e5', from: 'truck',     to: 'spc',       type: 'asset',    label: '車両取得',         contract: '',                   tier: 'matsu' },
+            { id: 'e6', from: 'spc',       to: 'curtis',    type: 'asset',    label: '車両リース',       contract: 'マスターリース契約', tier: 'ume', offsetX: -30 },
+            { id: 'e7', from: 'curtis',    to: 'transport', type: 'asset',    label: '車両転貸',         contract: 'サブリース契約',     tier: 'ume', offsetY: 20 },
+
+            // 契約関係
+            { id: 'e8', from: 'spc',       to: 'shibotor',  type: 'contract', label: '',                 contract: '私募取扱業務契約',   tier: 'take' },
+            { id: 'e9', from: 'spc',       to: 'am',        type: 'contract', label: '',                 contract: 'AM契約',             tier: 'take' },
+            { id: 'e10',from: 'spc',       to: 'am',        type: 'contract', label: '',                 contract: '顧客紹介業務契約',   tier: 'take', offsetY: 25 },
+            { id: 'e11',from: 'spc',       to: 'accounting',type: 'contract', label: '',                 contract: '会計事務委託契約(1)', tier: 'matsu' },
+            { id: 'e12',from: 'spc',       to: 'accounting2',type:'contract', label: '',                 contract: '会計事務委託契約(2)', tier: 'matsu' },
+
+            // 報酬フロー
+            { id: 'e13a',from: 'spc',      to: 'am',        type: 'fee',      label: 'AM報酬',           contract: 'AM契約',             tier: 'take', offsetY: -25 },
+            { id: 'e13b',from: 'spc',      to: 'shibotor',  type: 'fee',      label: '取扱手数料',       contract: '私募取扱業務契約',   tier: 'take', offsetX: 20 },
+            { id: 'e13c',from: 'spc',      to: 'accounting',type: 'fee',      label: '報酬',             contract: '会計事務委託契約(1)', tier: 'matsu', offsetX: 20 },
+        ];
+
+        // ---- SVG Icon components ----
+        const Icons = {
+            users: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            ),
+            landmark: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/>
+                    <line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>
+                </svg>
+            ),
+            briefcase: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                </svg>
+            ),
+            settings: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+            ),
+            calculator: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/>
+                    <line x1="8" y1="10" x2="8" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/>
+                    <line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/>
+                </svg>
+            ),
+            file: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/>
+                </svg>
+            ),
+            building: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+                    <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>
+                </svg>
+            ),
+            truck: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5"/><path d="M14 17h1"/>
+                    <circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                </svg>
+            ),
+            truck2: (props) => (
+                <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5"/><path d="M14 17h1"/>
+                    <circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                    <rect x="3" y="7" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1" fill="none"/>
+                </svg>
+            ),
+        };
+
+        // ---- Tier ordering for edges ----
+        const TIER_ORDER = { ume: 0, take: 1, matsu: 2 };
+
+        function isEntityVisible(entityId, tier) {
+            return TIERS[tier].entities.includes(entityId);
+        }
+
+        function isEdgeVisible(edge, tier) {
+            return TIER_ORDER[edge.tier] <= TIER_ORDER[tier];
+        }
+
+        // ---- Main component ----
+        function App() {
+            const [selectedTier, setSelectedTier] = useState('matsu');
+            const [selectedNode, setSelectedNode] = useState(null);
+            const [flowToggles, setFlowToggles] = useState({ fund: true, asset: true, contract: true, fee: true });
+            const [animateFlows, setAnimateFlows] = useState(true);
+
+            const toggleFlow = useCallback((flowType) => {
+                setFlowToggles(prev => ({ ...prev, [flowType]: !prev[flowType] }));
+            }, []);
+
+            const handleNodeClick = useCallback((nodeId) => {
+                setSelectedNode(prev => prev === nodeId ? null : nodeId);
+            }, []);
+
+            const visibleNodes = useMemo(() => {
+                return Object.values(NODES).filter(n => isEntityVisible(n.id, selectedTier));
+            }, [selectedTier]);
+
+            const visibleEdges = useMemo(() => {
+                return EDGES.filter(e => {
+                    if (!isEdgeVisible(e, selectedTier)) return false;
+                    if (!flowToggles[e.type]) return false;
+                    return true;
+                });
+            }, [selectedTier, flowToggles]);
+
+            // Compute edge path with offset
+            const getEdgePath = useCallback((edge) => {
+                const from = NODES[edge.from];
+                const to = NODES[edge.to];
+                const dx = to.x - from.x;
+                const dy = to.y - from.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                const ux = dx / len;
+                const uy = dy / len;
+                // Normal vector
+                const nx = -uy;
+                const ny = ux;
+
+                const ox = (edge.offsetX || 0);
+                const oy = (edge.offsetY || 0);
+
+                // Pad start/end from node center
+                const pad = 55;
+                const sx = from.x + ux * pad + nx * ox + ux * oy * 0;
+                const sy = from.y + uy * pad + ny * ox + uy * 0;
+                const ex = to.x - ux * pad + nx * ox;
+                const ey = to.y - uy * pad + ny * ox;
+
+                // Apply Y offset for parallel lines
+                const sxf = sx + nx * oy;
+                const syf = sy + ny * oy;
+                const exf = ex + nx * oy;
+                const eyf = ey + ny * oy;
+
+                const mx = (sxf + exf) / 2;
+                const my = (syf + eyf) / 2;
+
+                let angle = Math.atan2(eyf - syf, exf - sxf) * (180 / Math.PI);
+                if (angle > 90) angle -= 180;
+                if (angle < -90) angle += 180;
+
+                return { sx: sxf, sy: syf, ex: exf, ey: eyf, mx, my, angle };
+            }, []);
+
+            const isNodeRelated = useCallback((nodeId) => {
+                if (!selectedNode) return true;
+                if (nodeId === selectedNode) return true;
+                return visibleEdges.some(e =>
+                    (e.from === selectedNode && e.to === nodeId) ||
+                    (e.to === selectedNode && e.from === nodeId)
+                );
+            }, [selectedNode, visibleEdges]);
+
+            const isEdgeRelated = useCallback((edge) => {
+                if (!selectedNode) return true;
+                return edge.from === selectedNode || edge.to === selectedNode;
+            }, [selectedNode]);
+
+            const selectedNodeData = selectedNode ? NODES[selectedNode] : null;
+            const relatedContracts = selectedNode
+                ? visibleEdges.filter(e => e.from === selectedNode || e.to === selectedNode).filter(e => e.contract)
+                : [];
+
+            return (
+                <div className="flex flex-col min-h-screen text-white font-sans">
+                    {/* Header */}
+                    <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-5 shadow-lg border-b border-slate-700">
+                        <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
+                            <div>
+                                <h1 className="text-2xl font-bold tracking-tight">CVLPOS ファンドスキーム図</h1>
+                                <p className="text-slate-400 mt-1 text-sm">ステークホルダーをクリックして関係性を確認 / 松竹梅プランを切替</p>
+                            </div>
+                            {/* Tier switcher */}
+                            <div className="flex gap-2">
+                                {Object.values(TIERS).map(tier => (
+                                    <button
+                                        key={tier.id}
+                                        onClick={() => { setSelectedTier(tier.id); setSelectedNode(null); }}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 border-2 ${
+                                            selectedTier === tier.id
+                                                ? 'text-white shadow-lg scale-105'
+                                                : 'bg-slate-800/50 text-slate-400 border-slate-600 hover:border-slate-400'
+                                        }`}
+                                        style={selectedTier === tier.id ? { borderColor: tier.color, backgroundColor: tier.color + '22', boxShadow: `0 0 20px ${tier.color}33` } : {}}
+                                    >
+                                        {tier.label}
+                                        <span className="block text-xs font-normal opacity-70">{tier.desc}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+                        {/* Left panel */}
+                        <aside className="lg:col-span-3 flex flex-col gap-3">
+                            {/* Flow toggles */}
+                            <div className="bg-slate-800/80 backdrop-blur p-4 rounded-xl border border-slate-700">
+                                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">フロー表示切替</h2>
+                                {Object.values(FLOW_TYPES).map(ft => (
+                                    <label key={ft.id} className="flex items-center gap-3 py-2 cursor-pointer hover:bg-slate-700/30 px-2 rounded-lg transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={flowToggles[ft.id]}
+                                            onChange={() => toggleFlow(ft.id)}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        <span className="flex items-center gap-2 flex-1">
+                                            <span className="w-8 h-0.5 inline-block rounded" style={{
+                                                backgroundColor: ft.color,
+                                                borderTop: ft.dash ? `2px dashed ${ft.color}` : 'none',
+                                                height: ft.dash ? 0 : 2,
+                                            }}></span>
+                                            <span className="text-sm font-medium">{ft.label}</span>
+                                        </span>
+                                    </label>
+                                ))}
+                                <div className="mt-3 pt-3 border-t border-slate-700">
+                                    <label className="flex items-center gap-3 cursor-pointer px-2">
+                                        <input type="checkbox" checked={animateFlows} onChange={() => setAnimateFlows(!animateFlows)} className="w-4 h-4 rounded" />
+                                        <span className="text-sm">アニメーション</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Selected node info */}
+                            {selectedNodeData && (
+                                <div className="bg-slate-800/80 backdrop-blur p-4 rounded-xl border border-slate-700">
+                                    <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">選択中</h2>
+                                    <h3 className="text-lg font-bold text-white">{selectedNodeData.label}</h3>
+                                    <p className="text-sm text-slate-400 mb-3">{selectedNodeData.sub}</p>
+                                    {relatedContracts.length > 0 && (
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-500 mb-2">関連契約</h4>
+                                            <ul className="space-y-1">
+                                                {relatedContracts.map((e, i) => e.contract && (
+                                                    <li key={i} className="text-xs px-2 py-1.5 rounded bg-slate-700/50 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: FLOW_TYPES[e.type].color }}></span>
+                                                        {e.contract}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    <button onClick={() => setSelectedNode(null)} className="mt-3 text-xs text-slate-500 hover:text-slate-300 underline">選択解除</button>
+                                </div>
+                            )}
+
+                            {/* Legend */}
+                            <div className="bg-slate-800/80 backdrop-blur p-4 rounded-xl border border-slate-700">
+                                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">凡例</h2>
+                                <div className="space-y-2 text-xs">
+                                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span>資金の移動</div>
+                                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500"></span>資産の移動</div>
+                                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-slate-400"></span>契約関係</div>
+                                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-orange-500"></span>報酬の支払</div>
+                                </div>
+                            </div>
+                        </aside>
+
+                        {/* Main SVG diagram */}
+                        <div className="lg:col-span-9 bg-slate-800/50 backdrop-blur rounded-xl border border-slate-700 overflow-hidden flex items-center justify-center min-h-[600px] relative p-2">
+                            <svg viewBox="0 0 1000 700" className="w-full h-auto max-w-full">
+                                <defs>
+                                    {/* Arrow markers for each flow type */}
+                                    {Object.values(FLOW_TYPES).map(ft => (
+                                        <marker key={ft.id} id={`arrow-${ft.id}`} markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+                                            <polygon points="0 0, 10 4, 0 8" fill={ft.color} />
+                                        </marker>
+                                    ))}
+                                    <marker id="arrow-faded" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+                                        <polygon points="0 0, 10 4, 0 8" fill="#334155" />
+                                    </marker>
+                                    {/* Glow filter for center SPC */}
+                                    <filter id="glow">
+                                        <feGaussianBlur stdDeviation="3" result="blur"/>
+                                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                    </filter>
+                                    <filter id="shadow">
+                                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.3"/>
+                                    </filter>
+                                </defs>
+
+                                {/* Render edges */}
+                                {visibleEdges.map(edge => {
+                                    const ft = FLOW_TYPES[edge.type];
+                                    const path = getEdgePath(edge);
+                                    const related = isEdgeRelated(edge);
+                                    const opacity = related ? 0.9 : 0.15;
+                                    const strokeW = related ? (selectedNode ? 3 : 2) : 1;
+                                    const color = related ? ft.color : '#334155';
+                                    const markerId = related ? `url(#arrow-${edge.type})` : 'url(#arrow-faded)';
+
+                                    let dashArray = 'none';
+                                    let animClass = '';
+                                    if (ft.dash) {
+                                        dashArray = '6 4';
+                                    }
+                                    if (animateFlows && related) {
+                                        animClass = 'flow-animate';
+                                        dashArray = '12 8';
+                                    }
+
+                                    const contractLabel = edge.contract || '';
+                                    const flowLabel = edge.label || '';
+                                    const displayLabel = contractLabel || flowLabel;
+
+                                    return (
+                                        <g key={edge.id} className="fade-transition" style={{ opacity }}>
+                                            <line
+                                                x1={path.sx} y1={path.sy}
+                                                x2={path.ex} y2={path.ey}
+                                                stroke={color}
+                                                strokeWidth={strokeW}
+                                                markerEnd={markerId}
+                                                strokeDasharray={dashArray}
+                                                className={animClass}
+                                            />
+                                            {displayLabel && (
+                                                <g transform={`translate(${path.mx}, ${path.my})`}>
+                                                    <rect
+                                                        x={-displayLabel.length * 5.5 - 4}
+                                                        y={-10}
+                                                        width={displayLabel.length * 11 + 8}
+                                                        height={20}
+                                                        rx="4"
+                                                        fill="#1e293b"
+                                                        fillOpacity="0.9"
+                                                        stroke={color}
+                                                        strokeWidth="0.5"
+                                                    />
+                                                    <text
+                                                        textAnchor="middle"
+                                                        dominantBaseline="central"
+                                                        fontSize="10"
+                                                        fontWeight="500"
+                                                        fill={related ? '#e2e8f0' : '#475569'}
+                                                    >
+                                                        {flowLabel && contractLabel ? `${flowLabel}` : displayLabel}
+                                                    </text>
+                                                    {flowLabel && contractLabel && (
+                                                        <text
+                                                            textAnchor="middle"
+                                                            dominantBaseline="central"
+                                                            fontSize="8"
+                                                            fill={related ? '#94a3b8' : '#475569'}
+                                                            y="12"
+                                                        >
+                                                            ({contractLabel})
+                                                        </text>
+                                                    )}
+                                                </g>
+                                            )}
+                                        </g>
+                                    );
+                                })}
+
+                                {/* Render nodes */}
+                                {visibleNodes.map(node => {
+                                    const related = isNodeRelated(node.id);
+                                    const opacity = related ? 1 : 0.2;
+                                    const isSelected = selectedNode === node.id;
+                                    const isCenter = node.isCenter;
+                                    const IconComp = Icons[node.icon];
+
+                                    const w = isCenter ? 140 : 120;
+                                    const h = isCenter ? 80 : 65;
+                                    const tierColor = TIERS[selectedTier].color;
+
+                                    let borderColor = '#475569';
+                                    if (isSelected) borderColor = '#3b82f6';
+                                    else if (isCenter) borderColor = tierColor;
+
+                                    return (
+                                        <g
+                                            key={node.id}
+                                            transform={`translate(${node.x - w/2}, ${node.y - h/2})`}
+                                            className={`fade-transition cursor-pointer ${isSelected ? 'node-highlight' : ''}`}
+                                            style={{ opacity }}
+                                            onClick={() => handleNodeClick(node.id)}
+                                        >
+                                            <rect
+                                                width={w} height={h} rx="12"
+                                                fill={isCenter ? '#1e293b' : '#0f172a'}
+                                                stroke={borderColor}
+                                                strokeWidth={isSelected || isCenter ? 2.5 : 1.5}
+                                                filter="url(#shadow)"
+                                            />
+                                            {isCenter && (
+                                                <rect
+                                                    width={w} height={h} rx="12"
+                                                    fill="none"
+                                                    stroke={tierColor}
+                                                    strokeWidth="1"
+                                                    strokeDasharray="4 2"
+                                                    opacity="0.5"
+                                                    x="-3" y="-3"
+                                                    style={{ width: w + 6, height: h + 6 }}
+                                                />
+                                            )}
+                                            <foreignObject width={w} height={h}>
+                                                <div
+                                                    style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
+                                                >
+                                                    <IconComp width={isCenter ? 22 : 18} height={isCenter ? 22 : 18} style={{ color: isCenter ? tierColor : '#94a3b8', marginBottom: 2 }} />
+                                                    <span style={{ fontSize: isCenter ? 13 : 11, fontWeight: 700, color: '#f1f5f9', textAlign: 'center', lineHeight: 1.2 }}>
+                                                        {node.label}
+                                                    </span>
+                                                    <span style={{ fontSize: 9, color: '#64748b', marginTop: 2, background: '#1e293b', padding: '1px 6px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                                                        {node.sub}
+                                                    </span>
+                                                </div>
+                                            </foreignObject>
+                                        </g>
+                                    );
+                                })}
+                            </svg>
+
+                            {/* Current tier badge */}
+                            <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-bold border" style={{
+                                borderColor: TIERS[selectedTier].color,
+                                color: TIERS[selectedTier].color,
+                                backgroundColor: TIERS[selectedTier].color + '15',
+                            }}>
+                                {TIERS[selectedTier].label} - {TIERS[selectedTier].desc}
+                            </div>
+
+                            {/* Entity count */}
+                            <div className="absolute top-4 right-4 text-xs text-slate-500">
+                                {visibleNodes.length} エンティティ / {visibleEdges.length} フロー
+                            </div>
+                        </div>
+                    </main>
+
+                    {/* Footer contract table */}
+                    <footer className="max-w-7xl w-full mx-auto p-4">
+                        <div className="bg-slate-800/80 backdrop-blur rounded-xl border border-slate-700 p-4 overflow-x-auto">
+                            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">契約一覧</h2>
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="text-slate-500 border-b border-slate-700">
+                                        <th className="text-left py-2 px-2">契約名</th>
+                                        <th className="text-left py-2 px-2">当事者</th>
+                                        <th className="text-left py-2 px-2">フロー種別</th>
+                                        <th className="text-left py-2 px-2">プラン</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {EDGES.filter(e => e.contract).map((e, i) => {
+                                        const visible = isEdgeVisible(e, selectedTier) && flowToggles[e.type];
+                                        return (
+                                            <tr key={i} className={`border-b border-slate-700/50 ${visible ? '' : 'opacity-30'}`}>
+                                                <td className="py-2 px-2 font-medium text-slate-300">{e.contract}</td>
+                                                <td className="py-2 px-2 text-slate-400">{NODES[e.from].label} → {NODES[e.to].label}</td>
+                                                <td className="py-2 px-2">
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: FLOW_TYPES[e.type].color }}></span>
+                                                        {FLOW_TYPES[e.type].label}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 px-2">
+                                                    <span className="px-2 py-0.5 rounded-full text-xs" style={{
+                                                        backgroundColor: TIERS[e.tier].color + '22',
+                                                        color: TIERS[e.tier].color,
+                                                    }}>
+                                                        {TIERS[e.tier].label}〜
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

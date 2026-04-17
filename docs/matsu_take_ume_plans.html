@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商用車リースバック 松竹梅プラン比較</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #f8fafc; font-family: sans-serif; }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #2B6CB0;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        input[type=range]:focus { outline: none; }
+
+        .bar-animate {
+            transition: height 0.5s ease, background-color 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+        }
+        .card-hover {
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .accordion-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease;
+        }
+        .accordion-body.open {
+            max-height: 2000px;
+        }
+        @keyframes badge-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(43,108,176,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(43,108,176,0); }
+        }
+        .badge-pulse { animation: badge-pulse 2s infinite; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        // ========== アイコン ==========
+        const CheckIcon = ({ className = "" }) => (
+            <svg width="18" height="18" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        );
+        const XIcon = ({ className = "" }) => (
+            <svg width="18" height="18" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        );
+        const ChevronDown = ({ className = "", size = 20 }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        );
+        const PhoneIcon = ({ size = 20, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        );
+        const MailIcon = ({ size = 20, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        );
+        const TruckIcon = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5"/><path d="M14 17h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+        );
+
+        // ========== データ定義 ==========
+        const VEHICLES = [
+            { id: "elf", name: "いすゞ エルフ (小型)", basePrice: 4500000 },
+            { id: "ranger", name: "日野 レンジャー (中型)", basePrice: 9000000 },
+            { id: "supergreat", name: "三菱ふそう スーパーグレート (大型)", basePrice: 16000000 },
+        ];
+
+        const PLANS = [
+            {
+                key: "ume",
+                name: "梅",
+                label: "ベーシック",
+                color: "#48BB78",
+                borderColor: "border-green-400",
+                bgLight: "bg-green-50",
+                textColor: "text-green-700",
+                badgeBg: "bg-green-100",
+                priceMultiplier: 1.0,
+                monthlyRate: 0.022,
+                badge: null,
+                target: "コストを最小限に抑えたい事業者様",
+                description: "必要最低限のサービスでリースバックを実現。車両の所有権移転とリース契約のみのシンプルなプランです。",
+                features: [
+                    "車両買取 + リースバック契約",
+                    "月額固定リース料",
+                    "契約期間中の使用権保証",
+                    "基本的な契約管理",
+                ],
+            },
+            {
+                key: "take",
+                name: "竹",
+                label: "スタンダード",
+                color: "#2B6CB0",
+                borderColor: "border-blue-500",
+                bgLight: "bg-blue-50",
+                textColor: "text-blue-700",
+                badgeBg: "bg-blue-100",
+                priceMultiplier: 1.08,
+                monthlyRate: 0.019,
+                badge: "おすすめ",
+                target: "バランス重視の事業者様",
+                description: "充実したサポートと柔軟な契約条件で、安心のリースバック体験を提供します。",
+                features: [
+                    "梅プランの全機能",
+                    "車両メンテナンス基本パック",
+                    "専任担当者によるサポート",
+                    "中途解約オプション（条件付）",
+                    "車両入替時の優先対応",
+                    "月次レポート提供",
+                ],
+            },
+            {
+                key: "matsu",
+                name: "松",
+                label: "プレミアム",
+                color: "#ED8936",
+                borderColor: "border-orange-400",
+                bgLight: "bg-orange-50",
+                textColor: "text-orange-700",
+                badgeBg: "bg-orange-100",
+                priceMultiplier: 1.15,
+                monthlyRate: 0.017,
+                badge: null,
+                target: "フルサポートを求める大手事業者様",
+                description: "メンテナンス・保険・代車まで全て込み。車両管理の全てをお任せいただけるオールインワンプランです。",
+                features: [
+                    "竹プランの全機能",
+                    "フルメンテナンスパック",
+                    "任意保険込み",
+                    "代車サービス（故障・事故時）",
+                    "リース期間終了時の買取保証",
+                    "複数台割引適用",
+                    "24時間緊急サポート",
+                    "テレマティクス車両管理",
+                ],
+            },
+        ];
+
+        const COMPARISON_SECTIONS = [
+            {
+                title: "契約・基本サービス",
+                items: [
+                    { label: "車両買取 + リースバック", ume: true, take: true, matsu: true },
+                    { label: "月額固定リース料", ume: true, take: true, matsu: true },
+                    { label: "契約期間中の使用権保証", ume: true, take: true, matsu: true },
+                    { label: "基本的な契約管理", ume: true, take: true, matsu: true },
+                    { label: "専任担当者", ume: false, take: true, matsu: true },
+                    { label: "月次レポート", ume: false, take: true, matsu: true },
+                ],
+            },
+            {
+                title: "メンテナンス・保険",
+                items: [
+                    { label: "車両メンテナンス基本パック", ume: false, take: true, matsu: true },
+                    { label: "フルメンテナンスパック", ume: false, take: false, matsu: true },
+                    { label: "任意保険込み", ume: false, take: false, matsu: true },
+                    { label: "代車サービス", ume: false, take: false, matsu: true },
+                    { label: "24時間緊急サポート", ume: false, take: false, matsu: true },
+                ],
+            },
+            {
+                title: "柔軟性・付加価値",
+                items: [
+                    { label: "中途解約オプション", ume: false, take: true, matsu: true },
+                    { label: "車両入替時の優先対応", ume: false, take: true, matsu: true },
+                    { label: "リース終了時の買取保証", ume: false, take: false, matsu: true },
+                    { label: "複数台割引", ume: false, take: false, matsu: true },
+                    { label: "テレマティクス車両管理", ume: false, take: false, matsu: true },
+                ],
+            },
+        ];
+
+        // ========== メインApp ==========
+        function App() {
+            const [selectedVehicle, setSelectedVehicle] = useState("elf");
+            const [leaseTerm, setLeaseTerm] = useState(60);
+            const [openSections, setOpenSections] = useState({});
+
+            const vehicle = VEHICLES.find(v => v.id === selectedVehicle);
+
+            const calculations = useMemo(() => {
+                return PLANS.map(plan => {
+                    const acquisitionPrice = Math.floor(vehicle.basePrice * plan.priceMultiplier);
+                    const monthlyFee = Math.floor(acquisitionPrice * plan.monthlyRate);
+                    const totalCost = monthlyFee * leaseTerm;
+                    return { ...plan, acquisitionPrice, monthlyFee, totalCost };
+                });
+            }, [selectedVehicle, leaseTerm]);
+
+            const umeMonthly = calculations[0].monthlyFee;
+            const maxMonthly = Math.max(...calculations.map(c => c.monthlyFee));
+            const maxTotal = Math.max(...calculations.map(c => c.totalCost));
+
+            const toggleSection = (idx) => {
+                setOpenSections(prev => ({ ...prev, [idx]: !prev[idx] }));
+            };
+
+            const formatYen = (n) => {
+                if (n >= 10000) {
+                    const man = Math.floor(n / 10000);
+                    const remainder = n % 10000;
+                    if (remainder === 0) return `${man.toLocaleString()}万円`;
+                    return `${man.toLocaleString()}万${remainder.toLocaleString()}円`;
+                }
+                return `${n.toLocaleString()}円`;
+            };
+
+            return (
+                <div className="min-h-screen" style={{ backgroundColor: '#f8fafc' }}>
+
+                    {/* ========== HEADER ========== */}
+                    <header className="text-white py-12 px-4" style={{ background: 'linear-gradient(135deg, #1A365D 0%, #2B6CB0 100%)' }}>
+                        <div className="max-w-6xl mx-auto text-center">
+                            <div className="flex items-center justify-center gap-3 mb-4">
+                                <TruckIcon size={36} className="text-orange-300" />
+                                <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+                                    商用車リースバック 松竹梅プラン
+                                </h1>
+                            </div>
+                            <p className="text-blue-200 text-lg max-w-2xl mx-auto">
+                                お客様のニーズに合わせた3つのプランをご用意。
+                                最適なリースバックプランをお選びください。
+                            </p>
+                            <div className="mt-6 flex justify-center gap-6 text-sm text-blue-200">
+                                <span>CVLPOS - Commercial Vehicle Lease-back POS System</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* ========== PLAN CARDS ========== */}
+                    <section className="max-w-6xl mx-auto px-4 -mt-8">
+                        <div className="grid md:grid-cols-3 gap-6">
+                            {PLANS.map((plan, i) => (
+                                <div
+                                    key={plan.key}
+                                    className={`card-hover relative bg-white rounded-xl shadow-lg border-t-4 p-6 ${plan.borderColor}`}
+                                    style={{ borderTopColor: plan.color }}
+                                >
+                                    {plan.badge && (
+                                        <div className="badge-pulse absolute -top-3 right-4 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
+                                            {plan.badge}
+                                        </div>
+                                    )}
+
+                                    <div className="text-center mb-4">
+                                        <span className={`inline-block text-4xl font-bold mb-1`} style={{ color: plan.color }}>
+                                            {plan.name}
+                                        </span>
+                                        <p className="text-gray-500 text-sm font-medium">{plan.label}</p>
+                                    </div>
+
+                                    <div className={`rounded-lg p-3 mb-4 text-center ${plan.bgLight}`}>
+                                        <p className="text-xs text-gray-500 mb-1">月額リース料目安</p>
+                                        <p className="text-2xl font-bold" style={{ color: plan.color }}>
+                                            {formatYen(Math.floor(VEHICLES[0].basePrice * plan.priceMultiplier * plan.monthlyRate))}
+                                            <span className="text-sm font-normal text-gray-500">〜 /月</span>
+                                        </p>
+                                        <p className="text-xs text-gray-400 mt-1">※エルフ・60ヶ月の場合</p>
+                                    </div>
+
+                                    <p className="text-gray-600 text-sm mb-4 leading-relaxed">{plan.description}</p>
+
+                                    <div className="mb-4">
+                                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">主な特徴</p>
+                                        <ul className="space-y-2">
+                                            {plan.features.map((f, fi) => (
+                                                <li key={fi} className="flex items-start gap-2 text-sm text-gray-700">
+                                                    <CheckIcon className="flex-shrink-0 mt-0.5" style={{ color: plan.color }} />
+                                                    <span>{f}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    <div className={`rounded-lg p-3 mb-4 ${plan.bgLight}`}>
+                                        <p className="text-xs font-semibold text-gray-500 mb-1">こんな方におすすめ</p>
+                                        <p className={`text-sm font-medium ${plan.textColor}`}>{plan.target}</p>
+                                    </div>
+
+                                    <button
+                                        className="w-full py-3 rounded-lg text-white font-semibold shadow-md hover:shadow-lg transition-shadow"
+                                        style={{ backgroundColor: plan.color }}
+                                        onClick={() => {
+                                            document.getElementById('contact-section').scrollIntoView({ behavior: 'smooth' });
+                                        }}
+                                    >
+                                        {plan.key === 'take' ? 'このプランで相談する' : '詳細を問い合わせる'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    {/* ========== SIMULATOR ========== */}
+                    <section className="max-w-6xl mx-auto px-4 mt-16">
+                        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
+                            <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A365D' }}>
+                                料金シミュレーター
+                            </h2>
+                            <p className="text-gray-500 text-sm mb-6">車種とリース期間を選択して、各プランの料金を比較できます。</p>
+
+                            <div className="grid md:grid-cols-2 gap-6 mb-8">
+                                {/* 車種選択 */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">車種を選択</label>
+                                    <select
+                                        value={selectedVehicle}
+                                        onChange={e => setSelectedVehicle(e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-700 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none"
+                                    >
+                                        {VEHICLES.map(v => (
+                                            <option key={v.id} value={v.id}>{v.name} — 基準価格 {formatYen(v.basePrice)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* リース期間 */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        リース期間: <span className="text-blue-600 font-bold">{leaseTerm}ヶ月</span>
+                                        <span className="text-gray-400 font-normal ml-1">({(leaseTerm / 12).toFixed(1)}年)</span>
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min={12}
+                                        max={84}
+                                        step={6}
+                                        value={leaseTerm}
+                                        onChange={e => setLeaseTerm(Number(e.target.value))}
+                                        className="w-full mt-2"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                        <span>12ヶ月</span>
+                                        <span>48ヶ月</span>
+                                        <span>84ヶ月</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 結果カード */}
+                            <div className="grid md:grid-cols-3 gap-4 mb-8">
+                                {calculations.map((calc, i) => {
+                                    const savingsVsUme = calc.monthlyFee - umeMonthly;
+                                    const savingsPercent = umeMonthly > 0 ? ((savingsVsUme / umeMonthly) * 100).toFixed(1) : 0;
+                                    return (
+                                        <div
+                                            key={calc.key}
+                                            className={`rounded-xl border-2 p-5 ${calc.key === 'take' ? 'ring-2 ring-blue-300' : ''}`}
+                                            style={{ borderColor: calc.color }}
+                                        >
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div>
+                                                    <span className="text-2xl font-bold" style={{ color: calc.color }}>{calc.name}</span>
+                                                    <span className="text-gray-500 text-sm ml-2">{calc.label}</span>
+                                                </div>
+                                                {calc.badge && (
+                                                    <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full">{calc.badge}</span>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">取得価格</span>
+                                                    <span className="font-semibold text-gray-800">{formatYen(calc.acquisitionPrice)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">月額リース料</span>
+                                                    <span className="font-bold text-lg" style={{ color: calc.color }}>{formatYen(calc.monthlyFee)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">総支払額 ({leaseTerm}ヶ月)</span>
+                                                    <span className="font-semibold text-gray-800">{formatYen(calc.totalCost)}</span>
+                                                </div>
+                                                {i > 0 && (
+                                                    <div className="flex justify-between pt-1 border-t border-gray-100">
+                                                        <span className="text-gray-400 text-xs">梅プランとの月額差</span>
+                                                        <span className="text-xs font-medium text-orange-600">
+                                                            +{formatYen(savingsVsUme)} (+{savingsPercent}%)
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* バーチャート */}
+                            <div className="bg-gray-50 rounded-xl p-6">
+                                <h3 className="text-sm font-semibold text-gray-600 mb-4">月額リース料 比較チャート</h3>
+                                <div className="flex items-end justify-center gap-8 h-48">
+                                    {calculations.map((calc) => {
+                                        const heightPct = maxMonthly > 0 ? (calc.monthlyFee / maxMonthly) * 100 : 0;
+                                        return (
+                                            <div key={calc.key} className="flex flex-col items-center" style={{ width: '120px' }}>
+                                                <span className="text-xs font-bold mb-1" style={{ color: calc.color }}>
+                                                    {formatYen(calc.monthlyFee)}
+                                                </span>
+                                                <div
+                                                    className="bar-animate w-16 rounded-t-lg"
+                                                    style={{
+                                                        height: `${heightPct * 1.6}px`,
+                                                        backgroundColor: calc.color,
+                                                        minHeight: '20px',
+                                                    }}
+                                                />
+                                                <div className="mt-2 text-center">
+                                                    <span className="text-lg font-bold" style={{ color: calc.color }}>{calc.name}</span>
+                                                    <p className="text-xs text-gray-500">{calc.label}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="mt-6">
+                                    <h3 className="text-sm font-semibold text-gray-600 mb-4">総支払額 比較チャート ({leaseTerm}ヶ月)</h3>
+                                    <div className="space-y-3">
+                                        {calculations.map((calc) => {
+                                            const widthPct = maxTotal > 0 ? (calc.totalCost / maxTotal) * 100 : 0;
+                                            return (
+                                                <div key={calc.key} className="flex items-center gap-3">
+                                                    <span className="w-8 text-lg font-bold text-right" style={{ color: calc.color }}>{calc.name}</span>
+                                                    <div className="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden">
+                                                        <div
+                                                            className="bar-animate h-full rounded-full flex items-center justify-end pr-2"
+                                                            style={{ width: `${widthPct}%`, backgroundColor: calc.color }}
+                                                        >
+                                                            <span className="text-white text-xs font-bold whitespace-nowrap">
+                                                                {formatYen(calc.totalCost)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* ========== FEATURE COMPARISON TABLE (ACCORDION) ========== */}
+                    <section className="max-w-6xl mx-auto px-4 mt-16">
+                        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
+                            <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A365D' }}>
+                                機能比較表
+                            </h2>
+                            <p className="text-gray-500 text-sm mb-6">各セクションをクリックして詳細を確認できます。</p>
+
+                            {/* テーブルヘッダー */}
+                            <div className="hidden md:grid grid-cols-4 gap-2 mb-2 px-4">
+                                <div></div>
+                                {PLANS.map(plan => (
+                                    <div key={plan.key} className="text-center font-bold text-sm" style={{ color: plan.color }}>
+                                        {plan.name} ({plan.label})
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="space-y-2">
+                                {COMPARISON_SECTIONS.map((section, idx) => (
+                                    <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                                        <button
+                                            onClick={() => toggleSection(idx)}
+                                            className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                                        >
+                                            <span className="font-semibold text-gray-700">{section.title}</span>
+                                            <ChevronDown
+                                                className={`transform transition-transform ${openSections[idx] ? 'rotate-180' : ''} text-gray-400`}
+                                            />
+                                        </button>
+                                        <div className={`accordion-body ${openSections[idx] ? 'open' : ''}`}>
+                                            <div className="px-4 py-2">
+                                                {section.items.map((item, ii) => (
+                                                    <div
+                                                        key={ii}
+                                                        className={`grid grid-cols-1 md:grid-cols-4 gap-2 py-2.5 ${ii < section.items.length - 1 ? 'border-b border-gray-100' : ''}`}
+                                                    >
+                                                        <div className="text-sm text-gray-700 font-medium">{item.label}</div>
+                                                        {/* 梅 */}
+                                                        <div className="flex items-center md:justify-center gap-1">
+                                                            <span className="md:hidden text-xs text-gray-400 w-8">梅:</span>
+                                                            {item.ume
+                                                                ? <CheckIcon className="text-green-500" />
+                                                                : <XIcon className="text-gray-300" />
+                                                            }
+                                                        </div>
+                                                        {/* 竹 */}
+                                                        <div className="flex items-center md:justify-center gap-1">
+                                                            <span className="md:hidden text-xs text-gray-400 w-8">竹:</span>
+                                                            {item.take
+                                                                ? <CheckIcon className="text-blue-500" />
+                                                                : <XIcon className="text-gray-300" />
+                                                            }
+                                                        </div>
+                                                        {/* 松 */}
+                                                        <div className="flex items-center md:justify-center gap-1">
+                                                            <span className="md:hidden text-xs text-gray-400 w-8">松:</span>
+                                                            {item.matsu
+                                                                ? <CheckIcon className="text-orange-500" />
+                                                                : <XIcon className="text-gray-300" />
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* 全て展開/閉じるボタン */}
+                            <div className="mt-4 text-center">
+                                <button
+                                    onClick={() => {
+                                        const allOpen = COMPARISON_SECTIONS.every((_, idx) => openSections[idx]);
+                                        const newState = {};
+                                        COMPARISON_SECTIONS.forEach((_, idx) => { newState[idx] = !allOpen; });
+                                        setOpenSections(newState);
+                                    }}
+                                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                                >
+                                    {COMPARISON_SECTIONS.every((_, idx) => openSections[idx]) ? '全て閉じる' : '全て展開する'}
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* ========== CONTACT CTA ========== */}
+                    <section id="contact-section" className="max-w-6xl mx-auto px-4 mt-16 mb-16">
+                        <div className="rounded-xl text-white p-8 md:p-12 text-center" style={{ background: 'linear-gradient(135deg, #1A365D 0%, #2B6CB0 60%, #ED8936 100%)' }}>
+                            <h2 className="text-2xl md:text-3xl font-bold mb-3">まずはお気軽にご相談ください</h2>
+                            <p className="text-blue-100 mb-8 max-w-xl mx-auto">
+                                お客様の車両構成・事業規模に合わせて、最適なプランをご提案いたします。
+                                無料のお見積もり・ご相談を承ります。
+                            </p>
+
+                            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                                <a
+                                    href="tel:03-XXXX-XXXX"
+                                    className="inline-flex items-center justify-center gap-2 bg-white text-blue-800 font-bold px-8 py-4 rounded-lg shadow-lg hover:shadow-xl transition-shadow"
+                                >
+                                    <PhoneIcon size={20} />
+                                    <span>03-XXXX-XXXX</span>
+                                </a>
+                                <a
+                                    href="mailto:info@cvlpos.example.com"
+                                    className="inline-flex items-center justify-center gap-2 bg-orange-500 text-white font-bold px-8 py-4 rounded-lg shadow-lg hover:shadow-xl transition-shadow"
+                                >
+                                    <MailIcon size={20} />
+                                    <span>メールで問い合わせ</span>
+                                </a>
+                            </div>
+
+                            <p className="text-blue-200 text-xs mt-6">
+                                受付時間: 平日 9:00 - 18:00 / 土日祝日休み
+                            </p>
+                        </div>
+                    </section>
+
+                    {/* ========== FOOTER ========== */}
+                    <footer className="text-center py-6 text-gray-400 text-xs border-t border-gray-200">
+                        <p>&copy; 2026 CVLPOS - Commercial Vehicle Lease-back POS System. All rights reserved.</p>
+                        <p className="mt-1">※本ページの金額は参考値です。実際の契約条件により異なります。</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
