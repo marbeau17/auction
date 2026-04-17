@@ -4,23 +4,33 @@ Generates professional ご説明資料 (client proposal) documents containing
 integrated pricing simulation results from the CVLPOS 3-step pipeline.
 
 Design constraints:
-- Runs on Vercel (Lambda): uses lightweight HTML-to-PDF approach
-- WeasyPrint for PDF when available; falls back to HTML output
-- Matplotlib for NAV charts when available; graceful degradation
-- Accepts both Pydantic model objects and plain dicts
+- Runs on Vercel (Lambda, 50 MB cap, no native cairo/pango libs)
+- Heavy optional deps (matplotlib, weasyprint) are lazily imported INSIDE
+  the functions that use them, so module import always succeeds even when
+  those libraries are absent or fail to load native dependencies.
+- Falls back to ``LightweightPDFGenerator`` (fpdf2-based, pure-Python)
+  whenever WeasyPrint is unavailable or times out.
+- Accepts both Pydantic model objects and plain dicts.
 """
 
 from __future__ import annotations
 
 import io
 import base64
-import signal
 import threading
 from datetime import date
-from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import structlog
+
+# fpdf2 is in pyproject and is pure-Python — safe to import at module top.
+# If for any reason it isn't installed, we still want module import to
+# succeed so downstream routes don't crash; we just lose the fallback.
+try:
+    from app.core.pdf_generator import LightweightPDFGenerator, HAS_FPDF
+except ImportError:  # pragma: no cover - defensive
+    LightweightPDFGenerator = None  # type: ignore[assignment]
+    HAS_FPDF = False
 
 logger = structlog.get_logger()
 
@@ -29,27 +39,43 @@ logger = structlog.get_logger()
 WEASYPRINT_TIMEOUT_SECONDS = 8
 
 # ---------------------------------------------------------------------------
-# Optional dependency probes
+# Lazy optional-dependency probes
 # ---------------------------------------------------------------------------
-try:
-    import matplotlib
-    matplotlib.use("Agg")  # Non-interactive backend for server use
-    import matplotlib.pyplot as plt
-    import matplotlib.ticker as ticker
-    HAS_MATPLOTLIB = True
-except ImportError:
-    HAS_MATPLOTLIB = False
+# Resolved on first call to ``_check_deps``. ``None`` means "not yet probed".
+_HAS_MATPLOTLIB: bool | None = None
+_HAS_WEASYPRINT: bool | None = None
 
-try:
-    from weasyprint import HTML as WeasyHTML
-    HAS_WEASYPRINT = True
-except (ImportError, OSError):
-    HAS_WEASYPRINT = False
 
-try:
-    from app.core.pdf_generator import LightweightPDFGenerator, HAS_FPDF
-except ImportError:
-    HAS_FPDF = False
+def _check_deps() -> tuple[bool, bool]:
+    """Lazily probe for matplotlib and weasyprint availability.
+
+    Imports are deferred here (rather than at module top) because on Vercel
+    Lambda those libraries either aren't installed (size cap) or fail at
+    import time when their native dependencies (cairo/pango) are missing.
+    Probing lazily keeps ``import app.core.proposal_generator`` safe.
+
+    Results are cached in module-level globals so subsequent calls are O(1).
+    """
+    global _HAS_MATPLOTLIB, _HAS_WEASYPRINT
+
+    if _HAS_MATPLOTLIB is None:
+        try:
+            import matplotlib  # noqa: F401
+            matplotlib.use("Agg")  # Non-interactive backend for server use
+            import matplotlib.pyplot  # noqa: F401
+            import matplotlib.ticker  # noqa: F401
+            _HAS_MATPLOTLIB = True
+        except Exception:  # ImportError or native-lib errors
+            _HAS_MATPLOTLIB = False
+
+    if _HAS_WEASYPRINT is None:
+        try:
+            from weasyprint import HTML as _WeasyHTML  # noqa: F401
+            _HAS_WEASYPRINT = True
+        except Exception:  # ImportError, OSError (missing cairo/pango), etc.
+            _HAS_WEASYPRINT = False
+
+    return _HAS_MATPLOTLIB, _HAS_WEASYPRINT
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +143,19 @@ class ProposalGenerator:
         """Generate NAV curve chart as a base64-encoded PNG string.
 
         Returns an empty string when matplotlib is unavailable or the
-        curve data is empty.
+        curve data is empty. On Vercel (where matplotlib is absent) the
+        caller simply omits the chart — see ``generate_html`` for the
+        placeholder markup.
         """
-        if not HAS_MATPLOTLIB or not nav_curve:
+        has_mpl, _ = _check_deps()
+        if not has_mpl or not nav_curve:
+            return ""
+
+        # Deferred imports — only reached when matplotlib is known-present.
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.ticker as ticker
+        except ImportError:
             return ""
 
         months = [_get(p, "month") for p in nav_curve]
@@ -215,7 +251,12 @@ class ProposalGenerator:
                 "</div>"
             )
         else:
-            chart_html = "<p class='no-chart'>（チャート生成にはmatplotlibが必要です）</p>"
+            # matplotlib unavailable (e.g. Vercel) → text placeholder.
+            chart_html = (
+                "<p class='no-chart'>"
+                "チャート表示は本番環境でのみ利用可能"
+                "</p>"
+            )
 
         # Assessment reasons list
         reason_items = "\n".join(
@@ -612,9 +653,11 @@ class ProposalGenerator:
         bytes
             PDF content (preferred) or HTML content (last-resort fallback).
         """
+        has_mpl, has_weasy = _check_deps()
+
         chart_b64 = ""
         nav_curve = _get(pricing_result, "nav_curve")
-        if HAS_MATPLOTLIB and nav_curve:
+        if has_mpl and nav_curve:
             chart_b64 = self.generate_nav_chart(
                 nav_curve,
                 vehicle_info.get("lease_term_months", 36),
@@ -625,7 +668,7 @@ class ProposalGenerator:
         )
 
         # --- Attempt 1: WeasyPrint with timeout ---
-        if HAS_WEASYPRINT:
+        if has_weasy:
             pdf_bytes = self._weasyprint_with_timeout(html_content)
             if pdf_bytes is not None:
                 logger.info("proposal_pdf_generated", method="weasyprint")
@@ -635,6 +678,7 @@ class ProposalGenerator:
         # --- Attempt 2: fpdf2 lightweight fallback ---
         if HAS_FPDF:
             try:
+                logger.info("proposal_pdf_generated", method="fpdf2")
                 return self.generate_lightweight_pdf(
                     pricing_result, vehicle_info, fund_info,
                 )
@@ -656,9 +700,22 @@ class ProposalGenerator:
     def _weasyprint_with_timeout(html_content: str) -> bytes | None:
         """Run WeasyPrint in a thread with a timeout.
 
+        Imports WeasyPrint lazily so this method is safe to reference
+        even when weasyprint / cairo / pango are absent.
+
         Returns PDF bytes on success, or ``None`` if the generation
         exceeds ``WEASYPRINT_TIMEOUT_SECONDS`` or raises an error.
         """
+        try:
+            from weasyprint import HTML as WeasyHTML  # noqa: N814
+        except Exception as exc:  # ImportError, OSError, etc.
+            logger.warning(
+                "weasyprint_import_failed",
+                error=str(exc),
+                msg="WeasyPrint not importable; falling back to fpdf2",
+            )
+            return None
+
         result: list[bytes | None] = [None]
         error: list[Exception | None] = [None]
 
@@ -708,6 +765,11 @@ class ProposalGenerator:
 
         Raises ``RuntimeError`` if fpdf2 is not installed.
         """
+        if not HAS_FPDF or LightweightPDFGenerator is None:
+            raise RuntimeError(
+                "fpdf2 is not installed — cannot generate lightweight PDF"
+            )
+
         # Normalise to dict if Pydantic model
         if not isinstance(pricing_result, dict):
             try:
@@ -735,9 +797,11 @@ class ProposalGenerator:
         Identical to the PDF content but returned as a string rather than
         bytes, so it can be served directly as ``text/html``.
         """
+        has_mpl, _ = _check_deps()
+
         chart_b64 = ""
         nav_curve = _get(pricing_result, "nav_curve")
-        if HAS_MATPLOTLIB and nav_curve:
+        if has_mpl and nav_curve:
             chart_b64 = self.generate_nav_chart(
                 nav_curve,
                 vehicle_info.get("lease_term_months", 36),
@@ -746,3 +810,16 @@ class ProposalGenerator:
         return self.generate_html(
             pricing_result, vehicle_info, fund_info, chart_b64,
         )
+
+    # ------------------------------------------------------------------
+    # Alias for external callers
+    # ------------------------------------------------------------------
+
+    def generate(
+        self,
+        pricing_result: Any,
+        vehicle_info: dict,
+        fund_info: dict,
+    ) -> bytes:
+        """Public convenience alias for :meth:`generate_pdf`."""
+        return self.generate_pdf(pricing_result, vehicle_info, fund_info)

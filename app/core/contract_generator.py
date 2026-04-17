@@ -10,10 +10,18 @@ import shutil
 import structlog
 
 try:
-    from docxtpl import DocxTemplate
+    from docxtpl import DocxTemplate  # type: ignore
     HAS_DOCXTPL = True
-except ImportError:
+except ImportError:  # pragma: no cover - deploy-time defensive guard
+    DocxTemplate = None  # type: ignore
     HAS_DOCXTPL = False
+
+try:
+    from docx import Document  # type: ignore
+    HAS_PYTHON_DOCX = True
+except ImportError:  # pragma: no cover - deploy-time defensive guard
+    Document = None  # type: ignore
+    HAS_PYTHON_DOCX = False
 
 logger = structlog.get_logger()
 
@@ -98,12 +106,23 @@ class ContractGenerator:
 
         if HAS_DOCXTPL:
             return self._render_with_docxtpl(template_path, context)
-        else:
-            logger.warning(
-                "docxtpl_not_installed",
-                message="Falling back to plain DOCX copy without variable substitution",
-            )
+
+        # docxtpl missing: attempt a safe fallback (plain copy of template
+        # with no variable substitution). If even that fails we raise a
+        # clean RuntimeError rather than leaking ImportError to the caller.
+        logger.warning(
+            "docxtpl_not_installed",
+            has_python_docx=HAS_PYTHON_DOCX,
+            message="Falling back to plain DOCX copy without variable substitution",
+        )
+        try:
             return self._copy_template(template_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise RuntimeError(
+                "Contract generation is unavailable: the 'docxtpl' package "
+                "is not installed in this deployment. Please add 'docxtpl' "
+                "(and 'python-docx') to the runtime dependencies."
+            ) from exc
 
     def generate_all_contracts(
         self,

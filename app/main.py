@@ -56,32 +56,39 @@ def _init_sentry() -> None:
     The import is guarded so that environments without the ``sentry-sdk``
     package (or without a DSN) incur zero overhead and no ImportError.
     This function is called once at module import time.
+
+    The entire body is additionally wrapped in try/except so that any
+    unexpected failure (settings, environment, etc.) cannot crash app
+    boot on serverless platforms such as Vercel.
     """
     global _SENTRY_ENABLED
 
-    settings = get_settings()
-    dsn = settings.sentry_dsn
-    if not dsn:
-        return
-
-    try:  # guarded import — sentry is optional
-        import sentry_sdk  # noqa: F401
-    except Exception as exc:  # pragma: no cover — library missing
-        logger.warning("sentry_import_failed", error=str(exc))
-        return
-
     try:
-        sentry_sdk.init(
-            dsn=dsn,
-            environment=settings.app_env,
-            traces_sample_rate=settings.sentry_traces_sample_rate,
-            profiles_sample_rate=0.0,
-            release=os.getenv("SENTRY_RELEASE"),
-        )
-        _SENTRY_ENABLED = True
-        logger.info("sentry_initialized", environment=settings.app_env)
-    except Exception as exc:  # pragma: no cover — defensive
-        logger.warning("sentry_init_failed", error=str(exc))
+        settings = get_settings()
+        dsn = settings.sentry_dsn
+        if not dsn:
+            return
+
+        try:  # guarded import — sentry is optional
+            import sentry_sdk  # noqa: F401
+        except Exception as exc:  # pragma: no cover — library missing
+            logger.warning("sentry_import_failed", error=str(exc))
+            return
+
+        try:
+            sentry_sdk.init(
+                dsn=dsn,
+                environment=settings.app_env,
+                traces_sample_rate=settings.sentry_traces_sample_rate,
+                profiles_sample_rate=0.0,
+                release=os.getenv("SENTRY_RELEASE"),
+            )
+            _SENTRY_ENABLED = True
+            logger.info("sentry_initialized", environment=settings.app_env)
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning("sentry_init_failed", error=str(exc))
+    except Exception as exc:  # pragma: no cover — outermost guard
+        logger.warning("sentry_init_outer_failed", error=str(exc))
 
 
 # Initialise Sentry once at module load. Safe no-op when DSN is empty.
@@ -135,15 +142,51 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     # -- Background scheduler (monthly invoice cron, etc.) ---------------
-    from app.core.scheduler import shutdown_scheduler, start_scheduler
+    # Vercel serverless has no persistent process, so APScheduler cannot
+    # run there. Also honor an explicit opt-out via SKIP_SCHEDULER=1.
+    # The scheduler import itself is guarded: a missing apscheduler wheel
+    # must never crash application boot.
+    scheduler = None
+    scheduler_enabled = (
+        os.getenv("VERCEL") != "1" and os.getenv("SKIP_SCHEDULER") != "1"
+    )
 
-    scheduler = start_scheduler()
+    start_scheduler = None
+    shutdown_scheduler = None
+    if scheduler_enabled:
+        try:
+            from app.core.scheduler import (
+                shutdown_scheduler,
+                start_scheduler,
+            )
+        except ImportError as exc:
+            logger.warning("scheduler_import_failed", error=str(exc))
+            start_scheduler = None
+            shutdown_scheduler = None
+
+        if start_scheduler is not None:
+            try:
+                scheduler = start_scheduler()
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning("scheduler_start_failed", error=str(exc))
+                scheduler = None
+    else:
+        logger.info(
+            "scheduler_skipped",
+            vercel=os.getenv("VERCEL"),
+            skip_scheduler=os.getenv("SKIP_SCHEDULER"),
+        )
+
     app.state.scheduler = scheduler
 
     try:
         yield
     finally:
-        shutdown_scheduler(scheduler)
+        if scheduler is not None and shutdown_scheduler is not None:
+            try:
+                shutdown_scheduler(scheduler)
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning("scheduler_shutdown_failed", error=str(exc))
         logger.info("application_shutdown")
 
 
@@ -223,15 +266,20 @@ def create_app() -> FastAPI:
         return response
 
     # -- Rate limiting (SlowAPI) ---------------------------------------
-    from slowapi import _rate_limit_exceeded_handler
-    from slowapi.errors import RateLimitExceeded
-    from slowapi.middleware import SlowAPIMiddleware
+    # SlowAPI is listed in pyproject but we still guard defensively so
+    # that a missing wheel on Vercel can never 500 the whole app.
+    try:
+        from slowapi import _rate_limit_exceeded_handler
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.middleware import SlowAPIMiddleware
 
-    from app.middleware.rate_limit import limiter
+        from app.middleware.rate_limit import limiter
 
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
+        app.state.limiter = limiter
+        app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        app.add_middleware(SlowAPIMiddleware)
+    except ImportError as exc:
+        logger.warning("slowapi_import_failed", error=str(exc))
 
     # -- CSRF -----------------------------------------------------------
     from app.middleware.csrf import CSRFMiddleware
@@ -258,12 +306,21 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "HX-Request", "HX-Target", "HX-Trigger"],
     )
 
-    # -- SLA logging (warns on slow requests) --------------------------
-    from app.middleware.metrics import metrics_middleware, sla_logging_middleware
-    app.add_middleware(sla_logging_middleware)
+    # -- SLA logging + Prometheus metrics ------------------------------
+    # Metrics middleware depends on prometheus_client which is optional
+    # in some deployment environments (e.g. slim serverless images).
+    _metrics_available = False
+    try:
+        from app.middleware.metrics import (
+            metrics_middleware,
+            sla_logging_middleware,
+        )
 
-    # -- Prometheus metrics --------------------------------------------
-    app.add_middleware(metrics_middleware)
+        app.add_middleware(sla_logging_middleware)
+        app.add_middleware(metrics_middleware)
+        _metrics_available = True
+    except ImportError as exc:
+        logger.warning("metrics_import_failed", error=str(exc))
 
     # -- Static files ---------------------------------------------------
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -296,28 +353,29 @@ def create_app() -> FastAPI:
     # -- Health checks --------------------------------------------------
     @app.get("/health", tags=["ops"])
     async def health_check() -> JSONResponse:
-        """Rich health endpoint with degraded-vs-down semantics.
+        """Liveness-style health endpoint.
 
-        * Returns 200 when all checks are ok (status="ok").
-        * Returns 200 with status="degraded" when at least one check
-          still works.
-        * Returns 503 only when every check has failed.
+        Always returns 200 — it reports status ("ok" / "degraded") in
+        the body but never fails the HTTP response. Readiness semantics
+        (503 on failure) live at ``/health/ready``.
         """
-        checks = {
-            "database": await _check_database(),
-            "scheduler": _check_scheduler(app),
-        }
+        try:
+            checks = {
+                "database": await _check_database(),
+                "scheduler": _check_scheduler(app),
+            }
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning("health_check_probe_failed", error=str(exc))
+            checks = {"database": "degraded", "scheduler": "degraded"}
         ok_values = {"ok", "not_configured"}
-        all_bad = all(v not in ok_values for v in checks.values())
         status = "ok" if all(v in ok_values for v in checks.values()) else "degraded"
-        http_status = 503 if all_bad else 200
         payload = {
             "status": status,
             "version": APP_VERSION,
             "checks": checks,
             "timestamp": time.time(),
         }
-        return JSONResponse(status_code=http_status, content=payload)
+        return JSONResponse(status_code=200, content=payload)
 
     @app.get("/health/ready", tags=["ops"])
     async def health_ready() -> JSONResponse:
@@ -352,7 +410,21 @@ def create_app() -> FastAPI:
     # placed behind a reverse-proxy ACL so it is not publicly exposed.
     @app.get("/metrics", tags=["metrics"], include_in_schema=False)
     async def metrics_endpoint() -> Response:
-        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+        if not _metrics_available:
+            return Response(
+                content="prometheus_client unavailable",
+                status_code=503,
+                media_type="text/plain",
+            )
+        try:
+            from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+        except ImportError as exc:
+            logger.warning("prometheus_import_failed", error=str(exc))
+            return Response(
+                content="prometheus_client unavailable",
+                status_code=503,
+                media_type="text/plain",
+            )
 
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

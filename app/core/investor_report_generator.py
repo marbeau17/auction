@@ -7,7 +7,7 @@ renders it with :class:`app.core.pdf_generator.LightweightPDFGenerator`
 Page layout
 -----------
 1. Cover — fund name + reporting period
-2. NAV summary + trend (text table of the last 12 months)
+2. NAV summary + trend (chart if matplotlib is available, else text table)
 3. Dividend history (monthly distributions, paid vs scheduled)
 4. Portfolio snapshot — vehicle count, total acquisition / market value
 5. Risk flags & notes
@@ -20,6 +20,20 @@ tests can pass a ``FakeClient``) — ``generate(fund_id, report_month)`` queries
 * ``fund_distributions`` — dividend history and next-month scheduled amount
 * ``lease_payments`` / ``invoices`` — overdue detection for risk flags
 * ``simulations`` — (optional) target yield
+
+Vercel serverless constraints
+-----------------------------
+This module is imported in cold-start paths on Vercel (50 MB bundle cap, no
+system libs like cairo / pango). As a result:
+
+* Only fpdf2 (via ``LightweightPDFGenerator``) is imported at module top.
+* ``matplotlib`` / ``weasyprint`` / ``cairosvg`` / ``PIL`` are NEVER imported
+  at module scope. Any optional chart rendering lazy-imports matplotlib
+  inside the function that needs it, guarded with ``try/except ImportError``
+  and a text-table fallback — so the report still produces a valid 5-page
+  PDF in every environment.
+* If all Supabase queries fail, :meth:`InvestorReportGenerator.generate`
+  returns an explanatory stub PDF rather than crashing the request.
 """
 
 from __future__ import annotations
@@ -31,7 +45,15 @@ from uuid import UUID
 
 import structlog
 
-from app.core.pdf_generator import LightweightPDFGenerator
+# Primary PDF renderer — fpdf2, which IS in pyproject/Vercel bundle. Guard
+# defensively anyway so an import failure produces a clean HTTP error instead
+# of a cryptic module-load crash.
+try:
+    from app.core.pdf_generator import LightweightPDFGenerator  # type: ignore
+    _PDF_IMPORT_ERROR: Optional[BaseException] = None
+except Exception as _exc:  # pragma: no cover — fpdf2 is a hard dep
+    LightweightPDFGenerator = None  # type: ignore[assignment,misc]
+    _PDF_IMPORT_ERROR = _exc
 
 logger = structlog.get_logger()
 
@@ -72,6 +94,48 @@ def _month_bounds(d: date) -> tuple[date, date]:
     return start, end_next - timedelta(days=1)
 
 
+def _render_nav_chart_png(monthly: list[tuple[str, dict[str, int]]]) -> Optional[bytes]:
+    """Try to render a NAV trend chart as PNG bytes.
+
+    Matplotlib is imported lazily here so module-level import cost stays zero
+    on Vercel. If matplotlib (or any of its native deps) is missing, we log a
+    warning and return ``None`` — the caller falls back to a text table.
+    """
+    if not monthly:
+        return None
+    try:
+        import matplotlib  # type: ignore
+
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt  # type: ignore
+    except Exception as exc:  # ImportError or native-lib failure
+        logger.warning("investor_report_matplotlib_unavailable", error=str(exc))
+        return None
+
+    try:
+        # Oldest → newest for the x-axis.
+        ordered = list(reversed(monthly))
+        labels = [m for m, _ in ordered]
+        navs = [agg["nav"] for _, agg in ordered]
+
+        fig, ax = plt.subplots(figsize=(7.2, 2.6), dpi=150)
+        ax.plot(labels, navs, marker="o", color="#1a56db", linewidth=2)
+        ax.set_title("NAV trend (last 12 months)")
+        ax.set_ylabel("NAV")
+        ax.grid(True, linestyle="--", alpha=0.4)
+        fig.autofmt_xdate(rotation=30)
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning("investor_report_chart_render_failed", error=str(exc))
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
@@ -80,7 +144,11 @@ def _month_bounds(d: date) -> tuple[date, date]:
 class InvestorReportGenerator:
     """Produce the monthly investor PDF for a single fund."""
 
-    def __init__(self, client: Any, pdf_generator: Optional[LightweightPDFGenerator] = None) -> None:
+    def __init__(self, client: Any, pdf_generator: Optional["LightweightPDFGenerator"] = None) -> None:
+        if LightweightPDFGenerator is None:  # pragma: no cover
+            raise RuntimeError(
+                f"LightweightPDFGenerator unavailable: {_PDF_IMPORT_ERROR!r}"
+            )
         self._client = client
         self._pdf = pdf_generator or LightweightPDFGenerator()
 
@@ -94,29 +162,57 @@ class InvestorReportGenerator:
         The metrics dict carries the headline numbers we persist on the
         ``investor_reports`` row (nav_total / dividend_paid / etc.) so the
         caller can write the DB record in a single pass.
+
+        If the Supabase client explodes catastrophically (network gone,
+        bad credentials, schema drift), we still return a valid PDF — a
+        one-page explanatory stub — rather than raising, so upstream
+        callers never see a 500 from this module.
         """
         report_month = _first_of_month(report_month)
-        fund = self._fetch_fund(fund_id)
-        nav_rows = self._fetch_nav_history(fund_id, report_month)
-        dividends = self._fetch_dividends(fund_id, report_month)
-        portfolio = self._fetch_portfolio_snapshot(fund_id, report_month)
-        risk_flags = self._evaluate_risk(fund_id, report_month, nav_rows, portfolio)
+        try:
+            fund = self._fetch_fund(fund_id)
+            nav_rows = self._fetch_nav_history(fund_id, report_month)
+            dividends = self._fetch_dividends(fund_id, report_month)
+            portfolio = self._fetch_portfolio_snapshot(fund_id, report_month)
+            risk_flags = self._evaluate_risk(fund_id, report_month, nav_rows, portfolio)
+        except Exception as exc:
+            logger.exception(
+                "investor_report_data_fetch_failed",
+                fund_id=str(fund_id),
+                report_month=report_month.isoformat(),
+            )
+            stub = self._render_stub_pdf(fund_id, report_month, reason=str(exc))
+            return stub, {
+                "nav_total": 0,
+                "dividend_paid": 0,
+                "dividend_scheduled": 0,
+                "risk_flags": [],
+                "error": "data_fetch_failed",
+            }
 
         nav_total = int(sum((r.get("nav") or 0) for r in nav_rows if _same_month(r.get("recording_date"), report_month)))
         dividend_paid = int(sum(d.get("distribution_amount") or 0 for d in dividends["paid"]))
         dividend_scheduled = int(sum(d.get("distribution_amount") or 0 for d in dividends["scheduled"]))
 
-        pdf_bytes = self._render_pdf(
-            fund=fund,
-            report_month=report_month,
-            nav_rows=nav_rows,
-            dividends=dividends,
-            portfolio=portfolio,
-            risk_flags=risk_flags,
-            nav_total=nav_total,
-            dividend_paid=dividend_paid,
-            dividend_scheduled=dividend_scheduled,
-        )
+        try:
+            pdf_bytes = self._render_pdf(
+                fund=fund,
+                report_month=report_month,
+                nav_rows=nav_rows,
+                dividends=dividends,
+                portfolio=portfolio,
+                risk_flags=risk_flags,
+                nav_total=nav_total,
+                dividend_paid=dividend_paid,
+                dividend_scheduled=dividend_scheduled,
+            )
+        except Exception as exc:
+            logger.exception(
+                "investor_report_render_failed",
+                fund_id=str(fund_id),
+                report_month=report_month.isoformat(),
+            )
+            pdf_bytes = self._render_stub_pdf(fund_id, report_month, reason=str(exc))
 
         metrics = {
             "nav_total": nav_total,
@@ -348,24 +444,43 @@ class InvestorReportGenerator:
 
         pdf.set_font(font, "B", 11)
         pdf.cell(0, 8, "直近12ヶ月 NAV推移", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font(font, "B", 9)
-        pdf.set_fill_color(26, 86, 219)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(40, 7, "月", border=1, fill=True, align="C")
-        pdf.cell(45, 7, "NAV", border=1, fill=True, align="C")
-        pdf.cell(45, 7, "簿価", border=1, fill=True, align="C")
-        pdf.cell(45, 7, "時価", border=1, fill=True, align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font(font, "", 9)
+
         monthly = _aggregate_nav_by_month(nav_rows)[:12]
-        for m, agg in monthly:
-            pdf.cell(40, 6, m, border=1)
-            pdf.cell(45, 6, f"Y{_yen(agg['nav'])}", border=1, align="R")
-            pdf.cell(45, 6, f"Y{_yen(agg['book_value'])}", border=1, align="R")
-            pdf.cell(45, 6, f"Y{_yen(agg['market_value'])}", border=1, align="R",
-                     new_x="LMARGIN", new_y="NEXT")
-        if not monthly:
-            pdf.cell(0, 6, "（NAV履歴がまだありません）", new_x="LMARGIN", new_y="NEXT")
+
+        # Try the chart first (matplotlib, lazy-imported). If that fails for
+        # any reason — missing library, no native libs in the Lambda image,
+        # empty dataset — fall back to the textual table so the report still
+        # has 5 real pages.
+        chart_png = _render_nav_chart_png(monthly)
+        chart_embedded = False
+        if chart_png:
+            try:
+                img_buf = io.BytesIO(chart_png)
+                # fpdf2 accepts a file-like object for .image() when name= is set.
+                pdf.image(img_buf, x=pdf.l_margin, w=pdf.w - pdf.l_margin - pdf.r_margin, type="PNG")
+                pdf.ln(4)
+                chart_embedded = True
+            except Exception as exc:
+                logger.warning("investor_report_chart_embed_failed", error=str(exc))
+
+        if not chart_embedded:
+            pdf.set_font(font, "B", 9)
+            pdf.set_fill_color(26, 86, 219)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(40, 7, "月", border=1, fill=True, align="C")
+            pdf.cell(45, 7, "NAV", border=1, fill=True, align="C")
+            pdf.cell(45, 7, "簿価", border=1, fill=True, align="C")
+            pdf.cell(45, 7, "時価", border=1, fill=True, align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font(font, "", 9)
+            for m, agg in monthly:
+                pdf.cell(40, 6, m, border=1)
+                pdf.cell(45, 6, f"Y{_yen(agg['nav'])}", border=1, align="R")
+                pdf.cell(45, 6, f"Y{_yen(agg['book_value'])}", border=1, align="R")
+                pdf.cell(45, 6, f"Y{_yen(agg['market_value'])}", border=1, align="R",
+                         new_x="LMARGIN", new_y="NEXT")
+            if not monthly:
+                pdf.cell(0, 6, "（NAV履歴がまだありません）", new_x="LMARGIN", new_y="NEXT")
 
         # --- Page 3: Dividend history -----------------------------------------
         pdf.add_page()
@@ -465,6 +580,68 @@ class InvestorReportGenerator:
         pdf.output(buf)
         buf.seek(0)
         return buf.read()
+
+    # ------------------------------------------------------------------
+    # Stub PDF (returned when data fetch or rendering explodes)
+    # ------------------------------------------------------------------
+
+    def _render_stub_pdf(
+        self,
+        fund_id: UUID | str,
+        report_month: date,
+        *,
+        reason: str = "",
+    ) -> bytes:
+        """Produce a minimal 1-page PDF explaining that report data is unavailable.
+
+        Used as a last-resort fallback so the HTTP caller never sees a 500 —
+        they always get a valid PDF. fpdf2 is the only renderer used here so
+        this path is safe on Vercel even without matplotlib / native libs.
+        """
+        try:
+            pdf, font = self._pdf._new_pdf()  # type: ignore[attr-defined]
+            pdf.add_page()
+            pdf.ln(40)
+            pdf.set_font(font, "B", 20)
+            pdf.set_text_color(120, 30, 30)
+            pdf.cell(0, 12, "投資家月次報告書 — 生成エラー", align="C",
+                     new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(6)
+            pdf.set_font(font, "", 12)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 8, f"ファンドID: {fund_id}", align="C",
+                     new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 8, f"対象月: {report_month.year}年{report_month.month:02d}月",
+                     align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(10)
+            pdf.set_font(font, "", 10)
+            pdf.set_text_color(80, 80, 80)
+            pdf.multi_cell(
+                0, 6,
+                "データソースとの通信に失敗したため、月次報告書を生成できませんでした。"
+                "時間をおいて再度お試しいただくか、運営事業者までお問い合わせください。",
+            )
+            if reason:
+                pdf.ln(4)
+                pdf.set_font(font, "", 8)
+                pdf.set_text_color(150, 150, 150)
+                pdf.multi_cell(0, 5, f"detail: {reason[:300]}")
+            buf = io.BytesIO()
+            pdf.output(buf)
+            buf.seek(0)
+            return buf.read()
+        except Exception:  # pragma: no cover — absolute last resort
+            logger.exception("investor_report_stub_render_failed")
+            # A minimal, hand-rolled PDF 1.4 "could not render" sentinel so
+            # callers never get empty bytes.
+            return (
+                b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+                b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+                b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+                b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>endobj\n"
+                b"xref\n0 4\n0000000000 65535 f \n"
+                b"trailer<</Size 4/Root 1 0 R>>\nstartxref\n0\n%%EOF\n"
+            )
 
 
 # ---------------------------------------------------------------------------

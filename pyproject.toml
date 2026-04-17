@@ -12,12 +12,24 @@ dependencies = [
     "httpx>=0.25.0",
     "pydantic-settings>=2.0.0",
     "python-jose[cryptography]>=3.3.0",
+    "ecdsa>=0.18.0",
     "passlib[bcrypt]>=1.7.4",
     "structlog>=23.0.0",
     "cachetools>=5.3.0",
     "numpy>=1.24.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
+    # Middleware & auth
+    "slowapi>=0.1.9",
+    "sentry-sdk[fastapi]>=2.0",
+    "prometheus-client>=0.19",
+    # Scheduler (disabled on serverless via SKIP_SCHEDULER env)
+    "apscheduler>=3.10",
+    # Document generation — lightweight-only for Vercel lambda
+    "python-docx>=1.0.0",
+    "docxtpl>=0.16.0",
+    "fpdf2>=2.7.0",
+    "openpyxl>=3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -26,8 +38,10 @@ scraper = [
 ]
 report = [
     "pandas>=2.0.0",
-    "openpyxl>=3.1.0",
     "reportlab>=4.0.0",
+    "matplotlib>=3.7.0",
+    "weasyprint>=60.0",
+    "python-pptx>=0.6.23",
 ]
 dev = [
     "pytest",

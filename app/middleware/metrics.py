@@ -16,7 +16,6 @@ import time
 from typing import Awaitable, Callable
 
 import structlog
-from prometheus_client import Counter, Histogram
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -24,8 +23,59 @@ from starlette.responses import Response
 logger: structlog.stdlib.BoundLogger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
-# Prometheus collectors
+# Prometheus collectors (with defensive fallback)
 # ---------------------------------------------------------------------------
+#
+# ``prometheus_client`` is declared in ``pyproject.toml`` but we still guard
+# against its absence so that serverless targets (Vercel) can boot even when
+# the optional dependency is pruned from the deployed bundle. When the import
+# fails we substitute no-op stubs that mirror the subset of the Prometheus API
+# used in this module: ``.labels(**kwargs).inc()`` on counters and
+# ``.labels(**kwargs).observe(value)`` on histograms.
+
+try:
+    from prometheus_client import Counter, Histogram  # type: ignore[import-not-found]
+
+    HAS_PROMETHEUS = True
+except ImportError:  # pragma: no cover — exercised only when dep is absent
+    HAS_PROMETHEUS = False
+
+    class _NoopMetricChild:
+        """Return value of ``NoopCounter.labels`` / ``NoopHistogram.labels``."""
+
+        def inc(self, amount: float = 1.0) -> None:  # noqa: D401 — API parity
+            return None
+
+        def observe(self, amount: float) -> None:  # noqa: D401 — API parity
+            return None
+
+    class NoopCounter:
+        """Drop-in stand-in for ``prometheus_client.Counter``."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self._child = _NoopMetricChild()
+
+        def labels(self, *args: object, **kwargs: object) -> _NoopMetricChild:
+            return self._child
+
+        def inc(self, amount: float = 1.0) -> None:
+            return None
+
+    class NoopHistogram:
+        """Drop-in stand-in for ``prometheus_client.Histogram``."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self._child = _NoopMetricChild()
+
+        def labels(self, *args: object, **kwargs: object) -> _NoopMetricChild:
+            return self._child
+
+        def observe(self, amount: float) -> None:
+            return None
+
+    Counter = NoopCounter  # type: ignore[assignment,misc]
+    Histogram = NoopHistogram  # type: ignore[assignment,misc]
+
 
 http_requests_total = Counter(
     "http_requests_total",

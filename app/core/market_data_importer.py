@@ -35,13 +35,6 @@ import structlog
 
 logger = structlog.get_logger()
 
-try:
-    import openpyxl
-    HAS_OPENPYXL = True
-except ImportError:
-    HAS_OPENPYXL = False
-
-
 class ImportResult:
     """Result of a market data import operation."""
 
@@ -376,9 +369,15 @@ class MarketDataImporter:
 
     async def import_excel(self, file_content: bytes, source_name: str = "excel_import") -> ImportResult:
         """Import market data from Excel content."""
-        if not HAS_OPENPYXL:
+        try:
+            import openpyxl  # local import: keeps Vercel cold-start light & CSV path unaffected
+        except ImportError:
             result = ImportResult()
-            result.errors.append({"row": 0, "field": "", "message": "openpyxl not installed"})
+            result.errors.append({
+                "row": 0,
+                "field": "",
+                "message": "Excel import requires openpyxl \u2014 use CSV path",
+            })
             return result
 
         wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True)
