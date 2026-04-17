@@ -10,6 +10,7 @@ from supabase import Client
 
 from app.db.repositories.master_repo import MasterRepository
 from app.dependencies import get_current_user, get_supabase_client, require_role
+from app.middleware.rbac import require_permission
 from app.models.master import (
     BodyTypeCreate,
     BodyTypeResponse,
@@ -61,7 +62,7 @@ def _options_html(items: list[dict[str, Any]], *, placeholder: str = "選択し�
 @router.get("/makers", response_model=list[MakerResponse])
 async def list_makers(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("pricing_masters", "read")),
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List all makers. Returns <option> HTML when called via HTMX."""
@@ -116,7 +117,7 @@ async def create_maker(
 async def list_models(
     maker_id: UUID,
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("pricing_masters", "read")),
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List models for a given maker. Returns <option> HTML when called via HTMX."""
@@ -173,7 +174,7 @@ async def create_model(
 @router.get("/body-types", response_model=list[BodyTypeResponse])
 async def list_body_types(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("pricing_masters", "read")),
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List all body types. Returns <option> HTML when called via HTMX."""
@@ -284,7 +285,7 @@ async def delete_body_type(
 
 @router.get("/categories", response_model=list[VehicleCategoryResponse])
 async def list_categories(
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("pricing_masters", "read")),
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List all vehicle categories."""
@@ -308,7 +309,7 @@ async def list_categories(
 @router.get("/depreciation-curves", response_model=list[DepreciationCurveResponse])
 async def list_depreciation_curves(
     category_id: Optional[UUID] = Query(default=None, description="Filter by category ID"),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("pricing_masters", "read")),
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List depreciation curves, optionally filtered by category_id."""

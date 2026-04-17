@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.config import Settings, get_settings
 from app.db.supabase_client import get_supabase_client
 from app.dependencies import get_current_user, require_role  # noqa: F401 – re-exported
+from app.middleware.rate_limit import limiter
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger()
 
@@ -75,6 +76,7 @@ def _clear_auth_cookies(response: Response) -> None:
 
 
 @router.post("/login")
+@limiter.limit("5/5minutes")
 async def login(
     request: Request,
     email: str = Form(...),
@@ -249,6 +251,7 @@ async def forgot_password_page(request: Request):
 
 
 @router.post("/forgot-password")
+@limiter.limit("3/15minutes")
 async def forgot_password(request: Request):
     form = await request.form()
     email = form.get("email", "")
@@ -259,10 +262,10 @@ async def forgot_password(request: Request):
         )
 
     try:
-        from supabase import create_client
+        from supabase import create_client as _create_client
 
         settings = get_settings()
-        client = create_client(settings.supabase_url, settings.supabase_anon_key)
+        client = _create_client(settings.supabase_url, settings.supabase_anon_key)
         client.auth.reset_password_email(email)
     except Exception:
         pass  # Don't reveal if email exists
