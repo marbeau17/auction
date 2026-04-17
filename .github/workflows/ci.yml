@@ -30,7 +30,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pip install pytest pytest-asyncio pytest-cov httpx
       - name: Run unit tests
-        run: pytest tests/unit -v --tb=short --cov=app --cov=scraper --cov-report=xml --cov-report=term-missing
+        run: pytest tests/unit -v --tb=short --cov=app --cov=scraper --cov-report=xml --cov-report=term-missing --cov-fail-under=50
         env:
           APP_ENV: test
           SUPABASE_URL: https://test.supabase.co

@@ -25,6 +25,7 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret")
+os.environ.setdefault("EMAIL_DRY_RUN", "true")
 
 from app.config import get_settings  # noqa: E402
 from app.dependencies import get_current_user, get_supabase_client  # noqa: E402
@@ -440,3 +441,276 @@ def sample_body_type_data() -> dict[str, Any]:
 @pytest.fixture
 def sample_category_data() -> dict[str, Any]:
     return _sample_category()
+
+
+# ---------------------------------------------------------------------------
+# Dict-backed fake Supabase client (lightweight, composable)
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, data: Any, count: int | None = None) -> None:
+        self.data = data
+        self.count = count
+
+
+class _FakeQuery:
+    """Chainable in-memory Supabase query builder.
+
+    Supports select / insert / update / upsert / delete, ``eq``, ``neq``,
+    ``lt``, ``lte``, ``gte``, ``ilike``, ``like``, ``in_``, ``not_.in_``,
+    ``not_.is_``, ``order``, ``range``, ``limit``, ``maybe_single`` and
+    ``single``.
+    """
+
+    def __init__(self, client: "_FakeClient", table: str) -> None:
+        self._client = client
+        self._table = table
+        self._mode: str = "select"
+        self._payload: Any = None
+        self._filters: list[tuple[str, tuple]] = []
+        self._ops: list[str] = []
+        self._maybe_single: bool = False
+        self._single: bool = False
+
+    # -- Mode switches ---------------------------------------------------
+    def select(self, *_cols, count: str | None = None):
+        self._mode = "select"
+        self._ops.append("select")
+        return self
+
+    def insert(self, payload):
+        self._mode = "insert"
+        self._payload = payload
+        return self
+
+    def update(self, payload):
+        self._mode = "update"
+        self._payload = payload
+        return self
+
+    def upsert(self, payload, on_conflict: str | None = None):
+        self._mode = "upsert"
+        self._payload = payload
+        return self
+
+    def delete(self):
+        self._mode = "delete"
+        return self
+
+    # -- Filters ---------------------------------------------------------
+    def eq(self, column, value):
+        self._filters.append(("eq", (column, value)))
+        return self
+
+    def neq(self, column, value):
+        self._filters.append(("neq", (column, value)))
+        return self
+
+    def lt(self, column, value):
+        self._filters.append(("lt", (column, value)))
+        return self
+
+    def lte(self, column, value):
+        self._filters.append(("lte", (column, value)))
+        return self
+
+    def gte(self, column, value):
+        self._filters.append(("gte", (column, value)))
+        return self
+
+    def ilike(self, column, pattern):
+        self._filters.append(("ilike", (column, pattern)))
+        return self
+
+    def like(self, column, pattern):
+        self._filters.append(("like", (column, pattern)))
+        return self
+
+    def in_(self, column, values):
+        self._filters.append(("in", (column, tuple(values))))
+        return self
+
+    def order(self, column, desc: bool = False):
+        self._ops.append(f"order:{column}:{desc}")
+        return self
+
+    def range(self, start, end):
+        self._ops.append(f"range:{start}:{end}")
+        return self
+
+    def limit(self, n):
+        self._ops.append(f"limit:{n}")
+        return self
+
+    def maybe_single(self):
+        self._maybe_single = True
+        return self
+
+    def single(self):
+        self._single = True
+        return self
+
+    @property
+    def not_(self):
+        outer = self
+
+        class _Not:
+            def in_(self, column, values):
+                outer._filters.append(("not_in", (column, tuple(values))))
+                return outer
+
+            def is_(self, column, _value):
+                outer._filters.append(("not_is_null", (column,)))
+                return outer
+
+        return _Not()
+
+    def is_(self, column, _value):
+        self._filters.append(("is_null", (column,)))
+        return self
+
+    # -- Execute --------------------------------------------------------
+    def execute(self) -> _FakeResponse:
+        table_rows = self._client.tables.setdefault(self._table, [])
+
+        if self._mode == "insert":
+            items = (
+                list(self._payload)
+                if isinstance(self._payload, list)
+                else [self._payload]
+            )
+            inserted = []
+            for item in items:
+                row = dict(item)
+                row.setdefault("id", str(uuid4()))
+                table_rows.append(row)
+                inserted.append(row)
+            return _FakeResponse(inserted)
+
+        if self._mode == "upsert":
+            items = (
+                list(self._payload)
+                if isinstance(self._payload, list)
+                else [self._payload]
+            )
+            upserted = []
+            for item in items:
+                row = dict(item)
+                row.setdefault("id", str(uuid4()))
+                table_rows.append(row)
+                upserted.append(row)
+            return _FakeResponse(upserted)
+
+        if self._mode == "update":
+            matched = [r for r in table_rows if self._matches_filters(r)]
+            for r in matched:
+                r.update(self._payload)
+            return _FakeResponse(matched)
+
+        if self._mode == "delete":
+            matched = [r for r in table_rows if self._matches_filters(r)]
+            for r in matched:
+                table_rows.remove(r)
+            return _FakeResponse(matched)
+
+        # select
+        result = [r for r in table_rows if self._matches_filters(r)]
+        # apply ordering
+        for op in self._ops:
+            if op.startswith("order:"):
+                _, col, desc_s = op.split(":", 2)
+                desc = desc_s == "True"
+                try:
+                    result = sorted(
+                        result,
+                        key=lambda r: (r.get(col) is None, r.get(col)),
+                        reverse=desc,
+                    )
+                except TypeError:
+                    pass
+        # apply range / limit
+        for op in self._ops:
+            if op.startswith("range:"):
+                _, s, e = op.split(":", 2)
+                result = result[int(s) : int(e) + 1]
+            elif op.startswith("limit:"):
+                _, n = op.split(":", 1)
+                result = result[: int(n)]
+
+        if self._maybe_single or self._single:
+            return _FakeResponse(result[0] if result else None)
+        return _FakeResponse(result, count=len(result))
+
+    def _matches_filters(self, row: dict) -> bool:
+        for op, args in self._filters:
+            if op == "eq":
+                col, val = args
+                if row.get(col) != val:
+                    return False
+            elif op == "neq":
+                col, val = args
+                if row.get(col) == val:
+                    return False
+            elif op == "lt":
+                col, val = args
+                v = row.get(col)
+                if v is None or not (v < val):
+                    return False
+            elif op == "lte":
+                col, val = args
+                v = row.get(col)
+                if v is None or not (v <= val):
+                    return False
+            elif op == "gte":
+                col, val = args
+                v = row.get(col)
+                if v is None or not (v >= val):
+                    return False
+            elif op == "ilike":
+                col, pattern = args
+                v = str(row.get(col, ""))
+                needle = pattern.strip("%").lower()
+                if needle not in v.lower():
+                    return False
+            elif op == "like":
+                col, pattern = args
+                v = str(row.get(col, ""))
+                if pattern.endswith("%"):
+                    if not v.startswith(pattern[:-1]):
+                        return False
+                elif v != pattern:
+                    return False
+            elif op == "in":
+                col, values = args
+                if row.get(col) not in values:
+                    return False
+            elif op == "not_in":
+                col, values = args
+                if row.get(col) in values:
+                    return False
+            elif op == "is_null":
+                col, = args
+                if row.get(col) is not None:
+                    return False
+            elif op == "not_is_null":
+                col, = args
+                if row.get(col) is None:
+                    return False
+        return True
+
+
+class _FakeClient:
+    """In-memory Supabase substitute."""
+
+    def __init__(self) -> None:
+        self.tables: dict[str, list[dict]] = {}
+
+    def table(self, name: str) -> _FakeQuery:
+        return _FakeQuery(self, name)
+
+
+@pytest.fixture
+def fake_supabase() -> _FakeClient:
+    """Return a fresh in-memory dict-backed Supabase substitute."""
+    return _FakeClient()
