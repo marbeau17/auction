@@ -1,0 +1,355 @@
+<div id="pricing-result-content" class="simulation-result">
+
+  {# ===== Assessment Badge ===== #}
+  <div style="text-align: center; margin-bottom: var(--space-6);">
+    <span class="result-card__assessment result-card__assessment--{{ result.assessment }}"
+          style="font-size: var(--text-xl); padding: var(--space-2) var(--space-6); border-radius: var(--radius);">
+      総合判定: {{ result.assessment }}
+    </span>
+  </div>
+
+  {# ===== 3 Price Summary Cards ===== #}
+  <div class="result-summary-cards">
+    <div class="result-card result-card--primary">
+      <span class="result-card__label">Step 1: 推奨買取価格</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.acquisition_price) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">Step 2: 残価見込</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.residual_value) }}</span>
+    </div>
+    <div class="result-card result-card--primary">
+      <span class="result-card__label">Step 3: 月額リース料</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.monthly_lease_fee) }}</span>
+    </div>
+  </div>
+
+  {# ===== Additional KPIs ===== #}
+  <div class="result-summary-cards" style="margin-top: var(--space-4);">
+    <div class="result-card">
+      <span class="result-card__label">実質利回り</span>
+      <span class="result-card__value">{{ "%.2f"|format(result.effective_yield_rate * 100) }}%</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">リース料総額</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.total_lease_fee) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">損益分岐</span>
+      <span class="result-card__value">{{ result.breakeven_months if result.breakeven_months else "-" }}ヶ月</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">相場乖離率</span>
+      <span class="result-card__value {% if result.market_deviation_rate < 0 %}text-success{% else %}text-warning{% endif %}">
+        {{ "%.1f"|format(result.market_deviation_rate * 100) }}%
+      </span>
+    </div>
+  </div>
+
+  {# ===== Step 1: Acquisition Price Breakdown ===== #}
+  <div class="result-schedule-section" style="margin-top: var(--space-8);">
+    <h4>Step 1: 買取価格算出 内訳</h4>
+    <div class="table-responsive">
+      <table class="table table--striped">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th class="text-right">金額 (円)</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>相場中央値</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step1.market_median) }}</td>
+            <td>サンプル数: {{ result.step1.sample_count }}件</td>
+          </tr>
+          <tr>
+            <td>走行距離補正</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step1.mileage_adjustment) }}</td>
+            <td>{{ "{:,}".format(result.step1.mileage_km) }}km</td>
+          </tr>
+          <tr>
+            <td>年式補正</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step1.age_adjustment) }}</td>
+            <td>{{ result.step1.vehicle_age_years }}年経過</td>
+          </tr>
+          <tr>
+            <td>ボディオプション加算</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step1.body_option_value) }}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>安全マージン控除</td>
+            <td class="text-right text-danger">&yen;-{{ "{:,}".format(result.step1.safety_margin_amount) }}</td>
+            <td>{{ "%.1f"|format(result.step1.safety_margin_rate * 100) }}%</td>
+          </tr>
+          <tr style="font-weight: 700; border-top: 2px solid var(--border-dark);">
+            <td>推奨買取価格</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.acquisition_price) }}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ===== Step 2: Residual Value Breakdown ===== #}
+  <div class="result-schedule-section">
+    <h4>Step 2: 残価算出 内訳</h4>
+    <div class="table-responsive">
+      <table class="table table--striped">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th class="text-right">金額 / 値</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>取得価格</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.acquisition_price) }}</td>
+            <td>Step 1より</td>
+          </tr>
+          <tr>
+            <td>減価償却方法</td>
+            <td class="text-right">{{ "定率法（200%）" if result.step2.depreciation_method == "declining_200" else "定額法" }}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>耐用年数</td>
+            <td class="text-right">{{ result.step2.useful_life_years }}年</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>リース期間終了時簿価</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step2.book_value_at_end) }}</td>
+            <td>{{ result.step2.lease_term_months }}ヶ月後</td>
+          </tr>
+          <tr>
+            <td>期末予想市場価格</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step2.projected_market_value) }}</td>
+            <td>相場推計</td>
+          </tr>
+          <tr style="font-weight: 700; border-top: 2px solid var(--border-dark);">
+            <td>残価見込</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.residual_value) }}</td>
+            <td>簿価と市場予想の低い方</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ===== Step 3: Lease Fee Breakdown ===== #}
+  <div class="result-schedule-section">
+    <h4>Step 3: リース料算出 内訳</h4>
+    <div class="table-responsive">
+      <table class="table table--striped">
+        <thead>
+          <tr>
+            <th>費用項目</th>
+            <th class="text-right">月額 (円)</th>
+            <th class="text-right">年額 / 総額 (円)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>元本回収分</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.principal_monthly) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.principal_total) }}</td>
+          </tr>
+          <tr>
+            <td>投資家配当</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.investor_yield_monthly) }}</td>
+            <td class="text-right">年率 {{ "%.1f"|format(result.step3.investor_yield_rate * 100) }}%</td>
+          </tr>
+          <tr>
+            <td>AM報酬</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.am_fee_monthly) }}</td>
+            <td class="text-right">年率 {{ "%.1f"|format(result.step3.am_fee_rate * 100) }}%</td>
+          </tr>
+          <tr>
+            <td>私募取扱報酬（月割）</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.placement_fee_monthly) }}</td>
+            <td class="text-right">一括 {{ "%.1f"|format(result.step3.placement_fee_rate * 100) }}%</td>
+          </tr>
+          <tr>
+            <td>会計事務委託費</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.accounting_fee_monthly) }}</td>
+            <td class="text-right"></td>
+          </tr>
+          <tr>
+            <td>オペレーターマージン</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.step3.operator_margin_monthly) }}</td>
+            <td class="text-right">{{ "%.1f"|format(result.step3.operator_margin_rate * 100) }}%</td>
+          </tr>
+          <tr style="font-weight: 700; border-top: 2px solid var(--border-dark);">
+            <td>月額リース料</td>
+            <td class="text-right">&yen;{{ "{:,}".format(result.monthly_lease_fee) }}</td>
+            <td class="text-right">総額 &yen;{{ "{:,}".format(result.total_lease_fee) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ===== NAV Chart ===== #}
+  <div class="result-chart-section">
+    <h4>NAV推移チャート（純資産価値）</h4>
+    <canvas id="navChart"
+            data-labels='{{ nav_labels|tojson }}'
+            data-book-value='{{ nav_book_value|tojson }}'
+            data-market-value='{{ nav_market_value|tojson }}'
+            data-cumulative-income='{{ nav_cumulative_income|tojson }}'
+            width="800" height="400">
+    </canvas>
+  </div>
+
+  {# ===== Monthly Schedule Table ===== #}
+  <div class="result-schedule-section">
+    <h4>月次リーススケジュール</h4>
+    <div class="table-responsive">
+      <table class="table table--striped">
+        <thead>
+          <tr>
+            <th>月</th>
+            <th>簿価残高</th>
+            <th>リース収入</th>
+            <th>累計収入</th>
+            <th>減価償却費</th>
+            <th>月次損益</th>
+            <th>累計損益</th>
+            <th>NAV</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in result.monthly_schedule %}
+          <tr>
+            <td>{{ item.month }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.asset_value) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.lease_income) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_income) }}</td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.depreciation_expense) }}</td>
+            <td class="text-right {% if item.monthly_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+              &yen;{{ "{:,}".format(item.monthly_profit) }}
+            </td>
+            <td class="text-right {% if item.cumulative_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+              &yen;{{ "{:,}".format(item.cumulative_profit) }}
+            </td>
+            <td class="text-right">&yen;{{ "{:,}".format(item.nav) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ===== Action Buttons ===== #}
+  <div class="result-actions">
+    <button type="button" class="btn btn--outline"
+            onclick="window.location.href='/pricing'">
+      条件を変更して再計算
+    </button>
+    <button type="button" class="btn btn--secondary"
+            hx-get="/api/v1/pricing/proposal-pdf?result_id={{ result.result_id }}"
+            hx-swap="none"
+            onclick="window.open('/api/v1/pricing/proposal-pdf?result_id={{ result.result_id }}', '_blank')">
+      提案書PDF出力
+    </button>
+    <button type="button" class="btn btn--secondary"
+            onclick="window.open('/api/v1/pricing/export-excel?result_id={{ result.result_id }}', '_blank')">
+      Excel出力
+    </button>
+    <button type="button" class="btn btn--primary"
+            onclick="window.print()">
+      印刷
+    </button>
+  </div>
+</div>
+
+<script>
+(function() {
+  var canvas = document.getElementById('navChart');
+  if (!canvas) return;
+
+  var labels = JSON.parse(canvas.dataset.labels || '[]');
+  var bookValue = JSON.parse(canvas.dataset.bookValue || '[]');
+  var marketValue = JSON.parse(canvas.dataset.marketValue || '[]');
+  var cumulativeIncome = JSON.parse(canvas.dataset.cumulativeIncome || '[]');
+
+  if (window._navChartInstance) {
+    window._navChartInstance.destroy();
+  }
+
+  window._navChartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: '簿価残高',
+          data: bookValue,
+          borderColor: 'rgba(37, 99, 235, 1)',
+          backgroundColor: 'rgba(37, 99, 235, 0.1)',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.3
+        },
+        {
+          label: '市場予想価値',
+          data: marketValue,
+          borderColor: 'rgba(234, 179, 8, 1)',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [6, 3],
+          pointRadius: 2,
+          tension: 0.3
+        },
+        {
+          label: '累計リース収入',
+          data: cumulativeIncome,
+          borderColor: 'rgba(34, 197, 94, 1)',
+          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.3
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          title: { display: true, text: '経過月数' }
+        },
+        y: {
+          position: 'left',
+          title: { display: true, text: '金額 (円)' },
+          ticks: {
+            callback: function(value) {
+              return '\u00a5' + value.toLocaleString();
+            }
+          }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': \u00a5' + ctx.parsed.y.toLocaleString();
+            }
+          }
+        },
+        legend: {
+          position: 'top'
+        }
+      }
+    }
+  });
+})();
+</script>

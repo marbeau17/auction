@@ -11,9 +11,83 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
 from app.config import get_settings
+from app.core.contract_generator import ContractGenerator
+from app.db.repositories.stakeholder_repo import (
+    StakeholderRepository,
+    ROLE_TYPE_LABELS,
+    VALID_ROLE_TYPES,
+)
+from app.middleware.rbac import require_permission
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1/contracts", tags=["contracts"])
+
+# All 9 contract types
+CONTRACT_TYPES = {
+    "tk_agreement": {
+        "name": "匿名組合契約書",
+        "name_en": "TK Agreement",
+        "party_a": "spc",
+        "party_b": "investor",
+        "variables": [],
+    },
+    "sales_agreement": {
+        "name": "車両売買契約書",
+        "name_en": "Sales Agreement",
+        "party_a": "end_user",
+        "party_b": "spc",
+        "variables": [],
+    },
+    "master_lease": {
+        "name": "マスターリース契約書",
+        "name_en": "Master Lease",
+        "party_a": "spc",
+        "party_b": "operator",
+        "variables": [],
+    },
+    "sublease_agreement": {
+        "name": "サブリース契約書",
+        "name_en": "Sub-lease",
+        "party_a": "operator",
+        "party_b": "end_user",
+        "variables": [],
+    },
+    "private_placement": {
+        "name": "私募取扱業務契約書",
+        "name_en": "Private Placement",
+        "party_a": "spc",
+        "party_b": "private_placement_agent",
+        "variables": ["placement_fee_rate", "total_placement_amount"],
+    },
+    "customer_referral": {
+        "name": "顧客紹介業務契約書",
+        "name_en": "Customer Referral",
+        "party_a": "spc",
+        "party_b": "asset_manager",
+        "variables": ["referral_fee_rate"],
+    },
+    "asset_management": {
+        "name": "アセットマネジメント契約書",
+        "name_en": "Asset Management",
+        "party_a": "spc",
+        "party_b": "asset_manager",
+        "variables": ["am_fee_rate", "managed_assets_value"],
+    },
+    "accounting_firm": {
+        "name": "会計事務委託契約書①（会計事務所）",
+        "name_en": "Accounting (Firm)",
+        "party_a": "spc",
+        "party_b": "accounting_firm",
+        "variables": ["monthly_fee", "scope_of_work"],
+    },
+    "accounting_association": {
+        "name": "会計事務委託契約書②（一般社団法人）",
+        "name_en": "Accounting (Association)",
+        "party_a": "spc",
+        "party_b": "accounting_delegate",
+        "variables": ["monthly_fee", "scope_of_work"],
+    },
+}
 
 
 def _get_client():
@@ -21,9 +95,17 @@ def _get_client():
     return get_supabase_client(service_role=True)
 
 
+def _get_repo() -> StakeholderRepository:
+    return StakeholderRepository(_get_client())
+
+
 # GET /api/v1/contracts/mapper/{simulation_id}
 @router.get("/mapper/{simulation_id}")
-async def get_contract_mapper(simulation_id: str, request: Request):
+async def get_contract_mapper(
+    simulation_id: str,
+    request: Request,
+    user: dict = Depends(require_permission("contracts", "read")),
+):
     """Return the visual scheme mapper HTML fragment."""
     client = _get_client()
 
@@ -57,7 +139,10 @@ async def get_contract_mapper(simulation_id: str, request: Request):
 
 # POST /api/v1/contracts/stakeholders
 @router.post("/stakeholders")
-async def save_stakeholder(request: Request):
+async def save_stakeholder(
+    request: Request,
+    user: dict = Depends(require_permission("stakeholders", "write")),
+):
     """Save or update a stakeholder."""
     form = await request.form()
     client = _get_client()
@@ -95,95 +180,134 @@ async def save_stakeholder(request: Request):
 
 # POST /api/v1/contracts/generate/{simulation_id}
 @router.post("/generate/{simulation_id}")
-async def generate_contracts(simulation_id: str, request: Request):
-    """Generate all contract documents for a simulation."""
+async def generate_contracts(
+    simulation_id: str,
+    request: Request,
+    user: dict = Depends(require_permission("contracts", "write")),
+):
+    """Generate all contract documents for a simulation.
+
+    Uses ContractGenerator to produce real DOCX files (via docxtpl variable
+    substitution) instead of plain-text fallbacks.  The generated context is
+    also persisted to the ``deal_contracts`` table for audit/traceability.
+    """
     client = _get_client()
 
-    # Fetch all data
+    # --- Fetch simulation --------------------------------------------------
     sim = client.table("simulations").select("*").eq("id", simulation_id).maybe_single().execute()
     if not sim.data:
         return JSONResponse({"error": "Simulation not found"}, status_code=404)
     simulation = sim.data
     rsj = simulation.get("result_summary_json") or {}
 
+    # --- Fetch stakeholders ------------------------------------------------
     sh = client.table("deal_stakeholders").select("*").eq("simulation_id", simulation_id).execute()
     stakeholders = {s["role_type"]: s for s in (sh.data or [])}
 
-    ct = client.table("contract_templates").select("*").eq("is_active", True).order("display_order").execute()
-    templates = ct.data or []
-
     if not stakeholders:
-        return HTMLResponse('<div class="alert alert--error">ステークホルダー情報を先に登録してください</div>')
+        return HTMLResponse(
+            '<div class="alert alert--error">ステークホルダー情報を先に登録してください</div>'
+        )
 
-    # Build context for templates
-    context = _build_template_context(simulation, rsj, stakeholders)
+    # --- Fetch DB contract templates (for audit trail) --------------------
+    ct = client.table("contract_templates").select("*").eq("is_active", True).order("display_order").execute()
+    db_templates = ct.data or []
+    db_template_by_name = {t["contract_name"]: t for t in db_templates}
 
-    # Generate HTML contracts (since we don't have actual .docx templates, generate HTML→text)
-    generated_docs = []
-    for tmpl in templates:
-        required = tmpl.get("required_roles", {})
-        party_a_role = required.get("party_a", "")
-        party_b_role = required.get("party_b", "")
+    # --- Build pricing_result dict from simulation + rsj ------------------
+    pricing_result = {
+        "purchase_price_yen": simulation.get("purchase_price_yen", 0),
+        "lease_monthly_yen": simulation.get("lease_monthly_yen", 0),
+        "lease_term_months": simulation.get("lease_term_months", 0),
+        "total_lease_revenue_yen": simulation.get("total_lease_revenue_yen", 0),
+        "target_mileage_km": simulation.get("target_mileage_km", 0),
+        "vehicle_year": simulation.get("target_model_year", ""),
+        **rsj,
+    }
 
+    fund_info = {
+        "fund_name": rsj.get("fund_name", simulation.get("fund_name", "")),
+    }
+
+    # --- Generate DOCX contracts via ContractGenerator --------------------
+    generator = ContractGenerator()
+    generated_entries = []
+
+    for contract_type, template_file in generator.TEMPLATES.items():
+        party_a_role, party_b_role = generator.PARTY_MAPPING.get(
+            contract_type, ("spc", "operator")
+        )
         party_a = stakeholders.get(party_a_role, {})
         party_b = stakeholders.get(party_b_role, {})
 
         if not party_a.get("company_name") or not party_b.get("company_name"):
             continue
 
-        doc_context = {
-            **context,
-            "party_a_name": party_a.get("company_name", ""),
-            "party_a_representative": party_a.get("representative_name", ""),
-            "party_a_address": party_a.get("address", ""),
-            "party_b_name": party_b.get("company_name", ""),
-            "party_b_representative": party_b.get("representative_name", ""),
-            "party_b_address": party_b.get("address", ""),
-            "contract_name": tmpl["contract_name"],
-            "contract_date": datetime.now().strftime("%Y年%m月%d日"),
-        }
+        context = generator._build_context(
+            contract_type, stakeholders, pricing_result, fund_info
+        )
 
-        # Save to deal_contracts
+        try:
+            docx_bytes = generator.generate_contract(contract_type, context)
+        except FileNotFoundError:
+            logger.warning("template_missing", contract_type=contract_type)
+            continue
+
+        display_name = generator.CONTRACT_NAMES.get(contract_type, contract_type)
+
+        # Persist to deal_contracts for audit
         try:
             dc_data = {
                 "simulation_id": simulation_id,
-                "template_id": tmpl["id"],
-                "contract_name": tmpl["contract_name"],
+                "contract_name": display_name,
                 "status": "generated",
-                "generated_context": doc_context,
+                "generated_context": context,
                 "generated_at": datetime.utcnow().isoformat(),
             }
+            db_tmpl = db_template_by_name.get(display_name)
+            if db_tmpl:
+                dc_data["template_id"] = db_tmpl["id"]
             client.table("deal_contracts").insert(dc_data).execute()
         except Exception:
             pass
 
-        generated_docs.append({
-            "name": tmpl["contract_name"],
-            "context": doc_context,
+        generated_entries.append({
+            "display_name": display_name,
+            "docx_bytes": docx_bytes,
         })
 
-    if not generated_docs:
-        return HTMLResponse('<div class="alert alert--error">生成可能な契約書がありません。全ステークホルダーの情報を入力してください。</div>')
+    if not generated_entries:
+        return HTMLResponse(
+            '<div class="alert alert--error">'
+            "生成可能な契約書がありません。全ステークホルダーの情報を入力してください。"
+            "</div>"
+        )
 
-    # Generate ZIP with text contracts
+    # --- Package into ZIP --------------------------------------------------
     zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for doc in generated_docs:
-            content = _render_contract_text(doc["name"], doc["context"])
-            filename = f"{doc['name']}_{simulation_id[:8]}.txt"
-            zf.writestr(filename, content)
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for entry in generated_entries:
+            filename = f"{entry['display_name']}_{simulation_id[:8]}.docx"
+            zf.writestr(filename, entry["docx_bytes"])
 
     zip_buffer.seek(0)
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="contracts_{simulation_id[:8]}.zip"'}
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="contracts_{simulation_id[:8]}.zip"'
+            )
+        },
     )
 
 
 # GET /api/v1/contracts/addressbook
 @router.get("/addressbook")
-async def list_addressbook(role_type: str = ""):
+async def list_addressbook(
+    role_type: str = "",
+    user: dict = Depends(require_permission("stakeholders", "read")),
+):
     """List address book entries, optionally filtered by role."""
     client = _get_client()
     q = client.table("stakeholder_addressbook").select("*").order("company_name")
@@ -195,7 +319,10 @@ async def list_addressbook(role_type: str = ""):
 
 # GET /api/v1/contracts/addressbook/options/{role_type}
 @router.get("/addressbook/options/{role_type}")
-async def addressbook_options(role_type: str):
+async def addressbook_options(
+    role_type: str,
+    user: dict = Depends(require_permission("stakeholders", "read")),
+):
     """Return <option> HTML elements for a role's address book entries."""
     client = _get_client()
     result = client.table("stakeholder_addressbook").select("*").eq("role_type", role_type).order("company_name").execute()
@@ -210,7 +337,10 @@ async def addressbook_options(role_type: str):
 
 # POST /api/v1/contracts/addressbook/save
 @router.post("/addressbook/save")
-async def save_to_addressbook(request: Request):
+async def save_to_addressbook(
+    request: Request,
+    user: dict = Depends(require_permission("stakeholders", "write")),
+):
     """Save current stakeholder info to the address book."""
     form = await request.form()
     client = _get_client()
@@ -232,24 +362,130 @@ async def save_to_addressbook(request: Request):
         return HTMLResponse(f'<span class="badge badge--danger" style="font-size:0.75rem">保存失敗</span>')
 
 
+# GET /api/v1/contracts/stakeholder-roles
+@router.get("/stakeholder-roles")
+async def list_stakeholder_roles(
+    user: dict = Depends(require_permission("stakeholders", "read")),
+):
+    """List all available role types with Japanese labels."""
+    repo = _get_repo()
+    return JSONResponse({"data": repo.get_all_role_types()})
+
+
+# PUT /api/v1/contracts/stakeholders/{id}
+@router.put("/stakeholders/{stakeholder_id}")
+async def update_stakeholder(
+    stakeholder_id: str,
+    request: Request,
+    user: dict = Depends(require_permission("stakeholders", "write")),
+):
+    """Update a stakeholder by ID."""
+    repo = _get_repo()
+    body = await request.json()
+
+    allowed_fields = {
+        "company_name", "representative_name", "address", "phone",
+        "email", "registration_number", "seal_required", "role_type",
+    }
+    update_data = {k: v for k, v in body.items() if k in allowed_fields}
+
+    if not update_data:
+        return JSONResponse({"error": "No valid fields to update"}, status_code=400)
+
+    try:
+        result = await repo.update(stakeholder_id, update_data)
+        return JSONResponse({"data": result})
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]}, status_code=500)
+
+
+# DELETE /api/v1/contracts/stakeholders/{id}
+@router.delete("/stakeholders/{stakeholder_id}")
+async def delete_stakeholder(
+    stakeholder_id: str,
+    user: dict = Depends(require_permission("stakeholders", "write")),
+):
+    """Delete a stakeholder by ID."""
+    repo = _get_repo()
+    try:
+        deleted = await repo.delete(stakeholder_id)
+        if deleted:
+            return JSONResponse({"ok": True})
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]}, status_code=500)
+
+
+# GET /api/v1/contracts/address-book
+@router.get("/address-book")
+async def get_address_book(
+    q: str = "",
+    user: dict = Depends(require_permission("stakeholders", "read")),
+):
+    """Get reusable stakeholder address book (unique company+role combos)."""
+    repo = _get_repo()
+    try:
+        if q:
+            entries = await repo.search_address_book(q)
+        else:
+            entries = await repo.get_address_book()
+        return JSONResponse({"data": entries})
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]}, status_code=500)
+
+
+# POST /api/v1/contracts/stakeholders/copy/{source_sim_id}/{target_sim_id}
+@router.post("/stakeholders/copy/{source_sim_id}/{target_sim_id}")
+async def copy_stakeholders(
+    source_sim_id: str,
+    target_sim_id: str,
+    user: dict = Depends(require_permission("stakeholders", "write")),
+):
+    """Copy all stakeholders from one simulation to another."""
+    repo = _get_repo()
+    try:
+        copies = await repo.copy_from_simulation(source_sim_id, target_sim_id)
+        return JSONResponse({
+            "ok": True,
+            "copied": len(copies),
+            "data": copies,
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]}, status_code=500)
+
+
+# GET /api/v1/contracts/types
+@router.get("/types")
+async def list_contract_types(
+    user: dict = Depends(require_permission("contracts", "read")),
+):
+    """List all 9 supported contract types."""
+    result = []
+    for key, ct in CONTRACT_TYPES.items():
+        result.append({
+            "key": key,
+            "name": ct["name"],
+            "name_en": ct["name_en"],
+            "party_a_role": ct["party_a"],
+            "party_b_role": ct["party_b"],
+            "party_a_label": ROLE_TYPE_LABELS.get(ct["party_a"], ct["party_a"]),
+            "party_b_label": ROLE_TYPE_LABELS.get(ct["party_b"], ct["party_b"]),
+            "extra_variables": ct["variables"],
+        })
+    return JSONResponse({"data": result})
+
+
 # --- Helper functions ---
 
 def _role_label(role: str) -> str:
-    labels = {
-        "spc": "SPC（特別目的会社）",
-        "operator": "カーチス（オペレーター）",
-        "investor": "投資家",
-        "end_user": "運送事業者（エンドユーザー）",
-        "guarantor": "連帯保証人",
-        "trustee": "信託銀行",
-    }
-    return labels.get(role, role)
+    return ROLE_TYPE_LABELS.get(role, role)
 
 
 def _build_template_context(simulation: dict, rsj: dict, stakeholders: dict) -> dict:
+    purchase_price = simulation.get("purchase_price_yen", 0)
     return {
-        "purchase_price": f"¥{simulation.get('purchase_price_yen', 0):,}",
-        "purchase_price_num": simulation.get("purchase_price_yen", 0),
+        "purchase_price": f"¥{purchase_price:,}",
+        "purchase_price_num": purchase_price,
         "monthly_lease_fee": f"¥{simulation.get('lease_monthly_yen', 0):,}",
         "monthly_lease_fee_num": simulation.get("lease_monthly_yen", 0),
         "lease_term_months": simulation.get("lease_term_months", 0),
@@ -263,11 +499,26 @@ def _build_template_context(simulation: dict, rsj: dict, stakeholders: dict) -> 
         "assessment": rsj.get("assessment", ""),
         "simulation_id": simulation.get("id", ""),
         "simulation_date": (simulation.get("created_at") or "")[:10],
+        # Private Placement variables
+        "placement_fee_rate": rsj.get("placement_fee_rate", "3.0%"),
+        "total_placement_amount": f"¥{purchase_price:,}",
+        # Customer Referral variables
+        "referral_fee_rate": rsj.get("referral_fee_rate", "1.0%"),
+        # Asset Management variables
+        "am_fee_rate": rsj.get("am_fee_rate", "2.0%"),
+        "managed_assets_value": f"¥{purchase_price:,}",
+        # Accounting (Firm & Association) variables
+        "monthly_fee": rsj.get("monthly_fee", "¥50,000"),
+        "scope_of_work": rsj.get("scope_of_work", "記帳代行、決算書作成、税務申告"),
     }
 
 
 def _render_contract_text(contract_name: str, ctx: dict) -> str:
     """Render a contract as formatted text."""
+
+    # Build contract-type-specific section
+    extra_section = _render_contract_specific_section(contract_name, ctx)
+
     return f"""
 {'=' * 60}
 {contract_name}
@@ -302,7 +553,7 @@ def _render_contract_text(contract_name: str, ctx: dict) -> str:
   リース期間:   {ctx.get('lease_term_months', '')}ヶ月
   リース料総額: {ctx.get('total_lease_revenue', '')}
   目標利回り:   {ctx.get('target_yield_rate', '')}
-
+{extra_section}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 上記条件にて、甲と乙は本契約を締結する。
@@ -315,16 +566,57 @@ def _render_contract_text(contract_name: str, ctx: dict) -> str:
 """
 
 
+def _render_contract_specific_section(contract_name: str, ctx: dict) -> str:
+    """Return extra text section based on contract type."""
+    if "私募取扱業務" in contract_name:
+        return f"""
+【私募取扱業務条件】
+  取扱手数料率:   {ctx.get('placement_fee_rate', '')}
+  募集総額:       {ctx.get('total_placement_amount', '')}
+"""
+    elif "顧客紹介業務" in contract_name:
+        return f"""
+【顧客紹介業務条件】
+  紹介手数料率:   {ctx.get('referral_fee_rate', '')}
+"""
+    elif "アセットマネジメント" in contract_name:
+        return f"""
+【アセットマネジメント条件】
+  AM手数料率:     {ctx.get('am_fee_rate', '')}
+  管理資産額:     {ctx.get('managed_assets_value', '')}
+"""
+    elif "会計事務委託契約書①" in contract_name:
+        return f"""
+【会計事務委託条件（会計事務所）】
+  月額報酬:       {ctx.get('monthly_fee', '')}
+  業務範囲:       {ctx.get('scope_of_work', '')}
+"""
+    elif "会計事務委託契約書②" in contract_name:
+        return f"""
+【会計事務委託条件（一般社団法人）】
+  月額報酬:       {ctx.get('monthly_fee', '')}
+  業務範囲:       {ctx.get('scope_of_work', '')}
+"""
+    else:
+        return ""
+
+
 def _build_mapper_html(simulation, stakeholders, sh_map, templates, contracts, rsj):
     """Build the visual scheme mapper HTML."""
     sim_id = simulation["id"]
 
     # Role definitions for the scheme
     roles = [
-        ("investor", "投資家", "#10b981", "M 50 20 L 50 80"),
-        ("spc", "SPC", "#2563eb", "M 200 50"),
-        ("operator", "カーチス", "#f59e0b", "M 350 50"),
-        ("end_user", "運送事業者", "#8b5cf6", "M 500 50"),
+        ("investor", "投資家", "#10b981", ""),
+        ("spc", "SPC", "#2563eb", ""),
+        ("operator", "カーチス", "#f59e0b", ""),
+        ("end_user", "運送事業者", "#8b5cf6", ""),
+        ("private_placement_agent", "私募取扱業者", "#ec4899", ""),
+        ("asset_manager", "アセットマネージャー", "#06b6d4", ""),
+        ("accounting_firm", "会計事務所", "#84cc16", ""),
+        ("accounting_delegate", "会計事務委託先", "#f97316", ""),
+        ("guarantor", "保証人", "#64748b", ""),
+        ("trustee", "受託者", "#a855f7", ""),
     ]
 
     # Build stakeholder cards

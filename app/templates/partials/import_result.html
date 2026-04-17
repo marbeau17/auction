@@ -1,0 +1,89 @@
+{# Import result partial for the market data importer. #}
+{% set imported = result.imported_count or 0 %}
+{% set total = result.total_rows or 0 %}
+{% set error_count = result.error_count or 0 %}
+{% set errors = result.errors or [] %}
+{% set auction_dates = result.auction_dates or [] %}
+{% set auction_sites = result.auction_sites or [] %}
+{% set created = result.created_manufacturers or [] %}
+
+<div id="import-result" class="import-result">
+  {% if imported and not errors %}
+    <div class="alert alert-success">
+      <strong>インポート完了:</strong> {{ imported }} 件 / {{ total }} 件
+    </div>
+  {% elif imported and errors %}
+    <div class="alert alert-warning">
+      <strong>部分的に成功:</strong>
+      成功 {{ imported }} 件 / エラー {{ error_count }} 件 / 合計 {{ total }} 件
+    </div>
+  {% else %}
+    <div class="alert alert-error">
+      <strong>インポート失敗:</strong>
+      取り込めた行はありません（エラー {{ error_count }} 件 / 合計 {{ total }} 件）。
+    </div>
+  {% endif %}
+
+  <div class="import-summary">
+    <dl>
+      <dt>ソース名</dt><dd>{{ source_name }}</dd>
+      {% if auction_sites %}
+      <dt>オークションサイト（保存済み）</dt>
+      <dd>{{ auction_sites | join(', ') }}</dd>
+      {% endif %}
+      {% if auction_dates %}
+      <dt>落札日（保存済み）</dt>
+      <dd>{{ auction_dates | join(', ') }}</dd>
+      {% endif %}
+      {% if created %}
+      <dt>自動追加されたメーカー</dt>
+      <dd class="text-warning">
+        {{ created | join(', ') }}
+        <small>（マスタに存在しないメーカー名が新規登録されました。確認してください。）</small>
+      </dd>
+      {% endif %}
+    </dl>
+  </div>
+
+  {% if errors %}
+    <details class="import-errors" open>
+      <summary>エラー一覧（{{ errors|length }} 件、最大 50 件表示）</summary>
+      <table class="format-table">
+        <thead>
+          <tr>
+            <th style="width: 80px">行</th>
+            <th style="width: 140px">項目</th>
+            <th>メッセージ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for err in errors %}
+          <tr>
+            <td>{{ err.row }}</td>
+            <td>{{ err.field or '-' }}</td>
+            <td>{{ err.message }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  {% endif %}
+</div>
+
+<style>
+.import-result { margin-top: 20px; }
+.import-result .alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.import-result .alert-success { background: #f0fff4; color: #22543d; border: 1px solid #9ae6b4; }
+.import-result .alert-warning { background: #fffaf0; color: #7b341e; border: 1px solid #fbd38d; }
+.import-result .alert-error   { background: #fff5f5; color: #742a2a; border: 1px solid #feb2b2; }
+.import-summary dl { display: grid; grid-template-columns: 200px 1fr; gap: 4px 12px; margin: 0; }
+.import-summary dt { font-weight: 600; color: #4a5568; }
+.import-summary dd { margin: 0; }
+.import-summary .text-warning { color: #b7791f; }
+.import-errors { margin-top: 16px; }
+.import-errors summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+</style>

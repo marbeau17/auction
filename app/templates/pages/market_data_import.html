@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}相場データインポート - CVLPOS{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>相場データインポート</h1>
+    <p>オークション相場情報をCSVまたはExcelファイルからインポートします。</p>
+
+    <!-- Upload Form -->
+    <div class="upload-zone" id="drop-zone">
+        <form hx-post="/api/v1/market-prices/import/csv"
+              hx-target="#import-result"
+              hx-swap="outerHTML"
+              hx-encoding="multipart/form-data"
+              hx-indicator="#upload-spinner">
+            <div class="upload-icon">📁</div>
+            <p>ファイルをドラッグ＆ドロップ、または</p>
+            <input type="file" name="file" id="file-input"
+                   accept=".csv,.xlsx,.xls" required>
+            <label for="file-input" class="btn btn-outline">ファイルを選択</label>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>データソース名</label>
+                <input type="text" name="source_name" value="manual_import" placeholder="例: AI-NET 2026年3月">
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+                インポート実行
+            </button>
+            <div id="upload-spinner" class="htmx-indicator">アップロード中...</div>
+        </form>
+    </div>
+
+    <!-- Import Result -->
+    <div id="import-result"></div>
+
+    <!-- Required Format -->
+    <div class="format-guide">
+        <h3>データフォーマット</h3>
+        <p><a href="/api/v1/market-prices/import/template" class="btn btn-sm btn-outline">CSVテンプレートをダウンロード</a></p>
+        <table class="format-table">
+            <thead>
+                <tr>
+                    <th>カラム名</th>
+                    <th>必須</th>
+                    <th>型</th>
+                    <th>説明</th>
+                    <th>例</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>maker / メーカー</td><td>○</td><td>テキスト</td><td>メーカー名</td><td>いすゞ</td></tr>
+                <tr><td>model / 車種</td><td>○</td><td>テキスト</td><td>車種名</td><td>エルフ</td></tr>
+                <tr><td>year / 年式</td><td>○</td><td>数値</td><td>年式（西暦）</td><td>2020</td></tr>
+                <tr><td>mileage_km / 走行距離</td><td>○</td><td>数値</td><td>走行距離(km)</td><td>85000</td></tr>
+                <tr><td>price_yen / 価格</td><td>○</td><td>数値</td><td>落札価格(円)</td><td>3500000</td></tr>
+                <tr><td>auction_date / 落札日</td><td>○</td><td>日付</td><td>落札日</td><td>2026-03-15</td></tr>
+                <tr><td>auction_site</td><td></td><td>テキスト</td><td>サイト名</td><td>AI-NET</td></tr>
+                <tr><td>body_type / ボディ</td><td></td><td>テキスト</td><td>ボディタイプ</td><td>平ボディ</td></tr>
+                <tr><td>tonnage / 積載量</td><td></td><td>数値</td><td>積載量(t)</td><td>2.0</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.upload-zone {
+    border: 2px dashed #cbd5e0;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    margin: 20px 0;
+    background: #f7fafc;
+    transition: all 0.3s;
+}
+.upload-zone.dragover {
+    border-color: #4299e1;
+    background: #ebf8ff;
+}
+.upload-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+.format-guide {
+    margin-top: 30px;
+}
+.format-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.format-table th, .format-table td {
+    border: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    text-align: left;
+}
+.format-table th {
+    background: #edf2f7;
+}
+</style>
+
+<script>
+// Drag and drop
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const input = document.getElementById('file-input');
+    input.files = e.dataTransfer.files;
+});
+</script>
+{% endblock %}

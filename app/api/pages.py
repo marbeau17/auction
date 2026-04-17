@@ -30,6 +30,16 @@ def _render(request: Request, template: str, context: dict | None = None):
         ctx.setdefault("active_page", "simulation")
     elif path.startswith("/market"):
         ctx.setdefault("active_page", "market_data")
+    elif path.startswith("/integrated-pricing"):
+        ctx.setdefault("active_page", "integrated_pricing")
+    elif path.startswith("/financial-analysis"):
+        ctx.setdefault("active_page", "financial_analysis")
+    elif path.startswith("/yayoi"):
+        ctx.setdefault("active_page", "yayoi")
+    elif path.startswith("/lease-contracts"):
+        ctx.setdefault("active_page", "lease_contracts")
+    elif path.startswith("/invoices"):
+        ctx.setdefault("active_page", "invoices")
     else:
         ctx.setdefault("active_page", "dashboard")
     return templates.TemplateResponse(request, template, ctx)
@@ -97,7 +107,7 @@ async def dashboard_page(request: Request):
     if redirect:
         return redirect
 
-    kpi = {"simulation_count": 0, "avg_yield": 0.0, "price_alerts": 0}
+    kpi = {"simulation_count": 0, "avg_yield": 0.0, "active_vehicle_count": 0}
     recent_sims: list[dict[str, Any]] = []
     try:
         from app.db.supabase_client import get_supabase_client
@@ -105,9 +115,9 @@ async def dashboard_page(request: Request):
         # Count simulations
         sims = client.table("simulations").select("id", count="exact").execute()
         kpi["simulation_count"] = sims.count or 0
-        # Count active vehicles (price alerts)
+        # Active vehicles currently in the catalog
         vehs = client.table("vehicles").select("id", count="exact").eq("is_active", True).execute()
-        kpi["price_alerts"] = vehs.count or 0
+        kpi["active_vehicle_count"] = vehs.count or 0
         # Avg yield
         all_sims = client.table("simulations").select("expected_yield_rate").not_.is_("expected_yield_rate", "null").execute()
         yields = [r["expected_yield_rate"] for r in (all_sims.data or []) if r.get("expected_yield_rate")]
@@ -126,6 +136,7 @@ async def dashboard_page(request: Request):
         "recent_simulations": recent_sims,
         "stats": kpi,
         "error_message": locals().get("error_message"),
+        "kpi_json_url": "/api/v1/dashboard/kpi/json",
     }
     return _render(request, "pages/dashboard.html", context)
 
@@ -226,16 +237,19 @@ async def simulation_result_page(request: Request, simulation_id: str):
                 # Use saved monthly_schedule from result_summary_json if available
                 saved_schedule = rsj.get("monthly_schedule")
                 if saved_schedule and isinstance(saved_schedule, list) and len(saved_schedule) > 0:
-                    cum_income = 0
-                    cum_profit = 0
                     for row in saved_schedule:
                         m = row.get("month", 0)
-                        asset = row.get("book_value", 0)
-                        lease_income = row.get("lease_income", monthly)
-                        cum_income += lease_income
-                        profit = row.get("net_profit", 0)
-                        cum_profit += profit
-                        nav = (asset + cum_income) / purchase * 100 if purchase > 0 else 0
+                        # PricingEngine / quick-calc canonical field is asset_value;
+                        # fall back to book_value for any legacy rows.
+                        asset = row.get("asset_value", row.get("book_value", 0))
+                        cum_income = row.get("cumulative_income", 0)
+                        profit = row.get("monthly_profit", row.get("net_profit", 0))
+                        cum_profit = row.get("cumulative_profit", 0)
+                        nav = row.get("nav_ratio")
+                        if nav is None:
+                            nav = (asset + cum_income) / purchase * 100 if purchase > 0 else 0
+                        else:
+                            nav = nav * 100 if nav <= 1 else nav
 
                         months.append(f"{m}月")
                         asset_values.append(int(asset))
@@ -300,6 +314,43 @@ async def contract_mapper_page(request: Request, simulation_id: str):
     return _render(request, "pages/contract_mapper.html", {
         "user": user,
         "simulation_id": simulation_id,
+    })
+
+
+@router.get("/proposals/preview/{simulation_id}", response_class=HTMLResponse)
+async def proposal_preview_page(request: Request, simulation_id: str):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    simulation: dict[str, Any] | None = None
+    try:
+        from app.db.supabase_client import get_supabase_client
+        client = get_supabase_client(service_role=True)
+        result = (
+            client.table("simulations")
+            .select("*")
+            .eq("id", simulation_id)
+            .maybe_single()
+            .execute()
+        )
+        simulation = result.data
+
+        if simulation:
+            # Ensure input_data is accessible as an object for template dot notation
+            input_data = simulation.get("input_data") or simulation.get("result_summary_json") or {}
+            if not simulation.get("input_data"):
+                simulation["input_data"] = input_data
+    except Exception as exc:
+        logger.warning("proposal_preview_fetch_failed", simulation_id=simulation_id, error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+
+    return _render(request, "pages/proposal_preview.html", {
+        "user": user,
+        "simulation_id": simulation_id,
+        "simulation": simulation,
+        "error_message": locals().get("error_message"),
     })
 
 
@@ -526,6 +577,100 @@ async def market_data_table_fragment(
     )
 
 
+@router.get("/market-data/import", response_class=HTMLResponse)
+async def market_data_import_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    return _render(request, "pages/market_data_import.html", {"user": user})
+
+
+@router.get("/integrated-pricing", response_class=HTMLResponse)
+async def integrated_pricing_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    return _render(request, "pages/integrated_pricing.html", {"user": user})
+
+
+@router.get("/financial-analysis", response_class=HTMLResponse)
+async def financial_analysis_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    return _render(request, "pages/financial_analysis.html", {"user": user})
+
+
+@router.get("/invoices", response_class=HTMLResponse)
+async def invoice_list_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    invoices: list[dict[str, Any]] = []
+    try:
+        from app.db.supabase_client import get_supabase_client
+
+        client = get_supabase_client(service_role=True)
+        result = (
+            client.table("invoices")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+        invoices = result.data or []
+    except Exception as exc:
+        logger.warning("invoice_list_fetch_failed", error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+
+    return _render(request, "pages/invoice_list.html", {
+        "user": user,
+        "invoices": invoices,
+        "total_count": len(invoices),
+        "error_message": locals().get("error_message"),
+    })
+
+
+@router.get("/invoices/{invoice_id}", response_class=HTMLResponse)
+async def invoice_detail_page(request: Request, invoice_id: str):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    invoice: dict[str, Any] | None = None
+    try:
+        from app.db.supabase_client import get_supabase_client
+
+        client = get_supabase_client(service_role=True)
+        result = (
+            client.table("invoices")
+            .select("*")
+            .eq("id", invoice_id)
+            .maybe_single()
+            .execute()
+        )
+        invoice = result.data
+    except Exception as exc:
+        logger.warning("invoice_detail_fetch_failed", invoice_id=invoice_id, error=str(exc))
+        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+
+    return _render(request, "pages/invoice_detail.html", {
+        "user": user,
+        "invoice_id": invoice_id,
+        "invoice": invoice,
+        "error_message": locals().get("error_message"),
+    })
+
+
 @router.get("/market-data/{item_id}", response_class=HTMLResponse)
 async def market_data_detail_page(request: Request, item_id: str):
     user = await _get_optional_user(request)
@@ -565,3 +710,33 @@ async def market_data_detail_page(request: Request, item_id: str):
         "similar_vehicles": similar_vehicles,
         "error_message": locals().get("error_message"),
     })
+
+
+@router.get("/financial-analysis", response_class=HTMLResponse)
+async def financial_analysis_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    return _render(request, "pages/financial_analysis.html", {"user": user})
+
+
+@router.get("/yayoi/status", response_class=HTMLResponse)
+async def yayoi_status_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    return _render(request, "pages/yayoi_status.html", {"user": user})
+
+
+@router.get("/lease-contracts/import", response_class=HTMLResponse)
+async def lease_contract_import_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    return _render(request, "pages/lease_contract_import.html", {"user": user})

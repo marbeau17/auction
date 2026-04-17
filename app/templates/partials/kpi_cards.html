@@ -47,24 +47,19 @@
     </div>
   </div>
 
-  {# KPI Card 3: 相場変動 #}
+  {# KPI Card 3: アクティブ車両数 #}
   <div class="kpi-card">
     <div class="kpi-card__icon kpi-card__icon--alert">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        <path d="M3 17h2l2-7h10l2 7h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
       </svg>
     </div>
     <div class="kpi-card__body">
-      <span class="kpi-card__label">相場変動</span>
-      <span class="kpi-card__value">{{ stats.price_alerts }}件</span>
+      <span class="kpi-card__label">アクティブ車両数</span>
+      <span class="kpi-card__value">{{ stats.active_vehicle_count }}台</span>
     </div>
-    <div class="kpi-card__trend {% if stats.price_alerts > 0 %}kpi-card__trend--alert{% else %}kpi-card__trend--stable{% endif %}">
-      {% if stats.price_alerts > 0 %}
-        <span>要確認</span>
-      {% else %}
-        <span>安定</span>
-      {% endif %}
+    <div class="kpi-card__trend kpi-card__trend--stable">
+      <span>在庫反映</span>
     </div>
   </div>
 </div>

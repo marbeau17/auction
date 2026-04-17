@@ -52,6 +52,110 @@
         <span>相場データ</span>
       </a>
     </li>
+
+    <li class="sidebar-nav__item {% if current_path == '/integrated-pricing' %}sidebar-nav__item--active{% endif %}">
+      <a href="/integrated-pricing"
+         class="sidebar-nav__link"
+         hx-get="/integrated-pricing"
+         hx-target="#main-content"
+         hx-push-url="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span>統合プライシング</span>
+      </a>
+    </li>
+
+    <li class="sidebar-nav__item {% if current_path and current_path.startswith('/invoices') %}sidebar-nav__item--active{% endif %}">
+      <a href="/invoices"
+         class="sidebar-nav__link"
+         hx-get="/invoices"
+         hx-target="#main-content"
+         hx-push-url="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/>
+          <line x1="9" y1="17" x2="15" y2="17"/>
+        </svg>
+        <span>請求管理</span>
+      </a>
+    </li>
+
+    <li class="sidebar-nav__item {% if current_path == '/simulations' %}sidebar-nav__item--active{% endif %}">
+      <a href="/simulations"
+         class="sidebar-nav__link"
+         hx-get="/simulations"
+         hx-target="#main-content"
+         hx-push-url="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18"/><path d="m7 14 4-4 4 4 6-6"/>
+        </svg>
+        <span>シミュレーション履歴</span>
+      </a>
+    </li>
+
+    <li class="sidebar-nav__item {% if current_path and current_path.startswith('/financial-analysis') %}sidebar-nav__item--active{% endif %}">
+      <a href="/financial-analysis"
+         class="sidebar-nav__link"
+         hx-get="/financial-analysis"
+         hx-target="#main-content"
+         hx-push-url="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+          <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+          <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
+        </svg>
+        <span>財務AI診断</span>
+      </a>
+    </li>
+
+    <li class="sidebar-nav__item {% if current_path and current_path.startswith('/yayoi') %}sidebar-nav__item--active{% endif %}">
+      <a href="/yayoi/status"
+         class="sidebar-nav__link"
+         hx-get="/yayoi/status"
+         hx-target="#main-content"
+         hx-push-url="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/>
+          <path d="M14 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/>
+        </svg>
+        <span>弥生連携</span>
+        <span style="font-size:0.6em; background:#d69e2e; color:#fff; padding:1px 5px; border-radius:8px; margin-left:4px;">松</span>
+      </a>
+    </li>
+
+    <li class="sidebar-nav__item {% if current_path and current_path.startswith('/lease-contracts') %}sidebar-nav__item--active{% endif %}">
+      <a href="/lease-contracts/import"
+         class="sidebar-nav__link"
+         hx-get="/lease-contracts/import"
+         hx-target="#main-content"
+         hx-push-url="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+          <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+          <path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/>
+        </svg>
+        <span>リース契約取込</span>
+      </a>
+    </li>
+
+    <li class="sidebar-nav__item sidebar-nav__item--has-submenu">
+      <details>
+        <summary class="sidebar-nav__link" style="cursor:pointer; list-style:none;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span>提案資料</span>
+        </summary>
+        <ul style="list-style:none; padding-left:1.5rem; margin:0.25rem 0;">
+          <li><a href="/docs/proposal_index.html" class="sidebar-nav__link" style="font-size:0.85em;">松竹梅プラン比較</a></li>
+          <li><a href="/docs/matsu_take_ume_plans.html" class="sidebar-nav__link" style="font-size:0.85em;">プラン比較</a></li>
+          <li><a href="/docs/nav_comparison.html" class="sidebar-nav__link" style="font-size:0.85em;">NAV分析</a></li>
+          <li><a href="/docs/case_studies.html" class="sidebar-nav__link" style="font-size:0.85em;">導入事例</a></li>
+        </ul>
+      </details>
+    </li>
   </ul>
 
   <div class="sidebar-nav__footer">

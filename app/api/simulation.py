@@ -630,7 +630,12 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
 
     Accepts ``application/x-www-form-urlencoded`` data from the simulation
     form and returns an HTML fragment suitable for HTMX swapping.  Does not
-    persist results and does not require authentication.
+    require authentication; auto-saves when a valid JWT cookie is present.
+
+    The calculation delegates to ``PricingEngine`` (via
+    :func:`app.core.pricing.calculate_simulation`) so the numbers stay in
+    lock-step with the authenticated JSON endpoint — no hardcoded margins,
+    insurance, maintenance, or residual constants live in this handler.
 
     Returns rich HTML with Chart.js visualizations including:
     - Value transfer analysis (asset value vs cumulative lease income)
@@ -639,14 +644,8 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     - Detailed monthly schedule table (collapsible)
     """
     import re
-    from statistics import median
 
-    from app.core.pricing import (
-        _assessment,
-        _max_purchase_price,
-        _monthly_lease_fee,
-    )
-    from app.core.residual_value import ResidualValueCalculator
+    from app.db.supabase_client import get_supabase_client
 
     form = await request.form()
 
@@ -662,83 +661,93 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
     book_value = int(form.get("book_value", 0) or 0)
     body_type = form.get("body_type", "")
     body_option_value = int(form.get("body_option_value", 0) or 0)
-    target_yield_rate = float(form.get("target_yield_rate", 8.0) or 8.0)
+    # Form posts target yield as a percentage (e.g. "8" => 8 %).  SimulationInput
+    # expects a decimal in [0, 1].
+    target_yield_pct = float(form.get("target_yield_rate", 8.0) or 8.0)
+    target_yield_rate = target_yield_pct / 100.0
     lease_term_months = int(form.get("lease_term_months", 36) or 36)
+    vehicle_class = form.get("vehicle_class", "")
 
-    # Equipment options (multiple checkboxes)
+    # Equipment options (multiple checkboxes) — preserved through to the save
+    # payload; not consumed by PricingEngine itself.
     equipment_list = form.getlist("equipment")
 
-    # Calculate max purchase price
-    max_price = _max_purchase_price(book_value, acquisition_price, body_option_value)
-    recommended_price = int(max_price * 0.95)  # 5% below max
+    # Normalise registration year-month to "YYYY-MM" (SimulationInput format).
+    reg_raw = str(form.get("registration_year_month", ""))
+    ym_match = re.match(r"(\d{4})[-/]?(\d{1,2})?", reg_raw)
+    if ym_match:
+        yyyy = ym_match.group(1)
+        mm = ym_match.group(2) or "01"
+        registration_year_month = f"{yyyy}-{int(mm):02d}"
+    else:
+        registration_year_month = "2020-01"
 
-    # --- Residual value via ResidualValueCalculator (with mileage adj) --- #
-    rv_calc = ResidualValueCalculator()
-
-    # Parse year from registration_year_month
-    year_match = re.match(r'(\d{4})', str(form.get("registration_year_month", "")))
-    vehicle_year = int(year_match.group(1)) if year_match else 2020
-    elapsed_months = (2026 - vehicle_year) * 12 + lease_term_months  # age at lease end
-
-    # Map vehicle_class to category
-    category_map = {
-        "LARGE": "普通貨物",
-        "MEDIUM": "普通貨物",
-        "SMALL": "小型貨物",
-        "TRAILER_HEAD": "普通貨物",
-        "TRAILER_CHASSIS": "被けん引車",
-    }
-    category = category_map.get(form.get("vehicle_class", ""), "普通貨物")
-
-    rv_result = rv_calc.predict(
-        purchase_price=recommended_price,
-        category=category,
-        body_type=body_type,
-        elapsed_months=elapsed_months,
-        mileage=mileage_km,
-    )
-    residual = rv_result["residual_value"]
-    residual_rate = residual / recommended_price if recommended_price > 0 else 0
-
-    # Calculate monthly lease
-    monthly_fee = _monthly_lease_fee(
-        recommended_price, residual, lease_term_months,
-        target_yield_rate / 100, 15000, 10000,
+    # Build the canonical SimulationInput and delegate to PricingEngine.
+    sim_input = SimulationInput(
+        maker=maker or "unknown",
+        model=model or "unknown",
+        registration_year_month=registration_year_month,
+        mileage_km=mileage_km,
+        acquisition_price=acquisition_price,
+        book_value=book_value,
+        vehicle_class=vehicle_class or "中型",
+        body_type=body_type or "平ボディ",
+        body_option_value=body_option_value or None,
+        target_yield_rate=target_yield_rate,
+        lease_term_months=lease_term_months,
+        insurance_monthly=int(form.get("insurance_monthly", 0) or 0) or None,
+        maintenance_monthly=int(form.get("maintenance_monthly", 0) or 0) or None,
     )
 
-    total_fee = monthly_fee * lease_term_months
-    effective_yield = (
-        ((total_fee + residual - recommended_price) / recommended_price)
-        * (12 / lease_term_months)
-        if recommended_price > 0
-        else 0
-    )
-
-    # --- Market deviation calculation --- #
-    market_deviation = 0.0
+    supabase_client = get_supabase_client(service_role=True)
     try:
-        from app.db.supabase_client import get_supabase_client
-        client = get_supabase_client(service_role=True)
-        market_q = client.table("vehicles").select("price_yen").eq("is_active", True)
-        if maker:
-            market_q = market_q.eq("maker", maker)
-        if body_type:
-            market_q = market_q.eq("body_type", body_type)
-        market_result = market_q.limit(50).execute()
-        if market_result.data:
-            prices = [v["price_yen"] for v in market_result.data if v.get("price_yen")]
-            if prices:
-                market_median = median(prices)
-                market_deviation = abs(recommended_price - market_median) / market_median if market_median > 0 else 0
-    except Exception:
-        pass
+        sim_result: SimulationResult = await calculate_simulation(
+            input_data=sim_input, supabase=supabase_client
+        )
+    except Exception as exc:
+        logger.warning("quick_calculate_engine_failed", error=str(exc))
+        return HTMLResponse(
+            content=(
+                '<div class="alert alert--error">'
+                'シミュレーション計算に失敗しました。入力値を確認してください。'
+                '</div>'
+            ),
+            status_code=422,
+        )
 
-    # Assessment
-    assessment = _assessment(effective_yield, target_yield_rate / 100, market_deviation)
+    # Expose engine results under the local names the existing HTML uses.
+    max_price = sim_result.max_purchase_price
+    recommended_price = sim_result.recommended_purchase_price
+    residual = sim_result.estimated_residual_value
+    residual_rate = sim_result.residual_rate_result
+    monthly_fee = sim_result.monthly_lease_fee
+    total_fee = sim_result.total_lease_fee
+    effective_yield = sim_result.effective_yield_rate
+    assessment = sim_result.assessment
+    breakeven = sim_result.breakeven_months
 
-    # Breakeven
-    net_monthly = monthly_fee - 15000 - 10000
-    breakeven = math.ceil(recommended_price / net_monthly) if net_monthly > 0 else None
+    # Transform the engine's MonthlyScheduleItem list into plain dicts with a
+    # derived nav_ratio field (PricingEngine does not emit nav_ratio natively;
+    # pages.py accepts either nav_ratio or derives it from asset/cum income).
+    monthly_schedule: list[dict[str, Any]] = []
+    for item in sim_result.monthly_schedule:
+        nav_ratio = (
+            (item.asset_value + item.cumulative_income) / recommended_price
+            if recommended_price > 0
+            else 0.0
+        )
+        monthly_schedule.append({
+            "month": item.month,
+            "asset_value": item.asset_value,
+            "lease_income": item.lease_income,
+            "cumulative_income": item.cumulative_income,
+            "depreciation_expense": item.depreciation_expense,
+            "financing_cost": item.financing_cost,
+            "monthly_profit": item.monthly_profit,
+            "cumulative_profit": item.cumulative_profit,
+            "termination_loss": item.termination_loss,
+            "nav_ratio": round(nav_ratio, 4),
+        })
 
     # Auto-save if user is authenticated
     saved_sim_id = None
@@ -785,9 +794,10 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
                         "residual_rate": round(residual_rate, 4),
                         "assessment": assessment,
                         "breakeven_months": breakeven,
-                        "target_yield_rate": target_yield_rate,
+                        "target_yield_rate": target_yield_pct,
                         "actual_yield_rate": round(effective_yield, 4),
                         "equipment": equipment_list,
+                        "monthly_schedule": monthly_schedule,
                     },
                 }
                 result = client.table("simulations").insert(save_data).execute()
@@ -813,37 +823,15 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
             </div>
         """
 
-    # -----------------------------------------------------------------------
-    # Monthly schedule calculation
-    # -----------------------------------------------------------------------
-    dep_per_month = (recommended_price - residual) / lease_term_months if lease_term_months > 0 else 0
+    # Re-use the monthly_schedule built earlier (and persisted to DB); add
+    # convenience aliases for the legacy table-rendering keys below.
     schedule: list[dict[str, Any]] = []
-    cumulative_income = 0
-    cumulative_profit = 0
-    mr = (target_yield_rate / 100) / 12
-
-    for month in range(1, lease_term_months + 1):
-        asset_value = max(int(recommended_price - dep_per_month * month), residual)
-        cumulative_income += monthly_fee
-        prev_asset = recommended_price - dep_per_month * (month - 1)
-        dep_expense = int(prev_asset - asset_value)
-        fin_cost = int(prev_asset * mr)
-        net_income = monthly_fee - 15000 - 10000  # minus insurance & maintenance
-        profit = net_income - dep_expense - fin_cost
-        cumulative_profit += profit
-        net_fund_value = asset_value + cumulative_income
-        nav_ratio = net_fund_value / recommended_price if recommended_price > 0 else 0
-
+    for row in monthly_schedule:
         schedule.append({
-            "month": month,
-            "asset_value": asset_value,
-            "cumulative_income": int(cumulative_income),
-            "monthly_profit": int(profit),
-            "cumulative_profit": int(cumulative_profit),
-            "net_fund_value": int(net_fund_value),
-            "nav_ratio": round(nav_ratio, 3),
-            "dep_expense": dep_expense,
-            "fin_cost": fin_cost,
+            **row,
+            "net_fund_value": row["asset_value"] + row["cumulative_income"],
+            "dep_expense": row["depreciation_expense"],
+            "fin_cost": row["financing_cost"],
         })
 
     # -----------------------------------------------------------------------
@@ -900,7 +888,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
                 <input type="hidden" name="acquisition_price" value="{acquisition_price}">
                 <input type="hidden" name="book_value" value="{book_value}">
                 <input type="hidden" name="body_type" value="{body_type}">
-                <input type="hidden" name="target_yield_rate" value="{target_yield_rate}">
+                <input type="hidden" name="target_yield_rate" value="{target_yield_pct}">
                 <input type="hidden" name="lease_term_months" value="{lease_term_months}">
                 <input type="hidden" name="recommended_price" value="{recommended_price}">
                 <input type="hidden" name="max_price" value="{max_price}">
@@ -948,7 +936,7 @@ async def calculate_simulation_quick(request: Request) -> HTMLResponse:
 
     <div class="sim-result">
         <h3>&#x1F4CA; シミュレーション結果</h3>
-        <p class="text-muted">{maker} {model} | {lease_term_months}ヶ月 | 目標利回り {target_yield_rate}%</p>
+        <p class="text-muted">{maker} {model} | {lease_term_months}ヶ月 | 目標利回り {target_yield_pct}%</p>
 
         <!-- KPI Cards -->
         <div class="kpi-grid">

@@ -1,0 +1,111 @@
+<div id="invoice-table-container">
+  <div id="table-loading" class="htmx-indicator loading-placeholder loading-placeholder--lg">
+    <span class="spinner"></span>
+    <span>データを読み込んでいます...</span>
+  </div>
+
+  {% if invoices %}
+  <div class="table-responsive">
+    <table class="table table--hover data-table">
+      <thead>
+        <tr>
+          <th>請求書番号</th>
+          <th>請求期間</th>
+          <th>取引先</th>
+          <th class="text-right">請求金額</th>
+          <th>ステータス</th>
+          <th>支払期限</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td>
+            <a href="/invoices/{{ inv.id }}" class="link">{{ inv.invoice_number | default("-") }}</a>
+          </td>
+          <td>{{ inv.billing_period_start | default("-") }} ~ {{ inv.billing_period_end | default("") }}</td>
+          <td>{{ inv.company_name | default("-") }}</td>
+          <td class="text-right">&yen;{{ "{:,}".format(inv.total_amount | default(0)) }}</td>
+          <td>
+            {% if inv.status == 'created' %}
+              <span class="badge badge--neutral">作成済</span>
+            {% elif inv.status == 'pending_review' %}
+              <span class="badge badge--warning">承認待ち</span>
+            {% elif inv.status == 'approved' %}
+              <span class="badge badge--primary">承認済</span>
+            {% elif inv.status == 'sent' %}
+              <span class="badge badge--success">送付済</span>
+            {% elif inv.status == 'paid' %}
+              <span class="badge badge--success" style="background:var(--success);color:#fff;">入金済</span>
+            {% elif inv.status == 'overdue' %}
+              <span class="badge badge--danger">期限超過</span>
+            {% else %}
+              <span class="badge">{{ inv.status }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if inv.due_date %}
+              {{ inv.due_date }}
+              {% if inv.status == 'overdue' %}
+                <small class="text-danger">（超過）</small>
+              {% endif %}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <a href="/invoices/{{ inv.id }}"
+                 class="btn btn--outline btn--xs">詳細</a>
+              {% if inv.status == 'pending_review' %}
+              <button class="btn btn--primary btn--xs"
+                      hx-post="/invoices/{{ inv.id }}/approve"
+                      hx-target="#invoice-table-container"
+                      hx-swap="outerHTML"
+                      hx-confirm="この請求書を承認しますか？">承認</button>
+              {% endif %}
+              {% if inv.status in ['approved', 'pdf_ready'] %}
+              <button class="btn btn--outline btn--xs"
+                      hx-post="/invoices/{{ inv.id }}/send"
+                      hx-target="#invoice-table-container"
+                      hx-swap="outerHTML"
+                      hx-confirm="この請求書をメール送信しますか？">送信</button>
+              {% endif %}
+              {% if inv.status not in ['created'] %}
+              <a href="/invoices/{{ inv.id }}/pdf"
+                 class="btn btn--outline btn--xs"
+                 target="_blank">PDF</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Pagination #}
+  {% if meta and meta.total_pages > 1 %}
+  <div class="pagination-bar">
+    <span class="pagination-bar__info">
+      {{ meta.total_count }}件中 {{ meta.page }}/{{ meta.total_pages }}ページ
+    </span>
+    {% set base_url = "/invoices/table" %}
+    {% set hx_target = "#invoice-table-container" %}
+    {% include "components/pagination.html" %}
+  </div>
+  {% elif meta %}
+  <div class="pagination-bar">
+    <span class="pagination-bar__info">
+      {{ meta.total_count }}件
+    </span>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-state">
+    <p class="empty-state__message">請求書データがありません。</p>
+  </div>
+  {% endif %}
+</div>

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}請求書管理 - CVLPOS{% endblock %}
+{% block page_title %}請求書管理{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-header__title">請求書管理</h2>
+    <p class="page-header__description">請求書の発行・承認・送付を管理 / 全{{ total_count | default(0) }}件</p>
+</div>
+
+<div class="actions-row" style="margin-bottom:24px">
+    <button class="btn btn--primary"
+            hx-post="/invoices/generate-monthly"
+            hx-target="#invoice-table-container"
+            hx-swap="outerHTML"
+            hx-confirm="当月分の請求書を一括生成しますか？"
+            hx-indicator="#table-loading">
+        + 月次請求書を一括生成
+    </button>
+</div>
+
+{# ===== Filter Bar ===== #}
+<section class="filter-bar" aria-label="フィルター">
+    <form id="filter-form" class="filter-form">
+        <div class="filter-form__fields">
+            <div class="filter-form__field">
+                <label for="filter-fund" class="form-label form-label--sm">ファンド</label>
+                <select id="filter-fund"
+                        name="fund_id"
+                        class="form-select form-select--sm"
+                        hx-get="/invoices/table"
+                        hx-target="#invoice-table-container"
+                        hx-trigger="change"
+                        hx-include="#filter-form"
+                        hx-indicator="#table-loading">
+                    <option value="">すべて</option>
+                    {% for f in funds | default([]) %}
+                    <option value="{{ f.id }}"{% if request.args.get('fund_id') == f.id|string %} selected{% endif %}>{{ f.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-form__field">
+                <label for="filter-status" class="form-label form-label--sm">ステータス</label>
+                <select id="filter-status"
+                        name="status"
+                        class="form-select form-select--sm"
+                        hx-get="/invoices/table"
+                        hx-target="#invoice-table-container"
+                        hx-trigger="change"
+                        hx-include="#filter-form"
+                        hx-indicator="#table-loading">
+                    <option value="">すべて</option>
+                    <option value="created"{% if request.args.get('status') == 'created' %} selected{% endif %}>作成済</option>
+                    <option value="pending_review"{% if request.args.get('status') == 'pending_review' %} selected{% endif %}>承認待ち</option>
+                    <option value="approved"{% if request.args.get('status') == 'approved' %} selected{% endif %}>承認済</option>
+                    <option value="sent"{% if request.args.get('status') == 'sent' %} selected{% endif %}>送付済</option>
+                    <option value="paid"{% if request.args.get('status') == 'paid' %} selected{% endif %}>入金済</option>
+                    <option value="overdue"{% if request.args.get('status') == 'overdue' %} selected{% endif %}>期限超過</option>
+                </select>
+            </div>
+
+            <div class="filter-form__field filter-form__field--range">
+                <label class="form-label form-label--sm">請求期間</label>
+                <div class="filter-form__range">
+                    <input type="date"
+                           name="date_from"
+                           class="form-input form-input--sm"
+                           value="{{ request.args.get('date_from', '') }}"
+                           hx-get="/invoices/table"
+                           hx-target="#invoice-table-container"
+                           hx-trigger="change"
+                           hx-include="#filter-form"
+                           hx-indicator="#table-loading">
+                    <span class="filter-form__range-sep">~</span>
+                    <input type="date"
+                           name="date_to"
+                           class="form-input form-input--sm"
+                           value="{{ request.args.get('date_to', '') }}"
+                           hx-get="/invoices/table"
+                           hx-target="#invoice-table-container"
+                           hx-trigger="change"
+                           hx-include="#filter-form"
+                           hx-indicator="#table-loading">
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-form__actions">
+            <button type="reset"
+                    class="btn btn--text btn--sm"
+                    hx-get="/invoices/table"
+                    hx-target="#invoice-table-container"
+                    hx-indicator="#table-loading">
+                フィルターをリセット
+            </button>
+        </div>
+    </form>
+</section>
+
+{# ===== Results Table ===== #}
+<section class="card" aria-label="請求書一覧">
+    <div class="card__body card__body--flush">
+        {% include "partials/invoice_table.html" %}
+    </div>
+</section>
+{% endblock %}

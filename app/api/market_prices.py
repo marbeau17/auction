@@ -321,7 +321,7 @@ async def export_csv(
 
 
 # ---------------------------------------------------------------------------
-# 4. POST /import — CSV import
+# 4. POST /import — CSV import (legacy, column-exact format)
 # ---------------------------------------------------------------------------
 
 _REQUIRED_IMPORT_FIELDS = {
@@ -420,6 +420,140 @@ async def import_csv(
             "error_count": error_count,
             "errors": errors,
         }
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4b. POST /import/csv — Smart CSV import (Japanese alias support)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/import/csv")
+async def import_csv_smart(
+    request: Request,
+    file: UploadFile = File(..., description="CSV file to import (supports Japanese column names)"),
+    source_name: str = Query(default="csv_import", description="Source name for imported records"),
+    supabase: Client = Depends(get_supabase_client),
+    current_user: dict[str, Any] = Depends(require_role(["admin", "service_role"])),
+) -> Any:
+    """Import auction market data from a CSV file.
+
+    Supports both English and Japanese column names via alias mapping.
+    Required columns: maker, model, year, mileage_km, price_yen, auction_date.
+    Returns an HTML fragment when called via HTMX; otherwise JSON.
+    """
+    if file.content_type and file.content_type not in (
+        "text/csv",
+        "application/octet-stream",
+        "application/vnd.ms-excel",
+        "text/plain",
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported content type: {file.content_type}. Expected text/csv.",
+        )
+
+    from app.core.market_data_importer import MarketDataImporter
+
+    content = await file.read()
+    importer = MarketDataImporter(supabase)
+    result = await importer.import_csv(content, source_name=source_name)
+
+    if _is_htmx(request):
+        return templates.TemplateResponse(
+            "partials/import_result.html",
+            {"request": request, "result": result.to_dict(), "source_name": source_name},
+        )
+
+    return SuccessResponse(data=result.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# 4c. POST /import/excel — Excel import
+# ---------------------------------------------------------------------------
+
+
+@router.post("/import/excel")
+async def import_excel(
+    request: Request,
+    file: UploadFile = File(..., description="Excel (.xlsx) file to import"),
+    source_name: str = Query(default="excel_import", description="Source name for imported records"),
+    supabase: Client = Depends(get_supabase_client),
+    current_user: dict[str, Any] = Depends(require_role(["admin", "service_role"])),
+) -> Any:
+    """Import auction market data from an Excel (.xlsx) file.
+
+    Supports both English and Japanese column names via alias mapping.
+    Required columns: maker, model, year, mileage_km, price_yen, auction_date.
+    Returns an HTML fragment when called via HTMX; otherwise JSON.
+    """
+    if file.content_type and file.content_type not in (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "application/octet-stream",
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported content type: {file.content_type}. Expected Excel (.xlsx).",
+        )
+
+    from app.core.market_data_importer import MarketDataImporter
+
+    content = await file.read()
+    importer = MarketDataImporter(supabase)
+    result = await importer.import_excel(content, source_name=source_name)
+
+    if _is_htmx(request):
+        return templates.TemplateResponse(
+            "partials/import_result.html",
+            {"request": request, "result": result.to_dict(), "source_name": source_name},
+        )
+
+    return SuccessResponse(data=result.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# 4d. GET /import/template — Download CSV import template
+# ---------------------------------------------------------------------------
+
+_TEMPLATE_COLUMNS = [
+    "maker", "model", "year", "mileage_km", "price_yen", "auction_date",
+    "auction_site", "body_type", "tonnage", "transmission", "fuel_type", "location",
+]
+
+_TEMPLATE_EXAMPLE = {
+    "maker": "いすゞ",
+    "model": "エルフ",
+    "year": "2020",
+    "mileage_km": "85000",
+    "price_yen": "3500000",
+    "auction_date": "2025-12-01",
+    "auction_site": "USS東京",
+    "body_type": "平ボディ",
+    "tonnage": "2.0",
+    "transmission": "AT",
+    "fuel_type": "軽油",
+    "location": "東京都",
+}
+
+
+@router.get("/import/template")
+async def download_import_template() -> StreamingResponse:
+    """Download a CSV template file for market data import.
+
+    The template includes all supported columns with a sample row.
+    """
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_TEMPLATE_COLUMNS)
+    writer.writeheader()
+    writer.writerow(_TEMPLATE_EXAMPLE)
+
+    content = buf.getvalue()
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": 'attachment; filename="market_data_import_template.csv"'},
     )
 
 

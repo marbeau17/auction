@@ -8,10 +8,10 @@
     <link rel="icon" href="/favicon.ico">
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js"></script>
     {% block head_extra %}{% endblock %}
 </head>
-<body>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
     {# ===== Global Error Handler ===== #}
     <div id="global-error" class="global-error" role="alert" aria-live="assertive" hidden></div>
 
@@ -54,7 +54,7 @@
                 </ul>
             </nav>
             <div class="sidebar__footer">
-                <div class="sidebar__user">{{ current_user.display_name if current_user else "" }}</div>
+                <div class="sidebar__user">{{ (user.display_name or user.email) if user else "" }}</div>
                 <a href="/auth/logout" class="sidebar__link">ログアウト</a>
             </div>
         </aside>
@@ -67,7 +67,7 @@
             <header class="app-header">
                 <button class="hamburger" type="button" aria-label="メニュー">&#9776;</button>
                 <h1 class="app-header__title">{% block page_title %}{% endblock %}</h1>
-                <div class="app-header__user">{{ current_user.display_name if current_user else "" }}</div>
+                <div class="app-header__user">{{ (user.display_name or user.email) if user else "" }}</div>
             </header>
             <div class="content">
                 {% block content %}{% endblock %}

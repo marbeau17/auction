@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block title %}財務AI診断 - CVLPOS{% endblock %}
+{% block page_title %}運送会社 財務状況評価・AI診断{% endblock %}
+
+{% block content %}
+<style>
+/* Page header */
+.fa-page-header {
+    margin-bottom: var(--space-6);
+}
+.fa-page-header h2 {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: var(--space-1);
+}
+.fa-page-header p {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+/* Fieldset styling (mirrors integrated_pricing) */
+.fa-fieldset {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
+    background: var(--bg-white);
+    box-shadow: var(--shadow-sm);
+}
+.fa-fieldset legend {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--text);
+    padding: 0 var(--space-2);
+}
+.fa-fieldset legend .legend-icon {
+    margin-right: var(--space-2);
+}
+
+/* Form helpers */
+.fa-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+.fa-form-row--3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+@media (max-width: 640px) {
+    .fa-form-row, .fa-form-row--3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Unit suffix inside input */
+.input-with-unit {
+    position: relative;
+}
+.input-with-unit input {
+    padding-right: 3rem;
+}
+.input-with-unit .unit {
+    position: absolute;
+    right: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    pointer-events: none;
+}
+
+/* =========================================
+   Result area
+   ========================================= */
+.diagnosis-header {
+    display: flex;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-6);
+}
+
+/* Score badge */
+.score-badge {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 800;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.score-badge .grade {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+.score-badge .label {
+    font-size: var(--text-xs);
+    opacity: 0.9;
+    margin-top: 2px;
+}
+.score-badge--A { background: linear-gradient(135deg, #059669, #10b981); }
+.score-badge--B { background: linear-gradient(135deg, #2563eb, #3b82f6); }
+.score-badge--C { background: linear-gradient(135deg, #d97706, #f59e0b); }
+.score-badge--D { background: linear-gradient(135deg, #dc2626, #ef4444); }
+
+/* Risk level badge */
+.risk-badge {
+    display: inline-block;
+    padding: var(--space-1) var(--space-3);
+    border-radius: 9999px;
+    font-size: var(--text-sm);
+    font-weight: 700;
+}
+.risk-badge--recommended { background: #d1fae5; color: #065f46; }
+.risk-badge--caution     { background: #fef3c7; color: #92400e; }
+.risk-badge--not-recommended { background: #fee2e2; color: #991b1b; }
+
+/* Key metric card */
+.key-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    justify-content: center;
+}
+.key-metric {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-3) var(--space-4);
+}
+.key-metric .metric-label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-bottom: 2px;
+}
+.key-metric .metric-value {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text);
+}
+.key-metric .metric-value .yen {
+    font-size: var(--text-sm);
+    font-weight: 400;
+}
+
+/* Gauge bar chart */
+.gauge-chart {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
+}
+.gauge-chart h3 {
+    font-size: var(--text-base);
+    font-weight: 700;
+    margin-bottom: var(--space-4);
+}
+.gauge-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+.gauge-row .gauge-label {
+    width: 120px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-align: right;
+    flex-shrink: 0;
+}
+.gauge-row .gauge-track {
+    flex: 1;
+    height: 24px;
+    background: var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+}
+.gauge-row .gauge-fill {
+    height: 100%;
+    border-radius: 12px;
+    transition: width 0.6s ease;
+    min-width: 2px;
+}
+.gauge-row .gauge-value {
+    width: 50px;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    text-align: left;
+    flex-shrink: 0;
+}
+.gauge-fill--good    { background: linear-gradient(90deg, #10b981, #059669); }
+.gauge-fill--ok      { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+.gauge-fill--warn    { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.gauge-fill--danger  { background: linear-gradient(90deg, #ef4444, #dc2626); }
+
+/* Recommendations / Warnings */
+.advice-section {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
+}
+.advice-section h3 {
+    font-size: var(--text-base);
+    font-weight: 700;
+    margin-bottom: var(--space-3);
+}
+.advice-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.advice-list li {
+    padding: var(--space-2) 0;
+    padding-left: var(--space-5);
+    position: relative;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+}
+.advice-list li::before {
+    position: absolute;
+    left: 0;
+    top: var(--space-2);
+    font-size: var(--text-base);
+}
+.advice-list--green li::before {
+    content: "\2713";
+    color: #059669;
+    font-weight: 700;
+}
+.advice-list--red li::before {
+    content: "\26A0";
+    color: #dc2626;
+}
+</style>
+
+<div class="fa-page-header">
+    <h2>運送会社 財務状況評価・AI診断</h2>
+    <p>リースバック耐性の評価と適正リース価格の算出</p>
+</div>
+
+<form id="financial-form"
+      hx-post="/api/v1/financial/analyze"
+      hx-target="#diagnosis-result"
+      hx-swap="innerHTML"
+      hx-indicator="#analyze-spinner">
+
+    <div class="form-grid">
+        <div>
+            <!-- 会社情報 -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F3E2;</span>会社情報</legend>
+                <div class="form-group">
+                    <label class="form-label form-label--required">会社名</label>
+                    <input type="text" name="company_name" class="form-input"
+                           placeholder="例: 東京運送株式会社" required>
+                </div>
+            </fieldset>
+
+            <!-- 損益計算書 -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F4CA;</span>損益計算書</legend>
+                <div class="form-group">
+                    <label class="form-label form-label--required">売上高 (円)</label>
+                    <div class="input-with-unit">
+                        <input type="number" name="revenue" class="form-input"
+                               placeholder="例: 500000000" required min="0">
+                        <span class="unit">円</span>
+                    </div>
+                </div>
+                <div class="fa-form-row">
+                    <div class="form-group">
+                        <label class="form-label form-label--required">営業利益 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="operating_profit" class="form-input"
+                                   placeholder="例: 25000000" required>
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label form-label--required">経常利益 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="ordinary_profit" class="form-input"
+                                   placeholder="例: 20000000" required>
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <!-- 貸借対照表 -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F4D1;</span>貸借対照表</legend>
+                <div class="fa-form-row">
+                    <div class="form-group">
+                        <label class="form-label form-label--required">総資産 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="total_assets" class="form-input"
+                                   placeholder="例: 800000000" required min="0">
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label form-label--required">総負債 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="total_liabilities" class="form-input"
+                                   placeholder="例: 500000000" required min="0">
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="fa-form-row--3 fa-form-row">
+                    <div class="form-group">
+                        <label class="form-label form-label--required">純資産 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="equity" class="form-input"
+                                   placeholder="例: 300000000" required>
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label form-label--required">流動資産 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="current_assets" class="form-input"
+                                   placeholder="例: 200000000" required min="0">
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label form-label--required">流動負債 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="current_liabilities" class="form-input"
+                                   placeholder="例: 150000000" required min="0">
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">当座資産 (円)</label>
+                    <div class="input-with-unit">
+                        <input type="number" name="quick_assets" class="form-input"
+                               placeholder="例: 120000000" min="0">
+                        <span class="unit">円</span>
+                    </div>
+                    <small class="form-hint">現金・売掛金・受取手形など</small>
+                </div>
+            </fieldset>
+        </div>
+
+        <div>
+            <!-- 有利子負債 -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F4B3;</span>有利子負債</legend>
+                <div class="form-group">
+                    <label class="form-label form-label--required">有利子負債残高 (円)</label>
+                    <div class="input-with-unit">
+                        <input type="number" name="interest_bearing_debt" class="form-input"
+                               placeholder="例: 200000000" required min="0">
+                        <span class="unit">円</span>
+                    </div>
+                    <small class="form-hint">銀行借入・社債・リース債務の合計</small>
+                </div>
+            </fieldset>
+
+            <!-- キャッシュフロー -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F4B0;</span>キャッシュフロー</legend>
+                <div class="fa-form-row">
+                    <div class="form-group">
+                        <label class="form-label form-label--required">営業CF (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="operating_cf" class="form-input"
+                                   placeholder="例: 40000000" required>
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label form-label--required">フリーCF (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="free_cf" class="form-input"
+                                   placeholder="例: 15000000" required>
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <!-- 車両情報 -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F69A;</span>車両情報</legend>
+                <div class="fa-form-row">
+                    <div class="form-group">
+                        <label class="form-label form-label--required">保有車両台数</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="vehicle_count" class="form-input"
+                                   placeholder="例: 30" required min="1">
+                            <span class="unit">台</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label form-label--required">車両稼働率 (%)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="vehicle_utilization_rate" class="form-input"
+                                   placeholder="例: 85" required min="0" max="100" step="0.1">
+                            <span class="unit">%</span>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <!-- 既存債務 -->
+            <fieldset class="fa-fieldset">
+                <legend><span class="legend-icon" aria-hidden="true">&#x1F4C4;</span>既存債務</legend>
+                <div class="fa-form-row">
+                    <div class="form-group">
+                        <label class="form-label">既存リース月額合計 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="existing_lease_monthly" class="form-input"
+                                   placeholder="例: 2000000" min="0" value="0">
+                            <span class="unit">円/月</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">既存借入残高 (円)</label>
+                        <div class="input-with-unit">
+                            <input type="number" name="existing_loan_balance" class="form-input"
+                                   placeholder="例: 100000000" min="0" value="0">
+                            <span class="unit">円</span>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+    </div>
+
+    <hr style="margin: var(--space-8) 0">
+
+    <div class="actions-row">
+        <button type="reset" class="btn btn--outline">リセット</button>
+        <button type="submit" class="btn btn--primary btn--lg">
+            AI財務診断を実行
+            <span id="analyze-spinner" class="htmx-indicator spinner"></span>
+        </button>
+    </div>
+</form>
+
+<!-- Results Area -->
+<div id="diagnosis-result" style="margin-top: var(--space-8);"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id !== 'diagnosis-result') return;
+
+    // Animate gauge bars
+    document.querySelectorAll('.gauge-fill[data-width]').forEach(function(el) {
+        requestAnimationFrame(function() {
+            el.style.width = el.getAttribute('data-width') + '%';
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -9,16 +9,16 @@
     <p class="page-header__description">リースバック査定の概況と最新データ</p>
 </div>
 
-{# ===== KPI Cards ===== #}
-<section class="kpi-grid" aria-label="主要指標">
+{# ===== KPI Cards - Row 1 (4 cards) ===== #}
+<section class="kpi-grid kpi-grid--4col" aria-label="主要指標" id="kpi-section-1">
     <div class="kpi-card">
         <div class="kpi-card__icon kpi-card__icon--primary" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="17" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="17" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
         </div>
         <div class="kpi-card__body">
-            <span class="kpi-card__label">シミュレーション数</span>
-            <span class="kpi-card__value">{{ "{:,}".format(kpi.simulation_count | default(0)) }}</span>
-            <span class="kpi-card__sub">件</span>
+            <span class="kpi-card__label">リース車両数</span>
+            <span class="kpi-card__value" id="kpi-vehicles-leased">--</span>
+            <span class="kpi-card__sub">台</span>
         </div>
     </div>
 
@@ -27,22 +27,98 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="kpi-card__body">
+            <span class="kpi-card__label">総投資額</span>
+            <span class="kpi-card__value" id="kpi-total-investment">--</span>
+            <span class="kpi-card__sub">円</span>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--primary" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="kpi-card__body">
+            <span class="kpi-card__label">今月請求額</span>
+            <span class="kpi-card__value" id="kpi-monthly-billing">--</span>
+            <span class="kpi-card__sub">円</span>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--success" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="kpi-card__body">
+            <span class="kpi-card__label">回収率</span>
+            <span class="kpi-card__value" id="kpi-collection-rate">--</span>
+            <span class="kpi-card__sub">%</span>
+        </div>
+    </div>
+</section>
+
+{# ===== KPI Cards - Row 2 (3 cards) ===== #}
+<section class="kpi-grid" aria-label="追加指標" id="kpi-section-2">
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--danger" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="kpi-card__body">
+            <span class="kpi-card__label">延滞請求</span>
+            <span class="kpi-card__value" id="kpi-overdue-count">--</span>
+            <span class="kpi-card__sub">件</span>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card__icon kpi-card__icon--success" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M23 6l-9.5 9.5-5-5L1 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 6h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="kpi-card__body">
             <span class="kpi-card__label">平均利回り</span>
-            <span class="kpi-card__value">{{ "%.1f" | format(kpi.avg_yield | default(0)) }}%</span>
+            <span class="kpi-card__value" id="kpi-avg-yield">{{ "%.1f" | format(kpi.avg_yield | default(0)) }}%</span>
         </div>
     </div>
 
     <div class="kpi-card">
         <div class="kpi-card__icon kpi-card__icon--warning" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         </div>
         <div class="kpi-card__body">
-            <span class="kpi-card__label">相場変動アラート</span>
-            <span class="kpi-card__value">{{ "{:,}".format(kpi.price_alerts | default(0)) }}</span>
+            <span class="kpi-card__label">利益転換ファンド</span>
+            <span class="kpi-card__value" id="kpi-profit-conversion">--</span>
             <span class="kpi-card__sub">件</span>
-            {% if kpi and kpi.price_alerts is defined and kpi.price_alerts > 0 %}
-            <a href="/market-data?alerts=1" class="kpi-card__link">詳細を確認</a>
-            {% endif %}
+        </div>
+    </div>
+</section>
+
+{# ===== Charts Section ===== #}
+<section class="dashboard-charts" aria-label="チャート">
+    <div class="card" style="flex:1;min-width:0;">
+        <div class="card__header">
+            <h3 class="card__title">月次リース収入推移</h3>
+        </div>
+        <div class="card__body">
+            <canvas id="monthly-income-chart" height="260"></canvas>
+        </div>
+    </div>
+    <div class="card" style="flex:0 0 340px;min-width:280px;">
+        <div class="card__header">
+            <h3 class="card__title">請求状況</h3>
+        </div>
+        <div class="card__body" style="display:flex;align-items:center;justify-content:center;">
+            <canvas id="invoice-status-chart" width="280" height="280"></canvas>
+        </div>
+    </div>
+</section>
+
+{# ===== NAV Trend Section ===== #}
+<section class="dashboard-charts" aria-label="NAV推移" style="display:block;">
+    <div class="card" style="display:none;">
+        <div class="card__header">
+            <h3 class="card__title">NAV推移</h3>
+        </div>
+        <div class="card__body">
+            <canvas id="nav-trend-chart" height="260"></canvas>
         </div>
     </div>
 </section>
@@ -53,7 +129,21 @@
         <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
             <path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        新規シミュレーション
+        新規プライシング
+    </a>
+    <a href="/invoices/generate" class="btn btn--outline btn--lg">
+        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6 6h6M6 9h6M6 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        請求書発行
+    </a>
+    <a href="/invoices?status=overdue" class="btn btn--outline btn--lg btn--danger-outline">
+        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M9 1.5v9M9 13.5v1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        延滞一覧
     </a>
     <a href="/market-data" class="btn btn--outline btn--lg">
         <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -63,97 +153,208 @@
     </a>
 </section>
 
-{# ===== Recent Simulations ===== #}
-<section class="card" aria-label="最近のシミュレーション">
+{# ===== Recent Activity - Tabbed ===== #}
+<section class="card" aria-label="最近のアクティビティ">
     <div class="card__header">
-        <h3 class="card__title">最近のシミュレーション</h3>
-        <a href="/simulations" class="card__header-link">すべて表示</a>
-    </div>
-    <div class="card__body card__body--flush"
-         id="recent-simulations"
-         hx-get="/dashboard"
-         hx-trigger="every 60s"
-         hx-target="#recent-simulations"
-         hx-select="#recent-simulations"
-         hx-swap="outerHTML">
-
-        {% if recent_simulations %}
-        <div class="table-responsive">
-            <table class="data-table data-table--hover">
-                <thead>
-                    <tr>
-                        <th>タイトル</th>
-                        <th>車種 / 年式</th>
-                        <th class="text-right">買取価格</th>
-                        <th class="text-right">月額リース</th>
-                        <th class="text-right">利回り</th>
-                        <th>ステータス</th>
-                        <th>実行日</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for sim in recent_simulations %}
-                    <tr class="data-table__row--clickable" onclick="window.location='/simulation/{{ sim.id }}/result'" style="cursor:pointer;">
-                        <td>
-                            <a href="/simulation/{{ sim.id }}/result" class="text-bold">{{ sim.title | default("無題") }}</a>
-                        </td>
-                        <td>
-                            <span>{{ sim.target_model_name | default("-") }}</span>
-                            {% if sim.target_model_year %}
-                            <br><small class="text-muted">{{ sim.target_model_year }}年式</small>
-                            {% endif %}
-                        </td>
-                        <td class="text-right">
-                            {% if sim.purchase_price_yen is not none %}
-                                &yen;{{ "{:,}".format(sim.purchase_price_yen) }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td class="text-right">
-                            {% if sim.lease_monthly_yen is not none %}
-                                &yen;{{ "{:,}".format(sim.lease_monthly_yen) }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td class="text-right">
-                            {% if sim.expected_yield_rate is not none %}
-                                {{ "%.1f" | format(sim.expected_yield_rate) }}%
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if sim.status == 'completed' or sim.status == '完了' %}
-                                <span class="badge badge--success">完了</span>
-                            {% elif sim.status == 'approved' or sim.status == '承認済' %}
-                                <span class="badge badge--success">承認済</span>
-                            {% elif sim.status == 'running' or sim.status == '実行中' %}
-                                <span class="badge badge--primary">実行中</span>
-                            {% elif sim.status == 'failed' or sim.status == 'エラー' %}
-                                <span class="badge badge--danger">エラー</span>
-                            {% elif sim.status == 'draft' or sim.status == '下書き' %}
-                                <span class="badge badge--warning">下書き</span>
-                            {% else %}
-                                <span class="badge">{{ sim.status | default("-") }}</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if sim.created_at %}
-                                {{ sim.created_at[:10] if sim.created_at is string else sim.created_at.strftime('%Y-%m-%d') }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="tab-nav" role="tablist">
+            <button class="tab-nav__btn tab-nav__btn--active" role="tab" aria-selected="true" aria-controls="tab-simulations" data-tab="tab-simulations" onclick="switchTab(this)">シミュレーション</button>
+            <button class="tab-nav__btn" role="tab" aria-selected="false" aria-controls="tab-invoices" data-tab="tab-invoices" onclick="switchTab(this)">請求書</button>
         </div>
-        {% else %}
-        <p class="empty-state">シミュレーション履歴がありません。新規シミュレーションを実行してください。</p>
-        {% endif %}
+        <a href="/simulations" class="card__header-link" id="tab-view-all-link">すべて表示</a>
+    </div>
+    <div class="card__body card__body--flush">
+        {# Tab: Simulations #}
+        <div id="tab-simulations" role="tabpanel" class="tab-panel tab-panel--active">
+            {% if recent_simulations %}
+            <div class="table-responsive">
+                <table class="data-table data-table--hover">
+                    <thead>
+                        <tr>
+                            <th>タイトル</th>
+                            <th>車種 / 年式</th>
+                            <th class="text-right">買取価格</th>
+                            <th class="text-right">月額リース</th>
+                            <th class="text-right">利回り</th>
+                            <th>ステータス</th>
+                            <th>実行日</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sim in recent_simulations %}
+                        <tr class="data-table__row--clickable" onclick="window.location='/simulation/{{ sim.id }}/result'" style="cursor:pointer;">
+                            <td>
+                                <a href="/simulation/{{ sim.id }}/result" class="text-bold">{{ sim.title | default("無題") }}</a>
+                            </td>
+                            <td>
+                                <span>{{ sim.target_model_name | default("-") }}</span>
+                                {% if sim.target_model_year %}
+                                <br><small class="text-muted">{{ sim.target_model_year }}年式</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-right">
+                                {% if sim.purchase_price_yen is not none %}
+                                    &yen;{{ "{:,}".format(sim.purchase_price_yen) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="text-right">
+                                {% if sim.lease_monthly_yen is not none %}
+                                    &yen;{{ "{:,}".format(sim.lease_monthly_yen) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="text-right">
+                                {% if sim.expected_yield_rate is not none %}
+                                    {{ "%.1f" | format(sim.expected_yield_rate) }}%
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if sim.status == 'completed' or sim.status == '完了' %}
+                                    <span class="badge badge--success">完了</span>
+                                {% elif sim.status == 'approved' or sim.status == '承認済' %}
+                                    <span class="badge badge--success">承認済</span>
+                                {% elif sim.status == 'running' or sim.status == '実行中' %}
+                                    <span class="badge badge--primary">実行中</span>
+                                {% elif sim.status == 'failed' or sim.status == 'エラー' %}
+                                    <span class="badge badge--danger">エラー</span>
+                                {% elif sim.status == 'draft' or sim.status == '下書き' %}
+                                    <span class="badge badge--warning">下書き</span>
+                                {% else %}
+                                    <span class="badge">{{ sim.status | default("-") }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if sim.created_at %}
+                                    {{ sim.created_at[:10] if sim.created_at is string else sim.created_at.strftime('%Y-%m-%d') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="empty-state">シミュレーション履歴がありません。新規シミュレーションを実行してください。</p>
+            {% endif %}
+        </div>
+
+        {# Tab: Invoices #}
+        <div id="tab-invoices" role="tabpanel" class="tab-panel" style="display:none;">
+            <div class="table-responsive">
+                <table class="data-table data-table--hover" id="recent-invoices-table">
+                    <thead>
+                        <tr>
+                            <th>請求番号</th>
+                            <th>顧客</th>
+                            <th class="text-right">金額</th>
+                            <th>期日</th>
+                            <th>ステータス</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-invoices-body">
+                        <tr><td colspan="5" class="text-center text-muted">読み込み中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </section>
+
+<style>
+    .kpi-grid--4col {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    .dashboard-charts {
+        display: flex;
+        gap: var(--space-4, 1rem);
+        margin-bottom: var(--space-6, 1.5rem);
+    }
+    .tab-nav {
+        display: flex;
+        gap: 0;
+    }
+    .tab-nav__btn {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-muted, #6c757d);
+        transition: color 0.2s, border-color 0.2s;
+    }
+    .tab-nav__btn:hover {
+        color: var(--primary, #2563eb);
+    }
+    .tab-nav__btn--active {
+        color: var(--primary, #2563eb);
+        border-bottom-color: var(--primary, #2563eb);
+    }
+    .btn--danger-outline {
+        color: var(--danger, #dc3545);
+        border-color: var(--danger, #dc3545);
+    }
+    .btn--danger-outline:hover {
+        background: var(--danger, #dc3545);
+        color: #fff;
+    }
+    @media (max-width: 1024px) {
+        .kpi-grid--4col {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .dashboard-charts {
+            flex-direction: column;
+        }
+        .dashboard-charts .card {
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }
+    }
+    @media (max-width: 640px) {
+        .kpi-grid--4col {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script src="/static/js/dashboard_charts.js"></script>
+<script>
+// Tab switching
+function switchTab(btn) {
+    var tabId = btn.getAttribute('data-tab');
+    // Update tab buttons
+    var allBtns = btn.parentElement.querySelectorAll('.tab-nav__btn');
+    allBtns.forEach(function(b) {
+        b.classList.remove('tab-nav__btn--active');
+        b.setAttribute('aria-selected', 'false');
+    });
+    btn.classList.add('tab-nav__btn--active');
+    btn.setAttribute('aria-selected', 'true');
+
+    // Update tab panels
+    var panels = btn.closest('.card').querySelectorAll('.tab-panel');
+    panels.forEach(function(p) {
+        p.style.display = 'none';
+        p.classList.remove('tab-panel--active');
+    });
+    var target = document.getElementById(tabId);
+    if (target) {
+        target.style.display = 'block';
+        target.classList.add('tab-panel--active');
+    }
+
+    // Update "View all" link
+    var viewAllLink = document.getElementById('tab-view-all-link');
+    if (viewAllLink) {
+        viewAllLink.href = tabId === 'tab-invoices' ? '/invoices' : '/simulations';
+    }
+}
+</script>
 {% endblock %}

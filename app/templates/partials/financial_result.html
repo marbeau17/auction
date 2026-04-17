@@ -1,0 +1,177 @@
+<div id="financial-result-content" class="simulation-result">
+
+  {# ===== 1. Score Badge Section ===== #}
+  <div style="text-align: center; margin-bottom: var(--space-6);">
+    {% set grade_color = {
+      'A': '#22c55e',
+      'B': '#3b82f6',
+      'C': '#f97316',
+      'D': '#ef4444'
+    } %}
+    {% set risk_label = {
+      'A': '推奨',
+      'B': '推奨',
+      'C': '要注意',
+      'D': '非推奨'
+    } %}
+    {% set risk_class = {
+      'A': 'text-success',
+      'B': 'text-success',
+      'C': 'text-warning',
+      'D': 'text-danger'
+    } %}
+
+    <div style="display: inline-flex; flex-direction: column; align-items: center; gap: var(--space-3);">
+      {# Grade circle #}
+      <div style="width: 120px; height: 120px; border-radius: 50%;
+                  border: 6px solid {{ grade_color[result.grade] }};
+                  display: flex; align-items: center; justify-content: center;
+                  background: transparent;">
+        <span style="font-size: 3.5rem; font-weight: 800; color: {{ grade_color[result.grade] }}; line-height: 1;">
+          {{ result.grade }}
+        </span>
+      </div>
+
+      {# Risk level badge #}
+      <span style="display: inline-block; padding: var(--space-1) var(--space-4);
+                   border-radius: var(--radius); font-weight: 700; font-size: var(--text-sm);
+                   color: #fff; background: {{ grade_color[result.grade] }};">
+        {{ risk_label[result.grade] }}
+      </span>
+
+      {# Score number #}
+      <span style="font-size: var(--text-2xl); font-weight: 700; color: var(--text-primary);">
+        {{ result.score }}<span style="font-size: var(--text-base); font-weight: 400; color: var(--text-secondary);">/100</span>
+      </span>
+    </div>
+  </div>
+
+  {# ===== 2. Key Metrics Cards ===== #}
+  <div class="result-summary-cards">
+    <div class="result-card result-card--primary">
+      <span class="result-card__label">耐えうる月額リース料上限</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.max_monthly_lease) }}</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">推奨リース期間</span>
+      <span class="result-card__value">{{ result.recommended_term_min }}〜{{ result.recommended_term_max }}ヶ月</span>
+    </div>
+    <div class="result-card">
+      <span class="result-card__label">EBITDA（推定）</span>
+      <span class="result-card__value">&yen;{{ "{:,}".format(result.ebitda) }}</span>
+    </div>
+  </div>
+
+  {# ===== 3. Financial Indicators Table ===== #}
+  <div class="result-schedule-section" style="margin-top: var(--space-8);">
+    <h4>財務指標一覧</h4>
+    <div class="table-responsive">
+      <table class="table table--striped">
+        <thead>
+          <tr>
+            <th>指標</th>
+            <th class="text-right">値</th>
+            <th style="width: 35%;">評価</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set indicators = [
+            {'key': 'equity_ratio',       'label': '自己資本比率',   'value': result.indicators.equity_ratio,       'unit': '%', 'score': result.indicators.equity_ratio_score},
+            {'key': 'current_ratio',      'label': '流動比率',       'value': result.indicators.current_ratio,      'unit': '%', 'score': result.indicators.current_ratio_score},
+            {'key': 'operating_margin',   'label': '営業利益率',     'value': result.indicators.operating_margin,   'unit': '%', 'score': result.indicators.operating_margin_score},
+            {'key': 'debt_ratio',         'label': '有利子負債比率', 'value': result.indicators.debt_ratio,         'unit': '%', 'score': result.indicators.debt_ratio_score},
+            {'key': 'cashflow',           'label': 'キャッシュフロー', 'value': result.indicators.cashflow,         'unit': '',  'score': result.indicators.cashflow_score},
+            {'key': 'vehicle_utilization','label': '車両稼働率',     'value': result.indicators.vehicle_utilization,'unit': '%', 'score': result.indicators.vehicle_utilization_score}
+          ] %}
+
+          {% for ind in indicators %}
+          {% set bar_color = '#22c55e' if ind.score >= 70 else ('#f97316' if ind.score >= 40 else '#ef4444') %}
+          <tr>
+            <td>{{ ind.label }}</td>
+            <td class="text-right">
+              {% if ind.unit == '%' %}
+                {{ "%.1f"|format(ind.value) }}%
+              {% elif ind.key == 'cashflow' %}
+                &yen;{{ "{:,}".format(ind.value|int) }}
+              {% else %}
+                {{ ind.value }}
+              {% endif %}
+            </td>
+            <td>
+              <div style="display: flex; align-items: center; gap: var(--space-2);">
+                <div style="flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                  <div style="width: {{ ind.score }}%; height: 100%; background: {{ bar_color }}; border-radius: 4px; transition: width 0.6s ease;"></div>
+                </div>
+                <span style="font-size: var(--text-xs); font-weight: 600; color: {{ bar_color }}; min-width: 32px; text-align: right;">
+                  {{ ind.score }}
+                </span>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ===== 4. Recommendations Section ===== #}
+  {% if result.recommendations %}
+  <div class="result-schedule-section">
+    <h4>推奨事項</h4>
+    <ul style="list-style: none; padding: 0; margin: 0;">
+      {% for rec in result.recommendations %}
+      <li style="display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) 0;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="flex-shrink: 0; margin-top: 2px;">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span style="color: var(--text-primary);">{{ rec }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ===== 5. Warnings Section ===== #}
+  {% if result.warnings %}
+  <div class="result-schedule-section">
+    <h4 style="color: #ef4444;">注意事項</h4>
+    <ul style="list-style: none; padding: 0; margin: 0;">
+      {% for warn in result.warnings %}
+      <li style="display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) 0;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="flex-shrink: 0; margin-top: 2px;">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <span style="color: var(--text-primary);">{{ warn }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ===== 6. Action Buttons ===== #}
+  <div class="result-actions">
+    <button type="button" class="btn btn--primary"
+            hx-get="/pricing?company_id={{ result.company_id }}&prefill=1"
+            hx-target="#main-content"
+            hx-push-url="true">
+      プライシングと連携
+    </button>
+    <button type="button" class="btn btn--secondary"
+            onclick="window.open('/api/v1/financial/report/{{ result.result_id }}', '_blank')">
+      レポート出力 (PDF)
+    </button>
+    <button type="button" class="btn btn--outline"
+            hx-get="/financial"
+            hx-target="#main-content"
+            hx-push-url="true">
+      再診断
+    </button>
+  </div>
+</div>

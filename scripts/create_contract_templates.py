@@ -1,5 +1,5 @@
 """
-Generate 4 CVLPOS leaseback contract templates as .docx files.
+Generate 9 CVLPOS contract templates as .docx files.
 Uses python-docx to create Word documents with {{ variable }} placeholders
 that docxtpl will render later.
 """
@@ -436,6 +436,540 @@ def create_sublease_agreement():
 
 
 # ---------------------------------------------------------------------------
+# 5. 私募取扱業務契約書 (Private Placement Agreement)
+# ---------------------------------------------------------------------------
+
+def create_private_placement_agreement():
+    doc = Document()
+    set_default_margins(doc)
+
+    add_title(doc, "私募取扱業務契約書")
+
+    # 前文
+    add_body(doc,
+        "{{ party_a_name }}（以下「甲」という）と{{ party_b_name }}（以下「乙」という）は、"
+        "甲が組成するファンドに係る私募の取扱業務に関し、以下のとおり契約を締結する。")
+
+    # Parties
+    add_heading_text(doc, "当事者")
+    add_body(doc, "甲（発行者）: {{ party_a_name }}")
+    add_body(doc, "住所: {{ party_a_address }}")
+    add_body(doc, "代表者: {{ party_a_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "乙（取扱者）: {{ party_b_name }}")
+    add_body(doc, "住所: {{ party_b_address }}")
+    add_body(doc, "代表者: {{ party_b_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "契約日: {{ contract_date }}")
+    add_body(doc, "効力発生日: {{ effective_date }}")
+
+    # Article 1
+    add_heading_text(doc, "第1条（目的）")
+    add_body(doc,
+        "本契約は、甲が組成する{{ fund_name }}（以下「本ファンド」という）の持分の私募の取扱いに関し、"
+        "甲が乙に対し当該業務を委託し、乙がこれを受託することを目的とする。")
+
+    # Article 2
+    add_heading_text(doc, "第2条（業務内容）")
+    add_body(doc,
+        "乙は、甲の指示に基づき、本ファンドの持分について適格機関投資家等への私募の取扱いを行う。")
+    add_body(doc,
+        "乙は、金融商品取引法その他関連法令を遵守し、適切な方法により私募の取扱いを行うものとする。")
+
+    # Article 3
+    add_heading_text(doc, "第3条（募集総額）")
+    add_body(doc, "本ファンドの募集総額: 金{{ total_amount }}円")
+
+    # Article 4
+    add_heading_text(doc, "第4条（報酬）")
+    add_body(doc,
+        "甲は、乙に対し、私募取扱業務の対価として、取扱金額に対し{{ placement_fee_rate }}を乗じた金額"
+        "（以下「取扱手数料」という）を支払う。")
+    add_body(doc, "取扱手数料: 金{{ placement_fee_amount }}円")
+    add_body(doc,
+        "取扱手数料は、募集完了後30日以内に乙の指定する口座に振り込む方法により支払う。")
+
+    # Article 5
+    add_heading_text(doc, "第5条（期間）")
+    add_body(doc,
+        "本契約の有効期間は、効力発生日から1年間とする。"
+        "ただし、期間満了の1ヶ月前までに甲乙いずれからも書面による終了の申出がないときは、"
+        "同一条件で更に1年間更新されるものとし、以後も同様とする。")
+
+    # Article 6
+    add_heading_text(doc, "第6条（善管注意義務）")
+    add_body(doc,
+        "乙は、善良なる管理者の注意をもって本契約に基づく業務を遂行するものとする。")
+
+    # Article 7
+    add_heading_text(doc, "第7条（秘密保持）")
+    add_body(doc,
+        "甲及び乙は、本契約に関して知り得た相手方の秘密情報を、"
+        "相手方の事前の書面による承諾なく第三者に開示又は漏洩してはならない。"
+        "本条の義務は、本契約終了後もなお3年間存続する。")
+
+    # Article 8
+    add_heading_text(doc, "第8条（解除）")
+    add_body(doc,
+        "甲又は乙は、相手方が本契約の条項に違反し、相当の期間を定めて催告したにもかかわらず"
+        "是正されない場合、本契約を解除することができる。")
+
+    # Article 9
+    add_heading_text(doc, "第9条（反社会的勢力の排除）")
+    add_body(doc,
+        "甲及び乙は、自ら又はその役員等が反社会的勢力に該当しないことを表明し、保証する。")
+
+    # Article 10
+    add_heading_text(doc, "第10条（準拠法及び管轄裁判所）")
+    add_body(doc, "本契約は日本法に準拠し、日本法に従い解釈されるものとする。")
+    add_body(doc,
+        "本契約に関する紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とする。")
+
+    # 後文
+    add_blank_line(doc)
+    add_body(doc,
+        "本契約の成立を証するため、本書2通を作成し、甲乙記名押印のうえ各1通を保有する。")
+
+    add_signature_block(doc)
+
+    path = os.path.join(OUTPUT_DIR, "private_placement_agreement.docx")
+    doc.save(path)
+    print(f"Created: {path}")
+
+
+# ---------------------------------------------------------------------------
+# 6. 顧客紹介業務契約書 (Customer Referral Agreement)
+# ---------------------------------------------------------------------------
+
+def create_customer_referral_agreement():
+    doc = Document()
+    set_default_margins(doc)
+
+    add_title(doc, "顧客紹介業務契約書")
+
+    # 前文
+    add_body(doc,
+        "{{ party_a_name }}（以下「甲」という）と{{ party_b_name }}（以下「乙」という）は、"
+        "甲が運営するファンドへの投資家紹介業務に関し、以下のとおり契約を締結する。")
+
+    # Parties
+    add_heading_text(doc, "当事者")
+    add_body(doc, "甲（委託者）: {{ party_a_name }}")
+    add_body(doc, "住所: {{ party_a_address }}")
+    add_body(doc, "代表者: {{ party_a_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "乙（紹介者）: {{ party_b_name }}")
+    add_body(doc, "住所: {{ party_b_address }}")
+    add_body(doc, "代表者: {{ party_b_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "契約日: {{ contract_date }}")
+    add_body(doc, "効力発生日: {{ effective_date }}")
+
+    # Article 1
+    add_heading_text(doc, "第1条（目的）")
+    add_body(doc,
+        "本契約は、甲が運営する{{ fund_name }}（以下「本ファンド」という）への投資を検討する"
+        "顧客の紹介業務に関し、甲が乙に対し当該業務を委託し、乙がこれを受託することを目的とする。")
+
+    # Article 2
+    add_heading_text(doc, "第2条（業務内容）")
+    add_body(doc, "紹介業務の範囲: {{ referral_scope }}")
+    add_body(doc,
+        "乙は、本ファンドへの投資に関心を有する見込顧客を甲に紹介するものとする。")
+    add_body(doc,
+        "乙は、紹介にあたり、金融商品取引法上の勧誘行為に該当する行為を行ってはならない。")
+
+    # Article 3
+    add_heading_text(doc, "第3条（報酬）")
+    add_body(doc,
+        "甲は、乙が紹介した顧客が本ファンドへの出資を行った場合、"
+        "当該出資金額に{{ referral_fee_rate }}を乗じた金額を紹介報酬として乙に支払う。")
+    add_body(doc,
+        "紹介報酬は、出資金の払込確認後30日以内に乙の指定する口座に振り込む方法により支払う。")
+
+    # Article 4
+    add_heading_text(doc, "第4条（期間）")
+    add_body(doc,
+        "本契約の有効期間は、効力発生日から1年間とする。"
+        "ただし、期間満了の1ヶ月前までに甲乙いずれからも書面による終了の申出がないときは、"
+        "同一条件で更に1年間更新されるものとし、以後も同様とする。")
+
+    # Article 5
+    add_heading_text(doc, "第5条（禁止事項）")
+    add_body(doc,
+        "乙は、以下の行為を行ってはならない。")
+    add_body(doc, "（1）甲の名義を使用して契約を締結すること")
+    add_body(doc, "（2）本ファンドの運用内容について断定的判断を提供すること")
+    add_body(doc, "（3）虚偽又は誤解を招く情報を顧客に提供すること")
+
+    # Article 6
+    add_heading_text(doc, "第6条（秘密保持）")
+    add_body(doc,
+        "甲及び乙は、本契約に関して知り得た相手方の秘密情報を、"
+        "相手方の事前の書面による承諾なく第三者に開示又は漏洩してはならない。"
+        "本条の義務は、本契約終了後もなお3年間存続する。")
+
+    # Article 7
+    add_heading_text(doc, "第7条（解除）")
+    add_body(doc,
+        "甲又は乙は、相手方が本契約の条項に違反し、相当の期間を定めて催告したにもかかわらず"
+        "是正されない場合、本契約を解除することができる。")
+
+    # Article 8
+    add_heading_text(doc, "第8条（損害賠償）")
+    add_body(doc,
+        "甲又は乙が本契約に違反し、相手方に損害を与えた場合、"
+        "その損害を賠償する責任を負うものとする。")
+
+    # Article 9
+    add_heading_text(doc, "第9条（準拠法及び管轄裁判所）")
+    add_body(doc, "本契約は日本法に準拠し、日本法に従い解釈されるものとする。")
+    add_body(doc,
+        "本契約に関する紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とする。")
+
+    # 後文
+    add_blank_line(doc)
+    add_body(doc,
+        "本契約の成立を証するため、本書2通を作成し、甲乙記名押印のうえ各1通を保有する。")
+
+    add_signature_block(doc)
+
+    path = os.path.join(OUTPUT_DIR, "customer_referral_agreement.docx")
+    doc.save(path)
+    print(f"Created: {path}")
+
+
+# ---------------------------------------------------------------------------
+# 7. アセットマネジメント契約書 (Asset Management Agreement)
+# ---------------------------------------------------------------------------
+
+def create_asset_management_agreement():
+    doc = Document()
+    set_default_margins(doc)
+
+    add_title(doc, "アセットマネジメント契約書")
+
+    # 前文
+    add_body(doc,
+        "{{ party_a_name }}（以下「甲」という）と{{ party_b_name }}（以下「乙」という）は、"
+        "甲が保有する資産の運用管理業務に関し、以下のとおり契約を締結する。")
+
+    # Parties
+    add_heading_text(doc, "当事者")
+    add_body(doc, "甲（委託者）: {{ party_a_name }}")
+    add_body(doc, "住所: {{ party_a_address }}")
+    add_body(doc, "代表者: {{ party_a_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "乙（受託者）: {{ party_b_name }}")
+    add_body(doc, "住所: {{ party_b_address }}")
+    add_body(doc, "代表者: {{ party_b_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "契約日: {{ contract_date }}")
+    add_body(doc, "効力発生日: {{ effective_date }}")
+
+    # Article 1
+    add_heading_text(doc, "第1条（目的）")
+    add_body(doc,
+        "本契約は、{{ fund_name }}（以下「本ファンド」という）に係る資産の運用管理業務を、"
+        "甲が乙に委託し、乙がこれを受託することを目的とする。")
+
+    # Article 2
+    add_heading_text(doc, "第2条（業務内容）")
+    add_body(doc,
+        "乙は、甲の指示及び本契約の定めに従い、以下の業務を行う。")
+    add_body(doc, "（1）運用資産の取得、処分及び管理に関する助言・実行")
+    add_body(doc, "（2）運用資産の価値評価及びモニタリング")
+    add_body(doc, "（3）運用報告書の作成及び提出")
+    add_body(doc, "（4）その他前各号に付随する業務")
+
+    # Article 3
+    add_heading_text(doc, "第3条（対象資産）")
+    add_body(doc, "運用対象資産: {{ managed_assets }}")
+
+    # Article 4
+    add_heading_text(doc, "第4条（報酬）")
+    add_body(doc,
+        "甲は、乙に対し、アセットマネジメント報酬として、運用資産残高に対し"
+        "年率{{ am_fee_rate }}を乗じた金額を支払う。")
+    add_body(doc,
+        "報酬は四半期ごとに計算し、各四半期末日の翌月末日までに乙の指定する口座に振り込む方法により支払う。")
+
+    # Article 5
+    add_heading_text(doc, "第5条（報告義務）")
+    add_body(doc,
+        "乙は、甲に対し、運用状況について{{ reporting_frequency }}の頻度で報告書を提出するものとする。")
+    add_body(doc,
+        "甲が随時報告を求めた場合、乙は速やかにこれに応じるものとする。")
+
+    # Article 6
+    add_heading_text(doc, "第6条（善管注意義務）")
+    add_body(doc,
+        "乙は、善良なる管理者の注意をもって本契約に基づく業務を遂行するものとする。")
+
+    # Article 7
+    add_heading_text(doc, "第7条（期間）")
+    add_body(doc,
+        "本契約の有効期間は、効力発生日から1年間とする。"
+        "ただし、期間満了の3ヶ月前までに甲乙いずれからも書面による終了の申出がないときは、"
+        "同一条件で更に1年間更新されるものとし、以後も同様とする。")
+
+    # Article 8
+    add_heading_text(doc, "第8条（秘密保持）")
+    add_body(doc,
+        "甲及び乙は、本契約に関して知り得た相手方の秘密情報を、"
+        "相手方の事前の書面による承諾なく第三者に開示又は漏洩してはならない。"
+        "本条の義務は、本契約終了後もなお3年間存続する。")
+
+    # Article 9
+    add_heading_text(doc, "第9条（解除）")
+    add_body(doc,
+        "甲又は乙は、相手方が本契約の条項に違反し、相当の期間を定めて催告したにもかかわらず"
+        "是正されない場合、本契約を解除することができる。")
+    add_body(doc,
+        "前項のほか、相手方に破産手続開始の申立てその他の重大な信用不安事由が生じた場合、"
+        "催告なく直ちに本契約を解除することができる。")
+
+    # Article 10
+    add_heading_text(doc, "第10条（損害賠償）")
+    add_body(doc,
+        "乙は、故意又は重過失により甲に損害を与えた場合、その損害を賠償する責任を負うものとする。"
+        "ただし、乙の賠償額は、直近1年間に甲が乙に支払った報酬の総額を上限とする。")
+
+    # Article 11
+    add_heading_text(doc, "第11条（準拠法及び管轄裁判所）")
+    add_body(doc, "本契約は日本法に準拠し、日本法に従い解釈されるものとする。")
+    add_body(doc,
+        "本契約に関する紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とする。")
+
+    # 後文
+    add_blank_line(doc)
+    add_body(doc,
+        "本契約の成立を証するため、本書2通を作成し、甲乙記名押印のうえ各1通を保有する。")
+
+    add_signature_block(doc)
+
+    path = os.path.join(OUTPUT_DIR, "asset_management_agreement.docx")
+    doc.save(path)
+    print(f"Created: {path}")
+
+
+# ---------------------------------------------------------------------------
+# 8. 会計事務委託契約書（会計事務所） (Accounting Services - Firm)
+# ---------------------------------------------------------------------------
+
+def create_accounting_services_firm():
+    doc = Document()
+    set_default_margins(doc)
+
+    add_title(doc, "会計事務委託契約書")
+
+    # 前文
+    add_body(doc,
+        "{{ party_a_name }}（以下「甲」という）と{{ party_b_name }}（以下「乙」という）は、"
+        "甲の会計事務の委託に関し、以下のとおり契約を締結する。")
+
+    # Parties
+    add_heading_text(doc, "当事者")
+    add_body(doc, "甲（委託者）: {{ party_a_name }}")
+    add_body(doc, "住所: {{ party_a_address }}")
+    add_body(doc, "代表者: {{ party_a_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "乙（受託者・会計事務所）: {{ party_b_name }}")
+    add_body(doc, "住所: {{ party_b_address }}")
+    add_body(doc, "代表者: {{ party_b_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "契約日: {{ contract_date }}")
+    add_body(doc, "効力発生日: {{ effective_date }}")
+
+    # Article 1
+    add_heading_text(doc, "第1条（目的）")
+    add_body(doc,
+        "本契約は、甲の会計事務処理業務を乙に委託し、乙がこれを受託することを目的とする。")
+
+    # Article 2
+    add_heading_text(doc, "第2条（業務内容）")
+    add_body(doc, "乙が受託する業務の範囲は以下のとおりとする。")
+    add_body(doc, "業務範囲: {{ scope_of_work }}")
+    add_body(doc, "（1）記帳代行及び仕訳処理")
+    add_body(doc, "（2）月次試算表の作成")
+    add_body(doc, "（3）決算書類の作成")
+    add_body(doc, "（4）税務申告書の作成及び提出")
+    add_body(doc, "（5）その他前各号に付随する業務")
+
+    # Article 3
+    add_heading_text(doc, "第3条（報酬）")
+    add_body(doc,
+        "甲は、乙に対し、本契約に基づく業務の対価として月額{{ monthly_fee }}円（消費税別）を支払う。")
+    add_body(doc,
+        "報酬は、毎月末日締めとし、翌月末日までに乙の指定する口座に振り込む方法により支払う。")
+
+    # Article 4
+    add_heading_text(doc, "第4条（資料の提供）")
+    add_body(doc,
+        "甲は、乙の業務遂行に必要な帳簿、証憑その他の資料を速やかに乙に提供するものとする。")
+    add_body(doc,
+        "甲の資料提供の遅延に起因する業務の遅延については、乙は責任を負わないものとする。")
+
+    # Article 5
+    add_heading_text(doc, "第5条（報告期限）")
+    add_body(doc,
+        "乙は、毎月の会計処理結果を{{ reporting_deadline }}までに甲に報告するものとする。")
+
+    # Article 6
+    add_heading_text(doc, "第6条（期間）")
+    add_body(doc,
+        "本契約の有効期間は、効力発生日から1年間とする。"
+        "ただし、期間満了の1ヶ月前までに甲乙いずれからも書面による終了の申出がないときは、"
+        "同一条件で更に1年間更新されるものとし、以後も同様とする。")
+
+    # Article 7
+    add_heading_text(doc, "第7条（秘密保持）")
+    add_body(doc,
+        "甲及び乙は、本契約に関して知り得た相手方の秘密情報を、"
+        "相手方の事前の書面による承諾なく第三者に開示又は漏洩してはならない。"
+        "本条の義務は、本契約終了後もなお3年間存続する。")
+
+    # Article 8
+    add_heading_text(doc, "第8条（解除）")
+    add_body(doc,
+        "甲又は乙は、相手方が本契約の条項に違反し、相当の期間を定めて催告したにもかかわらず"
+        "是正されない場合、本契約を解除することができる。")
+
+    # Article 9
+    add_heading_text(doc, "第9条（免責）")
+    add_body(doc,
+        "乙は、甲から提供された資料の正確性について責任を負わないものとする。"
+        "甲が提供した資料の誤りに起因する損害については、甲が負担するものとする。")
+
+    # Article 10
+    add_heading_text(doc, "第10条（準拠法及び管轄裁判所）")
+    add_body(doc, "本契約は日本法に準拠し、日本法に従い解釈されるものとする。")
+    add_body(doc,
+        "本契約に関する紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とする。")
+
+    # 後文
+    add_blank_line(doc)
+    add_body(doc,
+        "本契約の成立を証するため、本書2通を作成し、甲乙記名押印のうえ各1通を保有する。")
+
+    add_signature_block(doc)
+
+    path = os.path.join(OUTPUT_DIR, "accounting_services_firm.docx")
+    doc.save(path)
+    print(f"Created: {path}")
+
+
+# ---------------------------------------------------------------------------
+# 9. 会計事務委託契約書（一般社団法人） (Accounting Services - Association)
+# ---------------------------------------------------------------------------
+
+def create_accounting_services_association():
+    doc = Document()
+    set_default_margins(doc)
+
+    add_title(doc, "会計事務委託契約書")
+
+    # 前文
+    add_body(doc,
+        "{{ party_a_name }}（以下「甲」という）と{{ party_b_name }}（以下「乙」という）は、"
+        "甲の会計事務の委託に関し、以下のとおり契約を締結する。")
+
+    # Parties
+    add_heading_text(doc, "当事者")
+    add_body(doc, "甲（委託者）: {{ party_a_name }}")
+    add_body(doc, "住所: {{ party_a_address }}")
+    add_body(doc, "代表者: {{ party_a_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "乙（受託者・一般社団法人）: {{ party_b_name }}")
+    add_body(doc, "住所: {{ party_b_address }}")
+    add_body(doc, "代表者: {{ party_b_representative }}")
+    add_blank_line(doc)
+    add_body(doc, "契約日: {{ contract_date }}")
+    add_body(doc, "効力発生日: {{ effective_date }}")
+
+    # Article 1
+    add_heading_text(doc, "第1条（目的）")
+    add_body(doc,
+        "本契約は、甲の会計事務処理業務を乙に委託し、乙がこれを受託することを目的とする。")
+
+    # Article 2
+    add_heading_text(doc, "第2条（業務内容）")
+    add_body(doc, "乙が受託する業務の範囲は以下のとおりとする。")
+    add_body(doc, "業務範囲: {{ scope_of_work }}")
+    add_body(doc, "委託範囲: {{ delegation_scope }}")
+    add_body(doc, "（1）日常の会計記帳及び仕訳処理")
+    add_body(doc, "（2）月次決算の作成及び報告")
+    add_body(doc, "（3）年次決算書類の作成補助")
+    add_body(doc, "（4）社員総会向け会計報告資料の作成")
+    add_body(doc, "（5）その他前各号に付随する業務")
+
+    # Article 3
+    add_heading_text(doc, "第3条（報酬）")
+    add_body(doc,
+        "甲は、乙に対し、本契約に基づく業務の対価として月額{{ monthly_fee }}円（消費税別）を支払う。")
+    add_body(doc,
+        "報酬は、毎月末日締めとし、翌月末日までに乙の指定する口座に振り込む方法により支払う。")
+
+    # Article 4
+    add_heading_text(doc, "第4条（資料の提供）")
+    add_body(doc,
+        "甲は、乙の業務遂行に必要な帳簿、証憑その他の資料を速やかに乙に提供するものとする。")
+    add_body(doc,
+        "甲の資料提供の遅延に起因する業務の遅延については、乙は責任を負わないものとする。")
+
+    # Article 5
+    add_heading_text(doc, "第5条（再委託）")
+    add_body(doc,
+        "乙は、甲の事前の書面による承諾を得た場合に限り、本契約に基づく業務の全部又は一部を"
+        "第三者に再委託することができる。")
+    add_body(doc,
+        "再委託した場合においても、乙は本契約に基づく責任を免れないものとする。")
+
+    # Article 6
+    add_heading_text(doc, "第6条（期間）")
+    add_body(doc,
+        "本契約の有効期間は、効力発生日から1年間とする。"
+        "ただし、期間満了の1ヶ月前までに甲乙いずれからも書面による終了の申出がないときは、"
+        "同一条件で更に1年間更新されるものとし、以後も同様とする。")
+
+    # Article 7
+    add_heading_text(doc, "第7条（秘密保持）")
+    add_body(doc,
+        "甲及び乙は、本契約に関して知り得た相手方の秘密情報を、"
+        "相手方の事前の書面による承諾なく第三者に開示又は漏洩してはならない。"
+        "本条の義務は、本契約終了後もなお3年間存続する。")
+
+    # Article 8
+    add_heading_text(doc, "第8条（解除）")
+    add_body(doc,
+        "甲又は乙は、相手方が本契約の条項に違反し、相当の期間を定めて催告したにもかかわらず"
+        "是正されない場合、本契約を解除することができる。")
+
+    # Article 9
+    add_heading_text(doc, "第9条（免責）")
+    add_body(doc,
+        "乙は、甲から提供された資料の正確性について責任を負わないものとする。"
+        "甲が提供した資料の誤りに起因する損害については、甲が負担するものとする。")
+
+    # Article 10
+    add_heading_text(doc, "第10条（準拠法及び管轄裁判所）")
+    add_body(doc, "本契約は日本法に準拠し、日本法に従い解釈されるものとする。")
+    add_body(doc,
+        "本契約に関する紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とする。")
+
+    # 後文
+    add_blank_line(doc)
+    add_body(doc,
+        "本契約の成立を証するため、本書2通を作成し、甲乙記名押印のうえ各1通を保有する。")
+
+    add_signature_block(doc)
+
+    path = os.path.join(OUTPUT_DIR, "accounting_services_association.docx")
+    doc.save(path)
+    print(f"Created: {path}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -444,4 +978,9 @@ if __name__ == "__main__":
     create_sales_agreement()
     create_master_lease()
     create_sublease_agreement()
-    print(f"\nAll 4 contract templates created in: {OUTPUT_DIR}")
+    create_private_placement_agreement()
+    create_customer_referral_agreement()
+    create_asset_management_agreement()
+    create_accounting_services_firm()
+    create_accounting_services_association()
+    print(f"\nAll 9 contract templates created in: {OUTPUT_DIR}")

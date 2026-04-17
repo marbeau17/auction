@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>請求書のお知らせ</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, sans-serif; color: #333; background-color: #f5f5f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5;">
+<tr>
+<td align="center" style="padding: 30px 10px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+
+  <!-- Header -->
+  <tr>
+    <td style="background-color: #1a365d; padding: 24px 30px;">
+      <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: bold;">CVLPOS 請求管理システム</h1>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr>
+    <td style="padding: 30px;">
+      <h2 style="color: #1a365d; font-size: 18px; margin-top: 0;">請求書のお知らせ</h2>
+
+      {% if company_name %}
+      <p style="font-size: 14px; line-height: 1.8;">{{ company_name }} 御中</p>
+      {% endif %}
+
+      <p style="font-size: 14px; line-height: 1.8;">
+        いつもお世話になっております。<br>
+        下記の通り、請求書を送付いたします。
+      </p>
+
+      <!-- Invoice details table -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 24px 0;">
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; background-color: #f7fafc; width: 35%; font-size: 13px; font-weight: bold;">請求書番号</td>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; font-size: 13px;">{{ invoice_number }}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; background-color: #f7fafc; font-size: 13px; font-weight: bold;">請求期間</td>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; font-size: 13px;">{{ billing_period }}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; background-color: #f7fafc; font-size: 13px; font-weight: bold;">請求金額（税込）</td>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; font-size: 16px; font-weight: bold; color: #1a365d;">&yen;{{ "{:,}".format(total_amount) }}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; background-color: #f7fafc; font-size: 13px; font-weight: bold;">お支払期日</td>
+          <td style="padding: 10px 14px; border: 1px solid #e2e8f0; font-size: 13px;">{{ due_date }}</td>
+        </tr>
+      </table>
+
+      <p style="font-size: 14px; line-height: 1.8;">添付のPDFファイルをご確認ください。</p>
+      <p style="font-size: 14px; line-height: 1.8;">ご不明な点がございましたら、お気軽にお問い合わせください。</p>
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding: 20px 30px; border-top: 1px solid #e2e8f0; background-color: #f7fafc;">
+      <p style="margin: 0; font-size: 11px; color: #999; line-height: 1.6;">
+        このメールはCVLPOS請求管理システムから自動送信されています。<br>
+        株式会社カーチスロジテック
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
