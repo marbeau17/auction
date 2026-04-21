@@ -242,7 +242,12 @@ async def refresh(
 async def forgot_password_page(request: Request):
     from app.main import templates
 
-    return templates.TemplateResponse(request, "pages/forgot_password.html")
+    token = getattr(request.state, "csrf_token", None) or request.cookies.get("csrf_token", "")
+    return templates.TemplateResponse(
+        request,
+        "pages/forgot_password.html",
+        {"csrf_token": token},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -254,22 +259,19 @@ async def forgot_password_page(request: Request):
 @limiter.limit("3/15minutes")
 async def forgot_password(request: Request):
     form = await request.form()
-    email = form.get("email", "")
+    email = (form.get("email") or "").strip()
 
-    if not email:
-        return HTMLResponse(
-            '<div class="alert alert--error">メールアドレスを入力してください</div>'
-        )
+    if email:
+        try:
+            from supabase import create_client as _create_client
 
-    try:
-        from supabase import create_client as _create_client
-
-        settings = get_settings()
-        client = _create_client(settings.supabase_url, settings.supabase_anon_key)
-        client.auth.reset_password_email(email)
-    except Exception:
-        pass  # Don't reveal if email exists
+            settings = get_settings()
+            client = _create_client(settings.supabase_url, settings.supabase_anon_key)
+            client.auth.reset_password_email(email)
+        except Exception as exc:
+            # Swallow to avoid revealing whether the address exists.
+            logger.info("forgot_password_attempt_failed", error=str(exc))
 
     return HTMLResponse(
-        '<div class="alert alert--success">リセットリンクをメールに送信しました。メールをご確認ください。</div>'
+        '<div class="alert alert--success">メール送信しました。受信箱をご確認ください。</div>'
     )

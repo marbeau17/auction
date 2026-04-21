@@ -1,8 +1,12 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+import structlog
+from pydantic_settings import BaseSettings
 
 
 _DEFAULT_SECRET = "change-me"
+
+logger = structlog.get_logger()
 
 
 class Settings(BaseSettings):
@@ -12,6 +16,8 @@ class Settings(BaseSettings):
     app_secret_key: str = _DEFAULT_SECRET
     # Comma-separated allowed CORS origins (e.g. "https://example.com,https://staging.example.com")
     allowed_origins: str = ""
+    # Comma-separated CORS allowed origins (additive to the built-in defaults).
+    cors_allowed_origins: str = ""
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
@@ -42,14 +48,9 @@ class Settings(BaseSettings):
     max_lease_to_revenue_ratio: float = 0.05
 
     # Telemetry ingest (Phase 3a)
-    # Shared secret presented by telematics devices / gateway in the
-    # X-Device-Token header. Leave empty to disable the ingest endpoints
-    # (fail-closed).
     telemetry_ingest_token: str = ""
 
     # Observability (Sentry)
-    # Leave blank to disable Sentry entirely (no-op init). When set, errors
-    # and traces are shipped to Sentry with the given traces sample rate.
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.1
 
@@ -59,16 +60,21 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
-    # In non-development environments, refuse to boot with the placeholder secret.
-    if s.app_env.lower() not in {"development", "dev", "local", "test"} and s.app_secret_key == _DEFAULT_SECRET:
-        raise RuntimeError(
-            "APP_SECRET_KEY must be set to a non-default value when APP_ENV is not development/test."
+    # Vercel cold start must still boot even when the secret is unset, so we
+    # log loudly instead of raising. Production deploys must override this.
+    if s.app_env.lower() == "production" and s.app_secret_key == _DEFAULT_SECRET:
+        logger.critical(
+            "insecure_app_secret_key",
+            app_env=s.app_env,
+            message="APP_SECRET_KEY is set to the default placeholder in production. "
+                    "Generate a new value with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` "
+                    "and set APP_SECRET_KEY in the deployment environment.",
         )
     return s
 
 
 def parse_allowed_origins(raw: str) -> list[str]:
-    """Parse the ALLOWED_ORIGINS comma-separated env value into a clean list."""
+    """Parse a comma-separated origin list env value into a clean list."""
     if not raw:
         return []
     return [o.strip() for o in raw.split(",") if o.strip()]

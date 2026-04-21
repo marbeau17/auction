@@ -23,7 +23,8 @@ def _render(request: Request, template: str, context: dict | None = None):
     from app.main import templates
 
     ctx = context or {}
-    ctx.setdefault("csrf_token", request.cookies.get("csrf_token", ""))
+    token = getattr(request.state, "csrf_token", None) or request.cookies.get("csrf_token", "")
+    ctx.setdefault("csrf_token", token)
     # Auto-detect active page from URL path for sidebar highlighting
     path = request.url.path
     if path.startswith("/simulation"):
