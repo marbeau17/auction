@@ -173,6 +173,48 @@ async def simulation_new_page(request: Request):
         logger.exception("simulation_new_form_data_failed", handler="simulation_new_page")
         error_banner = "マスタデータの取得に失敗しました。一部のドロップダウンが空になっている可能性があります。"
 
+    # Build prefill dict from query params (emitted by simulation_result "条件変更して再計算" link).
+    # Keys mirror the template's existing input `name` attributes so binding is direct.
+    prefill: dict[str, Any] = {}
+    qp = request.query_params
+    _prefill_keys = (
+        "maker",
+        "model",
+        "mileage_km",
+        "vehicle_class",
+        "body_type",
+        "acquisition_price",
+        "book_value",
+        "target_yield_rate",  # percentage form (e.g. "8" == 8%); form input also expects percentage → pass-through
+        "lease_term_months",
+    )
+    for key in _prefill_keys:
+        val = qp.get(key)
+        if val is not None and val != "":
+            prefill[key] = val
+
+    # registration_year_month may arrive as "2020" or "2020-04". Split so year/month
+    # selects bind independently. JS can default month to current if absent.
+    rym = qp.get("registration_year_month")
+    if rym:
+        if "-" in rym:
+            year_part, _, month_part = rym.partition("-")
+            if year_part:
+                prefill["registration_year"] = year_part
+            if month_part:
+                # Strip leading zero for select option matching (e.g. "04" → "4") but also keep raw.
+                prefill["registration_month"] = month_part.lstrip("0") or month_part
+                prefill["registration_month_raw"] = month_part
+        else:
+            prefill["registration_year"] = rym
+        # Keep original combined value available for any downstream consumer.
+        prefill["registration_year_month"] = rym
+
+    prefill_from = qp.get("prefill_from")
+    if prefill_from:
+        prefill["prefill_from"] = prefill_from
+        logger.info("simulation_prefill", source_id=prefill_from)
+
     return _render(request, "pages/simulation.html", {
         "user": user,
         "makers": makers,
@@ -182,6 +224,7 @@ async def simulation_new_page(request: Request):
         "equipment_options": equipment_options,
         "error_banner": error_banner,
         "error_message": error_banner,
+        "prefill": prefill or None,
     })
 
 

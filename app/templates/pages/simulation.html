@@ -14,6 +14,12 @@
     <p>車両情報とリース条件を入力して最適な買取価格を算出します</p>
 </div>
 
+{% if prefill and prefill.prefill_from %}
+<div class="alert alert--info" role="status" style="margin-bottom:16px">
+    前回の入力値を反映しました
+</div>
+{% endif %}
+
 <form hx-post="/api/v1/simulations/calculate"
       hx-target="#result-area"
       hx-swap="innerHTML"
@@ -34,7 +40,7 @@
                     hx-trigger="change"
                     hx-include="[name='maker']">
                 <option value="">選択してください</option>
-                {% for m in makers %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+                {% for m in makers %}<option value="{{ m.name }}"{% if prefill and prefill.maker == m.name %} selected{% endif %}>{{ m.name }}</option>{% endfor %}
             </select>
         </div>
 
@@ -44,12 +50,12 @@
             <select id="model-select" name="model_select" class="form-select"
                     onchange="toggleCustomModel(this)">
                 <option value="">メーカーを先に選択してください</option>
-                {% for m in models %}<option value="{{ m.name }}">{{ m.name }}</option>{% endfor %}
+                {% for m in models %}<option value="{{ m.name }}"{% if prefill and prefill.model == m.name %} selected{% endif %}>{{ m.name }}</option>{% endfor %}
                 <option value="__custom__">その他（手動入力）</option>
             </select>
             <input type="text" id="model-custom" name="model_custom" class="form-input"
                    placeholder="車種名を入力" style="display:none; margin-top:8px">
-            <input type="hidden" name="model" id="model-hidden" value="">
+            <input type="hidden" name="model" id="model-hidden" value="{{ prefill.model if prefill else '' }}">
         </div>
 
         <!-- Year + Mileage row -->
@@ -59,16 +65,16 @@
                 <div style="display:flex; gap:8px;">
                     <select name="registration_year" class="form-select" required style="flex:2;">
                         <option value="">年</option>
-                        {% for y in range(2026, 2009, -1) %}<option value="{{ y }}">{{ y }}年</option>{% endfor %}
+                        {% for y in range(2026, 2009, -1) %}<option value="{{ y }}"{% if prefill and prefill.registration_year == (y | string) %} selected{% endif %}>{{ y }}年</option>{% endfor %}
                     </select>
                     <select name="registration_month" class="form-select" required style="flex:1;" id="registration-month">
-                        {% for mm in range(1, 13) %}<option value="{{ "%02d"|format(mm) }}">{{ mm }}月</option>{% endfor %}
+                        {% for mm in range(1, 13) %}<option value="{{ "%02d"|format(mm) }}"{% if prefill and prefill.registration_month_raw == "%02d"|format(mm) %} selected{% endif %}>{{ mm }}月</option>{% endfor %}
                     </select>
                 </div>
             </div>
             <div class="form-group">
                 <label class="form-label form-label--required">走行距離 (km)</label>
-                <input type="number" name="mileage_km" class="form-input" placeholder="例: 120000" required min="0">
+                <input type="number" name="mileage_km" class="form-input" placeholder="例: 120000" required min="0" value="{{ prefill.mileage_km if prefill else '' }}">
             </div>
         </div>
 
@@ -78,14 +84,14 @@
                 <label class="form-label form-label--required">クラス</label>
                 <select name="vehicle_class" class="form-select" required>
                     <option value="">選択</option>
-                    {% for c in categories %}<option value="{{ c.code }}">{{ c.name }}</option>{% endfor %}
+                    {% for c in categories %}<option value="{{ c.code }}"{% if prefill and prefill.vehicle_class == c.code %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="form-group">
                 <label class="form-label form-label--required">ボディタイプ</label>
                 <select name="body_type" class="form-select" required>
                     <option value="">選択</option>
-                    {% for bt in body_types %}<option value="{{ bt.name }}">{{ bt.name }}</option>{% endfor %}
+                    {% for bt in body_types %}<option value="{{ bt.name }}"{% if prefill and prefill.body_type == bt.name %} selected{% endif %}>{{ bt.name }}</option>{% endfor %}
                 </select>
             </div>
         </div>
@@ -94,11 +100,11 @@
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label form-label--required">取得価格 (円)</label>
-                <input type="number" name="acquisition_price" class="form-input" placeholder="例: 5000000" required min="0">
+                <input type="number" name="acquisition_price" class="form-input" placeholder="例: 5000000" required min="0" value="{{ prefill.acquisition_price if prefill else '' }}">
             </div>
             <div class="form-group">
                 <label class="form-label form-label--required">簿価 (円)</label>
-                <input type="number" name="book_value" class="form-input" placeholder="例: 3000000" required min="0">
+                <input type="number" name="book_value" class="form-input" placeholder="例: 3000000" required min="0" value="{{ prefill.book_value if prefill else '' }}">
             </div>
         </div>
 
@@ -147,19 +153,21 @@
         <div class="form-group">
             <label class="form-label form-label--required">目標利回り (%)</label>
             <input type="number" name="target_yield_rate" class="form-input"
-                   placeholder="例: 8.5" required min="1" max="30" step="0.1" value="8">
+                   placeholder="例: 8.5" required min="1" max="30" step="0.1"
+                   value="{{ prefill.target_yield_rate if prefill and prefill.target_yield_rate else '8' }}">
             <small class="form-hint">推奨範囲: 5.0% - 15.0%</small>
         </div>
 
+        {% set _term = prefill.lease_term_months if prefill and prefill.lease_term_months else '24' %}
         <div class="form-group">
             <label class="form-label form-label--required">リース期間</label>
             <select name="lease_term_months" class="form-select" required>
                 <option value="">選択してください</option>
-                <option value="12">12ヶ月 (1年)</option>
-                <option value="24" selected>24ヶ月 (2年)</option>
-                <option value="36">36ヶ月 (3年)</option>
-                <option value="48">48ヶ月 (4年)</option>
-                <option value="60">60ヶ月 (5年)</option>
+                <option value="12"{% if _term == '12' %} selected{% endif %}>12ヶ月 (1年)</option>
+                <option value="24"{% if _term == '24' %} selected{% endif %}>24ヶ月 (2年)</option>
+                <option value="36"{% if _term == '36' %} selected{% endif %}>36ヶ月 (3年)</option>
+                <option value="48"{% if _term == '48' %} selected{% endif %}>48ヶ月 (4年)</option>
+                <option value="60"{% if _term == '60' %} selected{% endif %}>60ヶ月 (5年)</option>
             </select>
         </div>
     </div>
@@ -178,7 +186,54 @@
 
 <div id="result-area" style="margin-top: 32px;"></div>
 
+{% if prefill %}
+<script id="prefill-data" type="application/json">{{ {
+    "maker": prefill.maker or "",
+    "model": prefill.model or "",
+    "vehicle_class": prefill.vehicle_class or "",
+    "body_type": prefill.body_type or "",
+    "registration_year": prefill.registration_year or "",
+    "registration_month": prefill.registration_month or "",
+    "lease_term_months": prefill.lease_term_months or ""
+} | tojson }}</script>
+{% endif %}
+
 <script>
+// Honor prefilled values even when the maker→model HTMX cascade reloads options.
+(function prefillCascade() {
+    var el = document.getElementById('prefill-data');
+    if (!el) return;
+    var data;
+    try { data = JSON.parse(el.textContent || '{}'); } catch (e) { return; }
+    if (!data || !data.maker) return;
+
+    // Seed hidden model input from pre-selected option (in case options list is replaced later).
+    var hidden = document.getElementById('model-hidden');
+    if (hidden && data.model) { hidden.value = data.model; }
+
+    // Trigger maker-change so HTMX loads the maker-filtered model list, then re-select our model.
+    var makerSelect = document.querySelector('select[name="maker"]');
+    if (!makerSelect || !makerSelect.value) return;
+    var modelSelect = document.getElementById('model-select');
+    if (!modelSelect) return;
+
+    var reselect = function(evt) {
+        if (evt && evt.target !== modelSelect) return;
+        if (!data.model) return;
+        var opts = modelSelect.querySelectorAll('option');
+        var matched = false;
+        for (var i = 0; i < opts.length; i++) {
+            if (opts[i].value === data.model) { opts[i].selected = true; matched = true; break; }
+        }
+        if (hidden) { hidden.value = data.model; }
+        document.body.removeEventListener('htmx:afterSwap', reselect);
+    };
+    document.body.addEventListener('htmx:afterSwap', reselect);
+
+    // Kick off the HTMX-backed change so the model dropdown refreshes to the filtered list.
+    try { makerSelect.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) { /* no-op */ }
+})();
+
 function toggleCustomModel(select) {
     var customInput = document.getElementById('model-custom');
     var hiddenInput = document.getElementById('model-hidden');
