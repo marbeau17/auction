@@ -491,11 +491,15 @@ def _fetch_market_data(
     vehicles = data_result.data or []
     total_count: int = data_result.count or 0
 
+    # Bounded scan: full aggregation belongs in a scheduled job; capping the
+    # window here keeps p95 acceptable as the vehicles table grows.
     stats_query = (
         client.table("vehicles")
         .select("price_yen")
         .eq("is_active", True)
         .not_.is_("price_yen", "null")
+        .order("scraped_at", desc=True)
+        .limit(5000)
     )
     stats_query = _apply_filters(stats_query)
     stats_result = stats_query.execute()
