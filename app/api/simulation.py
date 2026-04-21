@@ -9,7 +9,6 @@ header is present; otherwise they return JSON.
 
 from __future__ import annotations
 
-import json
 import math
 from datetime import datetime
 from typing import Any, Literal, Optional
@@ -17,7 +16,7 @@ from typing import Any, Literal, Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from supabase import Client
 
 from app.core.pricing import calculate_simulation
@@ -136,171 +135,169 @@ def _compute_diff(a: dict[str, Any], b: dict[str, Any]) -> ComparisonDiff:
 
 
 # ---------------------------------------------------------------------------
-# Formatting helpers for HTMX HTML fragments
+# Form-data parsing helpers
 # ---------------------------------------------------------------------------
 
 
-def _yen(value: int) -> str:
-    """Format an integer as a Japanese-yen string."""
-    return f"{value:,}"
+def _to_int(value: Any, default: int = 0) -> int:
+    if value is None or value == "":
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
 
 
-def _pct(value: float) -> str:
-    """Format a decimal as a percentage string."""
-    return f"{value * 100:.2f}%"
+def _to_float(value: Any, default: float = 0.0) -> float:
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
-def _render_result_fragment(result: SimulationResult) -> str:
-    """Return an HTML fragment summarising the simulation result."""
-    assessment_class = {
-        "推奨": "text-green-700 bg-green-100",
-        "要検討": "text-yellow-700 bg-yellow-100",
-        "非推奨": "text-red-700 bg-red-100",
-    }.get(result.assessment, "")
+def _form_to_input_dict(form_data: Any) -> dict[str, Any]:
+    """Convert a Starlette FormData (or dict) into a SimulationInput-shaped dict.
 
-    rows = "".join(
-        f"<tr>"
-        f"<td class='px-2 py-1 text-right'>{s.month}</td>"
-        f"<td class='px-2 py-1 text-right'>{_yen(s.lease_income)}</td>"
-        f"<td class='px-2 py-1 text-right'>{_yen(s.cumulative_income)}</td>"
-        f"<td class='px-2 py-1 text-right'>{_yen(s.monthly_profit)}</td>"
-        f"<td class='px-2 py-1 text-right'>{_yen(s.cumulative_profit)}</td>"
-        f"</tr>"
-        for s in result.monthly_schedule
+    Honours the simulation form's idiosyncratic shapes:
+    * ``model_select`` / ``model_custom`` fall-back chain
+    * Separate ``registration_year`` + ``registration_month`` selects
+      (also accepts a combined ``registration_year_month`` for legacy callers)
+    * Target yield is posted as a percentage (e.g. ``8`` = 8%)
+    """
+    get = form_data.get
+    getlist = (
+        form_data.getlist
+        if hasattr(form_data, "getlist")
+        else (lambda k: form_data.get(k, []))
     )
 
-    return f"""
-    <div id="simulation-result" class="space-y-4">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">最大購入価格</p>
-          <p class="text-lg font-bold">&yen;{_yen(result.max_purchase_price)}</p>
-        </div>
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">推奨購入価格</p>
-          <p class="text-lg font-bold">&yen;{_yen(result.recommended_purchase_price)}</p>
-        </div>
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">月額リース料</p>
-          <p class="text-lg font-bold">&yen;{_yen(result.monthly_lease_fee)}</p>
-        </div>
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">実効利回り</p>
-          <p class="text-lg font-bold">{_pct(result.effective_yield_rate)}</p>
-        </div>
-      </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">リース料総額</p>
-          <p class="font-semibold">&yen;{_yen(result.total_lease_fee)}</p>
-        </div>
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">残価</p>
-          <p class="font-semibold">&yen;{_yen(result.estimated_residual_value)} ({_pct(result.residual_rate_result)})</p>
-        </div>
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">損益分岐</p>
-          <p class="font-semibold">{f'{result.breakeven_months}ヶ月' if result.breakeven_months else '-'}</p>
-        </div>
-        <div class="p-3 border rounded">
-          <p class="text-xs text-gray-500">市場中央値</p>
-          <p class="font-semibold">&yen;{_yen(result.market_median_price)} (n={result.market_sample_count})</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="text-sm font-medium">総合判定:</span>
-        <span class="px-3 py-1 rounded-full text-sm font-bold {assessment_class}">{result.assessment}</span>
-      </div>
-      <details class="border rounded">
-        <summary class="px-4 py-2 cursor-pointer font-medium">月別スケジュール</summary>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="bg-gray-50">
-                <th class="px-2 py-1 text-right">月</th>
-                <th class="px-2 py-1 text-right">リース収入</th>
-                <th class="px-2 py-1 text-right">累計収入</th>
-                <th class="px-2 py-1 text-right">月次損益</th>
-                <th class="px-2 py-1 text-right">累計損益</th>
-              </tr>
-            </thead>
-            <tbody>{rows}</tbody>
-          </table>
-        </div>
-      </details>
-    </div>
+    model = get("model", "") or get("model_custom", "") or get("model_select", "")
+    if model == "__custom__":
+        model = get("model_custom", "")
+
+    # Build registration_year_month from either the new split selects or any
+    # legacy combined value. The Pydantic validator handles year-only inputs.
+    reg_year = get("registration_year") or ""
+    reg_month = get("registration_month") or ""
+    if reg_year:
+        reg_ym = f"{reg_year}-{reg_month}" if reg_month else str(reg_year)
+    else:
+        reg_ym = str(get("registration_year_month") or "")
+
+    target_yield_raw = _to_float(get("target_yield_rate"), 0.0)
+    # Form posts a percentage (8 means 8%). JSON callers may post 0.08 directly;
+    # treat <=1 as already-decimal to keep both shapes working.
+    target_yield = (
+        target_yield_raw if 0 < target_yield_raw <= 1 else target_yield_raw / 100.0
+    )
+
+    body_option_value = _to_int(get("body_option_value"), 0) or None
+    insurance_monthly = _to_int(get("insurance_monthly"), 0) or None
+    maintenance_monthly = _to_int(get("maintenance_monthly"), 0) or None
+
+    payload_ton = get("payload_ton")
+    payload_ton_val = _to_float(payload_ton) if payload_ton not in (None, "") else None
+
+    residual_rate_raw = get("residual_rate")
+    residual_rate: float | None = None
+    if residual_rate_raw not in (None, ""):
+        rr = _to_float(residual_rate_raw)
+        residual_rate = rr if 0 < rr <= 1 else rr / 100.0
+
+    return {
+        "maker": str(get("maker") or "").strip(),
+        "model": str(model or "").strip(),
+        "model_code": (str(get("model_code")).strip() or None) if get("model_code") else None,
+        "registration_year_month": reg_ym,
+        "mileage_km": _to_int(get("mileage_km"), 0),
+        "acquisition_price": _to_int(get("acquisition_price"), 0),
+        "book_value": _to_int(get("book_value"), 0),
+        "vehicle_class": str(get("vehicle_class") or "").strip(),
+        "payload_ton": payload_ton_val,
+        "body_type": str(get("body_type") or "").strip(),
+        "body_option_value": body_option_value,
+        "target_yield_rate": target_yield,
+        "lease_term_months": _to_int(get("lease_term_months"), 0),
+        "residual_rate": residual_rate,
+        "insurance_monthly": insurance_monthly,
+        "maintenance_monthly": maintenance_monthly,
+        "remarks": str(get("remarks") or "").strip() or None,
+        # Equipment list isn't part of SimulationInput; carried separately.
+        "_equipment": list(getlist("equipment") or []),
+    }
+
+
+async def _parse_simulation_payload(
+    request: Request,
+) -> tuple[SimulationInput, list[str]]:
+    """Parse the incoming request body into a ``SimulationInput``.
+
+    Accepts either ``application/json`` or ``application/x-www-form-urlencoded``
+    / ``multipart/form-data``. Returns ``(SimulationInput, equipment_list)``.
+    Raises ``HTTPException(422)`` on validation errors.
     """
+    content_type = request.headers.get("content-type", "").lower()
+    equipment_list: list[str] = []
 
-
-def _render_history_table_fragment(
-    simulations: list[dict[str, Any]],
-    meta: PaginationMeta,
-) -> str:
-    """Return an HTML table fragment for the simulation history list."""
-    if not simulations:
-        return '<p class="text-gray-500 py-4 text-center">シミュレーション履歴がありません。</p>'
-
-    rows = ""
-    for sim in simulations:
-        result = sim.get("result", {})
-        assessment = result.get("assessment", "-")
-        assessment_class = {
-            "推奨": "text-green-700",
-            "要検討": "text-yellow-700",
-            "非推奨": "text-red-700",
-        }.get(assessment, "")
-        created = sim.get("created_at", "")[:10]
-        monthly_fee = result.get("monthly_lease_fee", 0)
-        rows += (
-            f"<tr class='border-b hover:bg-gray-50'>"
-            f"<td class='px-3 py-2'>"
-            f"<a href='/simulation/{sim['id']}/result' "
-            f"   hx-get='/api/v1/simulations/{sim['id']}' "
-            f"   hx-target='#main-content' "
-            f"   class='text-blue-600 hover:underline'>"
-            f"{sim.get('title', '-')}</a></td>"
-            f"<td class='px-3 py-2 text-right'>&yen;{_yen(monthly_fee)}</td>"
-            f"<td class='px-3 py-2 text-center {assessment_class}'>{assessment}</td>"
-            f"<td class='px-3 py-2 text-center'>{created}</td>"
-            f"<td class='px-3 py-2 text-center'>"
-            f"<button hx-delete='/api/v1/simulations/{sim['id']}' "
-            f"        hx-confirm='このシミュレーションを削除しますか？' "
-            f"        hx-target='closest tr' hx-swap='outerHTML' "
-            f"        class='text-red-500 hover:text-red-700 text-sm'>削除</button>"
-            f"</td>"
-            f"</tr>"
+    try:
+        if "application/json" in content_type:
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("JSON body must be an object")
+            sim_input = SimulationInput(**body)
+        else:
+            form = await request.form()
+            payload = _form_to_input_dict(form)
+            equipment_list = payload.pop("_equipment", []) or []
+            sim_input = SimulationInput(**payload)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.errors(),
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
         )
 
-    pagination = ""
-    if meta.total_pages > 1:
-        pages = "".join(
-            f"<button hx-get='/api/v1/simulations?page={p}&per_page={meta.per_page}' "
-            f"        hx-target='#simulation-history' hx-swap='innerHTML' "
-            f"        class='px-3 py-1 border rounded {'bg-blue-600 text-white' if p == meta.page else 'hover:bg-gray-100'}'>"
-            f"{p}</button>"
-            for p in range(1, meta.total_pages + 1)
-        )
-        pagination = f'<div class="flex gap-1 justify-center mt-4">{pages}</div>'
+    return sim_input, equipment_list
 
-    return f"""
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="bg-gray-50 border-b">
-          <th class="px-3 py-2 text-left">タイトル</th>
-          <th class="px-3 py-2 text-right">月額リース料</th>
-          <th class="px-3 py-2 text-center">判定</th>
-          <th class="px-3 py-2 text-center">作成日</th>
-          <th class="px-3 py-2 text-center">操作</th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>
-    {pagination}
-    """
+
+def _build_chart_context(
+    result: SimulationResult, recommended_price: int
+) -> dict[str, Any]:
+    """Extract the JSON-friendly chart series the result_card template needs."""
+    schedule = result.monthly_schedule
+    labels = [f"{s.month}月" for s in schedule]
+    asset = [s.asset_value for s in schedule]
+    cum_income = [s.cumulative_income for s in schedule]
+    monthly_pl = [s.monthly_profit for s in schedule]
+    cum_pl = [s.cumulative_profit for s in schedule]
+    nav = [
+        round(
+            ((s.asset_value + s.cumulative_income) / recommended_price * 100.0)
+            if recommended_price > 0
+            else 0.0,
+            2,
+        )
+        for s in schedule
+    ]
+    return {
+        "chart_labels": labels,
+        "chart_asset": asset,
+        "chart_cum_income": cum_income,
+        "chart_monthly_pl": monthly_pl,
+        "chart_cum_pl": cum_pl,
+        "chart_nav_ratios": nav,
+        "chart_nav_baseline": [60] * len(schedule),
+    }
 
 
 # ---------------------------------------------------------------------------
-# 1. POST / - Execute simulation
+# 1. POST / - Execute simulation (canonical, JSON-only persistence path)
 # ---------------------------------------------------------------------------
 
 
@@ -322,11 +319,7 @@ async def create_simulation(
     supabase: Client = Depends(get_supabase_client),
     repo: SimulationRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
-    """Run a pricing simulation, save the result, and return it.
-
-    If the ``HX-Request`` header is present the response is an HTML fragment
-    suitable for swapping into the page via htmx.
-    """
+    """Run a pricing simulation, save the result, and return it."""
     logger.info(
         "simulation_execute",
         user_id=current_user["id"],
@@ -359,8 +352,17 @@ async def create_simulation(
     sim_response = _row_to_response(row)
 
     if _is_htmx(request):
-        html = _render_result_fragment(result)
-        return HTMLResponse(content=html, status_code=201)
+        ctx = {
+            "request": request,
+            "result": result,
+            "input_data": input_data,
+            "saved_simulation_id": str(sim_response.id),
+            "equipment_list": [],
+            **_build_chart_context(result, result.recommended_purchase_price),
+        }
+        return templates.TemplateResponse(
+            "partials/simulation/result_card.html", ctx, status_code=201
+        )
 
     return JSONResponse(
         content=SuccessResponse(
@@ -416,8 +418,10 @@ async def list_simulations(
     )
 
     if _is_htmx(request):
-        html = _render_history_table_fragment(items, meta)
-        return HTMLResponse(content=html)
+        return templates.TemplateResponse(
+            "partials/simulation/history_table.html",
+            {"request": request, "simulations": items, "meta": meta},
+        )
 
     return JSONResponse(
         content=PaginatedResponse[dict[str, Any]](
@@ -449,10 +453,7 @@ async def get_simulation(
     current_user: dict[str, Any] = Depends(get_current_user),
     repo: SimulationRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
-    """Return the full detail of a single simulation.
-
-    The user must own the simulation or have the ``admin`` role.
-    """
+    """Return the full detail of a single simulation."""
     row = await repo.get_by_id(simulation_id)
     if row is None:
         raise HTTPException(
@@ -471,8 +472,19 @@ async def get_simulation(
     sim_response = _row_to_response(row)
 
     if _is_htmx(request):
-        html = _render_result_fragment(sim_response.result)
-        return HTMLResponse(content=html)
+        ctx = {
+            "request": request,
+            "result": sim_response.result,
+            "input_data": sim_response.input_data,
+            "saved_simulation_id": str(sim_response.id),
+            "equipment_list": [],
+            **_build_chart_context(
+                sim_response.result, sim_response.result.recommended_purchase_price
+            ),
+        }
+        return templates.TemplateResponse(
+            "partials/simulation/result_card.html", ctx
+        )
 
     return JSONResponse(
         content=SuccessResponse(
@@ -502,10 +514,7 @@ async def delete_simulation(
     current_user: dict[str, Any] = Depends(get_current_user),
     repo: SimulationRepository = Depends(_get_repo),
 ) -> JSONResponse:
-    """Delete a simulation owned by the current user.
-
-    Only simulations with ``draft`` status can be deleted.
-    """
+    """Delete a simulation owned by the current user."""
     row = await repo.get_by_id(simulation_id)
     if row is None:
         raise HTTPException(
@@ -575,7 +584,6 @@ async def compare_simulations(
             detail="指定されたシミュレーションの一部が見つかりません",
         )
 
-    # Authorization: user must own both or be admin
     is_admin = current_user.get("role") == "admin"
     for row in rows:
         if row["user_id"] != current_user["id"] and not is_admin:
@@ -584,7 +592,6 @@ async def compare_simulations(
                 detail="比較対象のシミュレーションへのアクセス権がありません",
             )
 
-    # Ensure consistent ordering (match the requested ID order)
     id_to_row = {row["id"]: row for row in rows}
     ordered = [id_to_row[sid] for sid in body.simulation_ids]
 
@@ -613,775 +620,107 @@ async def compare_simulations(
 
 
 # ---------------------------------------------------------------------------
-# 6. POST /calculate - Quick calculation (no save)
+# 6. POST /calculate - Unified form/JSON entry point used by the page form
 # ---------------------------------------------------------------------------
 
 
 @router.post(
     "/calculate",
-    summary="Quick calculation from form data, returns HTML result fragment",
+    response_model=None,
+    summary="Run a leaseback simulation from form or JSON input and persist it",
     responses={
-        200: {"description": "Calculation result as HTML fragment"},
-        422: {"model": ErrorResponse, "description": "Validation error"},
-    },
-)
-async def calculate_simulation_quick(request: Request) -> HTMLResponse:
-    """Quick calculation from form data, returns HTML result fragment.
-
-    Accepts ``application/x-www-form-urlencoded`` data from the simulation
-    form and returns an HTML fragment suitable for HTMX swapping.  Does not
-    require authentication; auto-saves when a valid JWT cookie is present.
-
-    The calculation delegates to ``PricingEngine`` (via
-    :func:`app.core.pricing.calculate_simulation`) so the numbers stay in
-    lock-step with the authenticated JSON endpoint — no hardcoded margins,
-    insurance, maintenance, or residual constants live in this handler.
-
-    Returns rich HTML with Chart.js visualizations including:
-    - Value transfer analysis (asset value vs cumulative lease income)
-    - NAV (net asset value) ratio progression
-    - Monthly P&L bar chart with cumulative overlay
-    - Detailed monthly schedule table (collapsible)
-    """
-    import re
-
-    from app.db.supabase_client import get_supabase_client
-
-    form = await request.form()
-
-    # Parse form fields with safe defaults
-    maker = form.get("maker", "")
-    # Model: prefer hidden input, fall back to custom text or dropdown
-    model = form.get("model", "") or form.get("model_custom", "") or form.get("model_select", "")
-    # Normalize: if __custom__ was selected but hidden field is empty, use custom text
-    if model == "__custom__":
-        model = form.get("model_custom", "")
-    mileage_km = int(form.get("mileage_km", 0) or 0)
-    acquisition_price = int(form.get("acquisition_price", 0) or 0)
-    book_value = int(form.get("book_value", 0) or 0)
-    body_type = form.get("body_type", "")
-    body_option_value = int(form.get("body_option_value", 0) or 0)
-    # Form posts target yield as a percentage (e.g. "8" => 8 %).  SimulationInput
-    # expects a decimal in [0, 1].
-    target_yield_pct = float(form.get("target_yield_rate", 8.0) or 8.0)
-    target_yield_rate = target_yield_pct / 100.0
-    lease_term_months = int(form.get("lease_term_months", 36) or 36)
-    vehicle_class = form.get("vehicle_class", "")
-
-    # Equipment options (multiple checkboxes) — preserved through to the save
-    # payload; not consumed by PricingEngine itself.
-    equipment_list = form.getlist("equipment")
-
-    # Normalise registration year-month to "YYYY-MM" (SimulationInput format).
-    reg_raw = str(form.get("registration_year_month", ""))
-    ym_match = re.match(r"(\d{4})[-/]?(\d{1,2})?", reg_raw)
-    if ym_match:
-        yyyy = ym_match.group(1)
-        mm = ym_match.group(2) or "01"
-        registration_year_month = f"{yyyy}-{int(mm):02d}"
-    else:
-        registration_year_month = "2020-01"
-
-    # Build the canonical SimulationInput and delegate to PricingEngine.
-    sim_input = SimulationInput(
-        maker=maker or "unknown",
-        model=model or "unknown",
-        registration_year_month=registration_year_month,
-        mileage_km=mileage_km,
-        acquisition_price=acquisition_price,
-        book_value=book_value,
-        vehicle_class=vehicle_class or "中型",
-        body_type=body_type or "平ボディ",
-        body_option_value=body_option_value or None,
-        target_yield_rate=target_yield_rate,
-        lease_term_months=lease_term_months,
-        insurance_monthly=int(form.get("insurance_monthly", 0) or 0) or None,
-        maintenance_monthly=int(form.get("maintenance_monthly", 0) or 0) or None,
-    )
-
-    supabase_client = get_supabase_client(service_role=True)
-    try:
-        sim_result: SimulationResult = await calculate_simulation(
-            input_data=sim_input, supabase=supabase_client
-        )
-    except Exception as exc:
-        logger.warning("quick_calculate_engine_failed", error=str(exc))
-        return HTMLResponse(
-            content=(
-                '<div class="alert alert--error">'
-                'シミュレーション計算に失敗しました。入力値を確認してください。'
-                '</div>'
-            ),
-            status_code=422,
-        )
-
-    # Expose engine results under the local names the existing HTML uses.
-    max_price = sim_result.max_purchase_price
-    recommended_price = sim_result.recommended_purchase_price
-    residual = sim_result.estimated_residual_value
-    residual_rate = sim_result.residual_rate_result
-    monthly_fee = sim_result.monthly_lease_fee
-    total_fee = sim_result.total_lease_fee
-    effective_yield = sim_result.effective_yield_rate
-    assessment = sim_result.assessment
-    breakeven = sim_result.breakeven_months
-
-    # Transform the engine's MonthlyScheduleItem list into plain dicts with a
-    # derived nav_ratio field (PricingEngine does not emit nav_ratio natively;
-    # pages.py accepts either nav_ratio or derives it from asset/cum income).
-    monthly_schedule: list[dict[str, Any]] = []
-    for item in sim_result.monthly_schedule:
-        nav_ratio = (
-            (item.asset_value + item.cumulative_income) / recommended_price
-            if recommended_price > 0
-            else 0.0
-        )
-        monthly_schedule.append({
-            "month": item.month,
-            "asset_value": item.asset_value,
-            "lease_income": item.lease_income,
-            "cumulative_income": item.cumulative_income,
-            "depreciation_expense": item.depreciation_expense,
-            "financing_cost": item.financing_cost,
-            "monthly_profit": item.monthly_profit,
-            "cumulative_profit": item.cumulative_profit,
-            "termination_loss": item.termination_loss,
-            "nav_ratio": round(nav_ratio, 4),
-        })
-
-    # Auto-save if user is authenticated
-    saved_sim_id = None
-    access_token = request.cookies.get("access_token")
-    if access_token:
-        try:
-            from jose import jwt
-            from app.dependencies import _get_jwks
-            from app.config import get_settings
-            header = jwt.get_unverified_header(access_token)
-            settings = get_settings()
-            if header.get("alg") == "ES256":
-                jwks = _get_jwks(settings.supabase_url)
-                payload = jwt.decode(access_token, jwks, algorithms=["ES256"], audience="authenticated")
-            else:
-                payload = jwt.decode(access_token, settings.supabase_jwt_secret, algorithms=["HS256"], options={"verify_aud": False})
-            user_id = payload.get("sub")
-
-            if user_id:
-                from app.db.supabase_client import get_supabase_client
-                client = get_supabase_client(service_role=True)
-
-                year_raw = str(form.get("registration_year_month", "2020"))
-                year_match_save = re.match(r'(\d{4})', year_raw)
-                year_val = int(year_match_save.group(1)) if year_match_save else 2020
-
-                save_data = {
-                    "user_id": user_id,
-                    "title": f"{maker} {model} シミュレーション",
-                    "target_model_name": f"{maker} {model}",
-                    "target_model_year": year_val,
-                    "target_mileage_km": mileage_km,
-                    "purchase_price_yen": recommended_price,
-                    "market_price_yen": acquisition_price,
-                    "lease_monthly_yen": monthly_fee,
-                    "lease_term_months": lease_term_months,
-                    "total_lease_revenue_yen": total_fee,
-                    "expected_yield_rate": round(effective_yield, 4),
-                    "status": "completed",
-                    "result_summary_json": {
-                        "maker": maker, "model": model, "body_type": body_type,
-                        "vehicle_class": form.get("vehicle_class", ""),
-                        "max_price": max_price, "residual_value": residual,
-                        "residual_rate": round(residual_rate, 4),
-                        "assessment": assessment,
-                        "breakeven_months": breakeven,
-                        "target_yield_rate": target_yield_pct,
-                        "actual_yield_rate": round(effective_yield, 4),
-                        "equipment": equipment_list,
-                        "monthly_schedule": monthly_schedule,
-                    },
-                }
-                result = client.table("simulations").insert(save_data).execute()
-                if result.data:
-                    saved_sim_id = result.data[0]["id"]
-        except Exception:
-            pass  # Don't fail the calculation if save fails
-
-    # Build HTML response
-    badge_class = {"推奨": "success", "要検討": "warning", "非推奨": "danger"}.get(
-        assessment, ""
-    )
-
-    # Equipment list display
-    equipment_html = ""
-    if equipment_list:
-        items = ", ".join(equipment_list)
-        equipment_html = f"""
-            <div class="kpi-card" style="grid-column: span 2;">
-                <div class="kpi-card__label">装備オプション</div>
-                <div class="kpi-card__value" style="font-size:0.875rem">{items}</div>
-                <div class="kpi-card__sub">合計 &yen;{body_option_value:,}</div>
-            </div>
-        """
-
-    # Re-use the monthly_schedule built earlier (and persisted to DB); add
-    # convenience aliases for the legacy table-rendering keys below.
-    schedule: list[dict[str, Any]] = []
-    for row in monthly_schedule:
-        schedule.append({
-            **row,
-            "net_fund_value": row["asset_value"] + row["cumulative_income"],
-            "dep_expense": row["depreciation_expense"],
-            "fin_cost": row["financing_cost"],
-        })
-
-    # -----------------------------------------------------------------------
-    # Prepare chart data as JSON
-    # -----------------------------------------------------------------------
-    months_labels = json.dumps([f"{s['month']}月" for s in schedule], ensure_ascii=False)
-    asset_values = json.dumps([s["asset_value"] for s in schedule])
-    cumulative_incomes = json.dumps([s["cumulative_income"] for s in schedule])
-    monthly_profits = json.dumps([s["monthly_profit"] for s in schedule])
-    cumulative_profits = json.dumps([s["cumulative_profit"] for s in schedule])
-    nav_ratios = json.dumps([s["nav_ratio"] * 100 for s in schedule])
-    nav_60_line = json.dumps([60] * lease_term_months)
-
-    # -----------------------------------------------------------------------
-    # Build schedule table rows
-    # -----------------------------------------------------------------------
-    schedule_rows = ""
-    for s in schedule:
-        profit_style = "color:#10b981" if s["monthly_profit"] >= 0 else "color:#ef4444"
-        schedule_rows += (
-            f'<tr>'
-            f'<td>{s["month"]}月</td>'
-            f'<td style="text-align:right">&yen;{s["asset_value"]:,}</td>'
-            f'<td style="text-align:right">&yen;{monthly_fee:,}</td>'
-            f'<td style="text-align:right">&yen;{s["cumulative_income"]:,}</td>'
-            f'<td style="text-align:right">&yen;{s["dep_expense"]:,}</td>'
-            f'<td style="text-align:right">&yen;{s["fin_cost"]:,}</td>'
-            f'<td style="text-align:right;{profit_style}">&yen;{s["monthly_profit"]:,}</td>'
-            f'<td style="text-align:right">&yen;{s["cumulative_profit"]:,}</td>'
-            f'<td style="text-align:right">{s["nav_ratio"] * 100:.1f}%</td>'
-            f'</tr>'
-        )
-
-    # -----------------------------------------------------------------------
-    # Save button or auto-saved indicator
-    # -----------------------------------------------------------------------
-    if saved_sim_id:
-        save_html = f'''
-        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
-            <span class="badge badge--success" style="padding:8px 16px; font-size:0.9rem">&#x2713; 自動保存済み</span>
-            <a href="/simulation/{saved_sim_id}/result" class="btn btn--text btn--sm">保存結果を確認 &rarr;</a>
-        </div>
-        '''
-    else:
-        equipment_hidden = (''.join(f'<input type="hidden" name="equipment" value="' + eq + '">' for eq in equipment_list)) if equipment_list else ''
-        save_html = f'''
-        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
-            <form hx-post="/api/v1/simulations/save" hx-target="#save-result" hx-swap="innerHTML"
-                  hx-indicator="#save-spinner" hx-disabled-elt="#save-btn">
-                <input type="hidden" name="maker" value="{maker}">
-                <input type="hidden" name="model" value="{model}">
-                <input type="hidden" name="registration_year_month" value="{form.get('registration_year_month', '')}">
-                <input type="hidden" name="mileage_km" value="{mileage_km}">
-                <input type="hidden" name="acquisition_price" value="{acquisition_price}">
-                <input type="hidden" name="book_value" value="{book_value}">
-                <input type="hidden" name="body_type" value="{body_type}">
-                <input type="hidden" name="target_yield_rate" value="{target_yield_pct}">
-                <input type="hidden" name="lease_term_months" value="{lease_term_months}">
-                <input type="hidden" name="recommended_price" value="{recommended_price}">
-                <input type="hidden" name="max_price" value="{max_price}">
-                <input type="hidden" name="monthly_fee" value="{monthly_fee}">
-                <input type="hidden" name="total_fee" value="{total_fee}">
-                <input type="hidden" name="effective_yield" value="{effective_yield}">
-                <input type="hidden" name="residual" value="{residual}">
-                <input type="hidden" name="residual_rate" value="{residual_rate}">
-                <input type="hidden" name="assessment" value="{assessment}">
-                <input type="hidden" name="breakeven" value="{breakeven if breakeven else ''}">
-                <input type="hidden" name="vehicle_class" value="{form.get('vehicle_class', '')}">
-                {equipment_hidden}
-                <button type="submit" id="save-btn" class="btn btn--primary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 24px;font-size:1rem;">
-                    <svg id="save-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    <span>結果を保存</span>
-                    <svg id="save-spinner" class="htmx-indicator" width="18" height="18" viewBox="0 0 24 24" style="display:none;animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
-                </button>
-            </form>
-            <div id="save-result"></div>
-        </div>
-        <style>
-        @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
-        .htmx-request #save-icon {{ display: none !important; }}
-        .htmx-request .htmx-indicator {{ display: inline-block !important; }}
-        #save-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
-        </style>
-        '''
-
-    # -----------------------------------------------------------------------
-    # Assemble full HTML with KPI cards, charts, and schedule table
-    # -----------------------------------------------------------------------
-    html = f"""
-    <style>
-    .hidden {{ display: none; }}
-    .sim-result {{ display: block; width: 100%; max-width: 100%; }}
-    .sim-result .card {{ display: block; width: 100%; margin-top: 24px; }}
-    .sim-result .card__body {{ display: block; }}
-    .sim-result .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; width: 100%; }}
-    @media (max-width: 1024px) {{ .sim-result .kpi-grid {{ grid-template-columns: repeat(2, 1fr); }} }}
-    @media (max-width: 600px) {{ .sim-result .kpi-grid {{ grid-template-columns: 1fr; }} }}
-    .sim-result .chart-wrap {{ position: relative; width: 100%; height: 350px; }}
-    @media (max-width: 768px) {{ .sim-result .chart-wrap {{ height: 250px; }} }}
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-
-    <div class="sim-result">
-        <h3>&#x1F4CA; シミュレーション結果</h3>
-        <p class="text-muted">{maker} {model} | {lease_term_months}ヶ月 | 目標利回り {target_yield_pct}%</p>
-
-        <!-- KPI Cards -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-card__label">推奨買取価格</div>
-                <div class="kpi-card__value">&yen;{recommended_price:,}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">上限買取価格</div>
-                <div class="kpi-card__value">&yen;{max_price:,}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">月額リース料</div>
-                <div class="kpi-card__value">&yen;{monthly_fee:,}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">リース料総額</div>
-                <div class="kpi-card__value">&yen;{total_fee:,}</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">想定残価</div>
-                <div class="kpi-card__value">&yen;{residual:,}</div>
-                <div class="kpi-card__sub">残価率 {residual_rate * 100:.0f}%</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">実質利回り</div>
-                <div class="kpi-card__value">{effective_yield * 100:.1f}%</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">損益分岐点</div>
-                <div class="kpi-card__value">{breakeven if breakeven else "--"}ヶ月</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-card__label">判定</div>
-                <div class="kpi-card__value"><span class="badge badge--{badge_class}">{assessment}</span></div>
-            </div>
-            {equipment_html}
-        </div>
-
-        {save_html}
-
-        <!-- Chart 1: Value Transfer -->
-        <div class="card" style="margin-top:24px">
-            <div class="card__header"><h3>バリュートランスファー分析</h3></div>
-            <div class="card__body">
-                <div class="chart-wrap"><canvas id="chart-value-transfer"></canvas></div>
-            </div>
-        </div>
-
-        <!-- Chart 2: NAV Ratio -->
-        <div class="card" style="margin-top:24px">
-            <div class="card__header"><h3>NAV（純資産価値）推移</h3></div>
-            <div class="card__body">
-                <div class="chart-wrap"><canvas id="chart-nav"></canvas></div>
-            </div>
-        </div>
-
-        <!-- Chart 3: Monthly P&L -->
-        <div class="card" style="margin-top:24px">
-            <div class="card__header"><h3>月次損益推移</h3></div>
-            <div class="card__body">
-                <div class="chart-wrap"><canvas id="chart-pnl"></canvas></div>
-            </div>
-        </div>
-
-        <!-- Schedule Table (collapsible) -->
-        <div class="card" style="margin-top:24px">
-            <div class="card__header" style="display:flex;justify-content:space-between;align-items:center">
-                <h3>月次リーススケジュール</h3>
-                <button onclick="this.closest('.card').querySelector('.card__body').classList.toggle('hidden')" class="btn btn--text btn--sm">展開/折りたたみ</button>
-            </div>
-            <div class="card__body hidden">
-                <div style="overflow-x:auto">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>月</th>
-                                <th>資産簿価</th>
-                                <th>リース収入</th>
-                                <th>累積収入</th>
-                                <th>減価償却費</th>
-                                <th>金融費用</th>
-                                <th>月次損益</th>
-                                <th>累積損益</th>
-                                <th>NAV比率</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {schedule_rows}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div><!-- end sim-result -->
-
-    <script>
-    (function() {{
-        var monthsLabels = {months_labels};
-        var assetValues = {asset_values};
-        var cumulativeIncomes = {cumulative_incomes};
-        var monthlyProfits = {monthly_profits};
-        var cumulativeProfits = {cumulative_profits};
-        var navRatios = {nav_ratios};
-        var nav60Line = {nav_60_line};
-
-        var yenFormatter = function(v) {{ return '\\u00a5' + (v / 10000).toFixed(0) + '万'; }};
-
-        // Chart 1: Value Transfer
-        new Chart(document.getElementById('chart-value-transfer'), {{
-            type: 'line',
-            data: {{
-                labels: monthsLabels,
-                datasets: [
-                    {{
-                        label: '資産簿価',
-                        data: assetValues,
-                        borderColor: '#6366f1',
-                        backgroundColor: 'rgba(99,102,241,0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }},
-                    {{
-                        label: '累積リース収入',
-                        data: cumulativeIncomes,
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16,185,129,0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }}
-                ]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{ legend: {{ position: 'top' }} }},
-                scales: {{
-                    y: {{ ticks: {{ callback: yenFormatter }} }}
-                }}
-            }}
-        }});
-
-        // Chart 2: NAV Ratio
-        new Chart(document.getElementById('chart-nav'), {{
-            type: 'line',
-            data: {{
-                labels: monthsLabels,
-                datasets: [
-                    {{
-                        label: 'NAV比率 (%)',
-                        data: navRatios,
-                        borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37,99,235,0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }},
-                    {{
-                        label: '60%ライン（安全基準）',
-                        data: nav60Line,
-                        borderColor: '#f59e0b',
-                        borderDash: [8, 4],
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: false
-                    }}
-                ]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{ legend: {{ position: 'top' }} }},
-                scales: {{
-                    y: {{ min: 0, max: 200, ticks: {{ callback: function(v) {{ return v + '%'; }} }} }}
-                }}
-            }}
-        }});
-
-        // Chart 3: Monthly P&L
-        new Chart(document.getElementById('chart-pnl'), {{
-            type: 'bar',
-            data: {{
-                labels: monthsLabels,
-                datasets: [
-                    {{
-                        label: '月次損益',
-                        data: monthlyProfits,
-                        backgroundColor: monthlyProfits.map(function(v) {{ return v >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; }}),
-                        borderRadius: 3
-                    }},
-                    {{
-                        label: '累積損益',
-                        data: cumulativeProfits,
-                        type: 'line',
-                        borderColor: '#2563eb',
-                        backgroundColor: 'transparent',
-                        tension: 0.3,
-                        yAxisID: 'y1'
-                    }}
-                ]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {{ legend: {{ position: 'top' }} }},
-                scales: {{
-                    y: {{ ticks: {{ callback: yenFormatter }} }},
-                    y1: {{ position: 'right', ticks: {{ callback: yenFormatter }}, grid: {{ display: false }} }}
-                }}
-            }}
-        }});
-    }})();
-    </script>
-    """
-
-    return HTMLResponse(content=html)
-
-
-# ---------------------------------------------------------------------------
-# 7. POST /calculate-form - Quick calculation from HTML form data (no save)
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/calculate-form",
-    summary="Quick calculation from form data without saving",
-    responses={
-        200: {"description": "Calculation result as HTML fragment"},
+        200: {"description": "Calculation result as HTML fragment (HTMX) or JSON"},
+        201: {"description": "Calculation result with persisted simulation"},
         401: {"model": ErrorResponse, "description": "Not authenticated"},
         422: {"model": ErrorResponse, "description": "Validation error"},
     },
 )
-async def quick_calculate_form(
+async def calculate_simulation_quick(
     request: Request,
     current_user: dict[str, Any] = Depends(get_current_user),
-) -> HTMLResponse:
-    """Run a pricing simulation from HTML form data without persisting.
+    supabase: Client = Depends(get_supabase_client),
+    repo: SimulationRepository = Depends(_get_repo),
+) -> HTMLResponse | JSONResponse:
+    """Run a pricing simulation from form-encoded or JSON data, then persist it.
 
-    Accepts standard form-encoded data from the simulation input page and
-    returns an HTML fragment for HTMX to swap into the result preview area.
-    Uses the standalone pricing helper functions so it works without a full
-    Supabase market-data lookup.
+    The simulation form (``hx-post="/api/v1/simulations/calculate"``) sends
+    ``application/x-www-form-urlencoded`` data, while integration / monkey
+    tests post JSON. This endpoint accepts both, normalises them through
+    :class:`SimulationInput` (which absorbs year-only inputs), runs
+    :func:`calculate_simulation` end-to-end, persists via
+    :class:`SimulationRepository`, and returns either the result-card HTMX
+    fragment or a JSON envelope mirroring ``create_simulation``.
     """
-    from app.core.pricing import (
-        _assessment,
-        _build_schedule,
-        _max_purchase_price,
-        _monthly_lease_fee,
-        _residual_value,
-    )
+    sim_input, equipment_list = await _parse_simulation_payload(request)
 
-    form = await request.form()
+    logger.info(
+        "simulation_calculate",
+        user_id=current_user["id"],
+        maker=sim_input.maker,
+        model=sim_input.model,
+        equipment_count=len(equipment_list),
+    )
 
     try:
-        maker = form.get("maker", "")
-        model = form.get("model", "")
-        year = form.get("year", "")
-        mileage = int(form.get("mileage", 0) or 0)
-        vehicle_class = form.get("vehicle_class", "")
-        body_type = form.get("body_type", "")
-        acquisition_price = int(form.get("acquisition_price", 0) or 0)
-        book_value = int(form.get("book_value", 0) or 0)
-        target_yield_rate_pct = float(form.get("target_yield_rate", 0) or 0)
-        target_yield_rate = target_yield_rate_pct / 100.0
-        lease_term_months = int(form.get("lease_term_months", 0) or 0)
-        residual_rate_pct = form.get("residual_rate", "")
-        residual_rate = float(residual_rate_pct) / 100.0 if residual_rate_pct else None
-        insurance_monthly = int(form.get("insurance_monthly", 0) or 0)
-        maintenance_monthly = int(form.get("maintenance_monthly", 0) or 0)
-        body_option_value = int(form.get("body_option_value", 0) or 0)
-    except (ValueError, TypeError) as exc:
-        logger.warning("calculate_form_parse_error", error=str(exc))
-        return HTMLResponse(
-            content='<div class="alert alert--error">入力値に不正な値があります。数値フィールドを確認してください。</div>',
-            status_code=422,
-        )
-
-    if lease_term_months <= 0 or acquisition_price <= 0:
-        return HTMLResponse(
-            content='<div class="alert alert--error">取得価格とリース期間は必須です。</div>',
-            status_code=422,
-        )
-
-    # Use book_value as a rough market proxy when no DB lookup is available
-    market_median = book_value if book_value > 0 else acquisition_price
-
-    max_price = _max_purchase_price(book_value, market_median, body_option_value)
-    recommended_price = int(max_price * 0.95)
-    rv, rv_rate = _residual_value(recommended_price, lease_term_months, residual_rate)
-    monthly_fee = _monthly_lease_fee(
-        recommended_price, rv, lease_term_months, target_yield_rate,
-        insurance_monthly, maintenance_monthly,
-    )
-    total_fee = monthly_fee * lease_term_months
-    effective_yield = (
-        (total_fee + rv - recommended_price) / recommended_price / (lease_term_months / 12)
-        if recommended_price > 0 and lease_term_months > 0
-        else 0.0
-    )
-    market_deviation = (
-        (recommended_price - market_median) / market_median
-        if market_median > 0
-        else 0.0
-    )
-    assessment = _assessment(effective_yield, target_yield_rate, market_deviation)
-
-    schedule = _build_schedule(
-        recommended_price, rv, lease_term_months, monthly_fee,
-        target_yield_rate, insurance_monthly, maintenance_monthly,
-    )
-
-    breakeven_months = None
-    for item in schedule:
-        if item.cumulative_profit >= 0:
-            breakeven_months = item.month
-            break
-
-    result = SimulationResult(
-        max_purchase_price=max_price,
-        recommended_purchase_price=recommended_price,
-        estimated_residual_value=rv,
-        residual_rate_result=rv_rate,
-        monthly_lease_fee=monthly_fee,
-        total_lease_fee=total_fee,
-        breakeven_months=breakeven_months,
-        effective_yield_rate=effective_yield,
-        market_median_price=market_median,
-        market_sample_count=0,
-        market_deviation_rate=market_deviation,
-        assessment=assessment,
-        monthly_schedule=schedule,
-    )
-
-    html = _render_result_fragment(result)
-    return HTMLResponse(content=html)
-
-
-# ---------------------------------------------------------------------------
-# 8. POST /save - Save simulation results to database
-# ---------------------------------------------------------------------------
-
-
-@router.post("/save")
-async def save_simulation(request: Request):
-    """Save simulation results to database."""
-    from app.db.supabase_client import get_supabase_client
-
-    # Direct cookie-based auth (more reliable in HTMX context)
-    access_token = request.cookies.get("access_token")
-    if not access_token:
-        return HTMLResponse(
-            '<div class="alert alert--error">ログインが必要です。<a href="/login">ログイン</a></div>',
-            status_code=200,  # 200 so HTMX swaps it
-        )
-
-    try:
-        from jose import jwt
-        from app.dependencies import _get_jwks
-        from app.config import get_settings
-
-        settings = get_settings()
-        header = jwt.get_unverified_header(access_token)
-        if header.get("alg") == "ES256":
-            jwks = _get_jwks(settings.supabase_url)
-            payload = jwt.decode(
-                access_token, jwks, algorithms=["ES256"], audience="authenticated"
-            )
-        else:
-            payload = jwt.decode(
-                access_token,
-                settings.supabase_jwt_secret,
-                algorithms=["HS256"],
-                options={"verify_aud": False},
-            )
-        user_id = payload.get("sub")
-        if not user_id:
-            return HTMLResponse('<div class="alert alert--error">認証エラー</div>')
+        result = await calculate_simulation(input_data=sim_input, supabase=supabase)
     except Exception:
-        return HTMLResponse(
-            '<div class="alert alert--error">セッション切れ。<a href="/login">再ログイン</a></div>'
+        logger.exception(
+            "simulation_calculate_failed", user_id=current_user["id"]
         )
-
-    form = await request.form()
-
-    try:
-        client = get_supabase_client(service_role=True)
-
-        maker = form.get("maker", "")
-        model = form.get("model", "") or form.get("model_custom", "") or form.get("model_select", "")
-        if model == "__custom__":
-            model = form.get("model_custom", "")
-
-        # Parse registration year from year-month string
-        import re
-
-        year_match = re.match(r"(\d{4})", str(form.get("registration_year_month", "")))
-        model_year = int(year_match.group(1)) if year_match else 2020
-
-        # Parse equipment list from form
-        equipment_list = form.getlist("equipment") if hasattr(form, "getlist") else []
-
-        data = {
-            "user_id": user_id,
-            "title": f"{maker} {model} シミュレーション",
-            "target_model_name": f"{maker} {model}",
-            "target_model_year": model_year,
-            "target_mileage_km": int(form.get("mileage_km", 0) or 0),
-            "purchase_price_yen": int(float(form.get("recommended_price", 0) or 0)),
-            "market_price_yen": int(float(form.get("acquisition_price", 0) or 0)),
-            "lease_monthly_yen": int(float(form.get("monthly_fee", 0) or 0)),
-            "lease_term_months": int(form.get("lease_term_months", 36) or 36),
-            "total_lease_revenue_yen": int(float(form.get("total_fee", 0) or 0)),
-            "expected_yield_rate": float(form.get("effective_yield", 0) or 0),
-            "status": "completed",
-            "result_summary_json": {
-                "maker": maker,
-                "model": model,
-                "body_type": form.get("body_type", ""),
-                "vehicle_class": form.get("vehicle_class", ""),
-                "target_yield_rate": float(form.get("target_yield_rate", 8) or 8),
-                "max_price": int(float(form.get("max_price", 0) or 0)),
-                "residual_value": int(float(form.get("residual", 0) or 0)),
-                "residual_rate": float(form.get("residual_rate", 0) or 0),
-                "assessment": form.get("assessment", ""),
-                "breakeven_months": (
-                    int(form.get("breakeven")) if form.get("breakeven") else None
+        if _is_htmx(request):
+            return HTMLResponse(
+                content=(
+                    '<div class="alert alert--error">'
+                    'シミュレーション計算に失敗しました。入力値を確認してください。'
+                    '</div>'
                 ),
-                "book_value": int(float(form.get("book_value", 0) or 0)),
-                "equipment": equipment_list,
-            },
-        }
-
-        result = client.table("simulations").insert(data).execute()
-        sim_id = result.data[0]["id"] if result.data else None
-
-        html = f'''
-        <div class="alert alert--success" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <span>シミュレーション結果を保存しました。</span>
-            <a href="/simulation/{sim_id}/result" class="btn btn--outline btn--sm" style="margin-left:4px;">結果を確認 &rarr;</a>
-            <a href="/simulations" class="btn btn--text btn--sm">履歴一覧</a>
-        </div>
-        '''
-        return HTMLResponse(html)
-    except Exception as e:
-        logger.error("save_simulation_error", error=str(e))
-        return HTMLResponse(
-            f'<div class="alert alert--error">保存に失敗しました: {str(e)[:100]}</div>'
+                status_code=422,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="シミュレーション計算中にエラーが発生しました",
         )
+
+    saved_id: str | None = None
+    try:
+        row = await repo.create(
+            user_id=current_user["id"],
+            input_data=sim_input.model_dump(mode="json"),
+            result=result.model_dump(mode="json"),
+        )
+        saved_id = str(row["id"])
+    except Exception:
+        # Persist-failure must not block returning the calculated result —
+        # the user still wants to see the numbers. Logged for ops follow-up.
+        logger.exception(
+            "simulation_calculate_save_failed", user_id=current_user["id"]
+        )
+
+    if _is_htmx(request):
+        ctx = {
+            "request": request,
+            "result": result,
+            "input_data": sim_input,
+            "saved_simulation_id": saved_id,
+            "equipment_list": equipment_list,
+            **_build_chart_context(result, result.recommended_purchase_price),
+        }
+        return templates.TemplateResponse(
+            "partials/simulation/result_card.html",
+            ctx,
+            status_code=201 if saved_id else 200,
+        )
+
+    payload: dict[str, Any] = {
+        "input_data": sim_input.model_dump(mode="json"),
+        "result": result.model_dump(mode="json"),
+    }
+    if saved_id:
+        payload["simulation_id"] = saved_id
+    return JSONResponse(
+        content=SuccessResponse(
+            data=payload,
+            meta={"simulation_id": saved_id} if saved_id else None,
+        ).model_dump(mode="json"),
+        status_code=201 if saved_id else 200,
+    )

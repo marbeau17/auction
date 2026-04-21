@@ -8,6 +8,7 @@ All monetary values are in Japanese Yen (JPY) unless otherwise noted.
 from __future__ import annotations
 
 import math
+import unicodedata
 from datetime import datetime
 from typing import Any, Optional
 
@@ -22,6 +23,33 @@ from app.models.simulation import (
 )
 
 logger = structlog.get_logger()
+
+
+# Tiny variant table for common Japanese maker name spellings — kept small
+# on purpose. Both directions are stored so a query containing either form
+# can match a stored row containing the other.
+_MAKER_VARIANTS: dict[str, list[str]] = {
+    "いすゞ": ["いすず"],
+    "いすず": ["いすゞ"],
+    "日産自動車": ["日産"],
+    "日産": ["日産自動車"],
+    "三菱ふそう": ["ふそう"],
+    "ふそう": ["三菱ふそう"],
+}
+
+
+def normalize_maker(name: str) -> list[str]:
+    """Return the NFKC-normalized maker name plus any known spelling variants."""
+    if not name:
+        return []
+    canonical = unicodedata.normalize("NFKC", name).strip()
+    if not canonical:
+        return []
+    out = [canonical]
+    for variant in _MAKER_VARIANTS.get(canonical, []):
+        if variant not in out:
+            out.append(variant)
+    return out
 
 
 class PricingEngine:
@@ -1186,11 +1214,18 @@ async def _fetch_market_comparables(
     mileage_low = max(0, mileage_km - 50_000)
     mileage_high = mileage_km + 50_000
 
+    maker_variants = normalize_maker(maker) or [maker]
+
     try:
+        query = client.table("vehicles").select("price_yen")
+        # Use in_() when we have spelling variants so a single round-trip
+        # covers いすゞ↔いすず etc. without `ilike` wildcard surprises.
+        if len(maker_variants) > 1:
+            query = query.in_("maker", maker_variants)
+        else:
+            query = query.eq("maker", maker_variants[0])
         response = (
-            client.table("vehicles")
-            .select("price_yen")
-            .eq("maker", maker)
+            query
             .eq("body_type", body_type)
             .gte("model_year", year_low)
             .lte("model_year", year_high)

@@ -1,10 +1,13 @@
 """Leaseback simulation Pydantic models."""
 
+import re
 from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_YEAR_MONTH_RE = re.compile(r"^\s*(\d{4})(?:[-/](\d{1,2}))?\s*$")
 
 
 class SimulationInput(BaseModel):
@@ -76,6 +79,26 @@ class SimulationInput(BaseModel):
     remarks: Optional[str] = Field(
         default=None, description="Additional remarks", examples=["特記事項なし"]
     )
+
+    @field_validator("registration_year_month", mode="before")
+    @classmethod
+    def _normalize_registration_year_month(cls, v: object) -> str:
+        # Form posts can come in as int (year-only select) or string. Accept both
+        # YYYY and YYYY-MM (also YYYY/MM) and normalize to YYYY-MM with month
+        # defaulting to 01 when omitted.
+        if v is None:
+            raise ValueError("registration_year_month is required")
+        s = str(v).strip()
+        match = _YEAR_MONTH_RE.match(s)
+        if not match:
+            raise ValueError(
+                "registration_year_month must be 'YYYY' or 'YYYY-MM'"
+            )
+        year = int(match.group(1))
+        month = int(match.group(2)) if match.group(2) else 1
+        if not (1 <= month <= 12):
+            raise ValueError("month component must be between 1 and 12")
+        return f"{year:04d}-{month:02d}"
 
 
 class MonthlyScheduleItem(BaseModel):

@@ -56,10 +56,15 @@
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label form-label--required">年式</label>
-                <select name="registration_year_month" class="form-select" required>
-                    <option value="">選択</option>
-                    {% for y in range(2026, 2009, -1) %}<option value="{{ y }}">{{ y }}年</option>{% endfor %}
-                </select>
+                <div style="display:flex; gap:8px;">
+                    <select name="registration_year" class="form-select" required style="flex:2;">
+                        <option value="">年</option>
+                        {% for y in range(2026, 2009, -1) %}<option value="{{ y }}">{{ y }}年</option>{% endfor %}
+                    </select>
+                    <select name="registration_month" class="form-select" required style="flex:1;" id="registration-month">
+                        {% for mm in range(1, 13) %}<option value="{{ "%02d"|format(mm) }}">{{ mm }}月</option>{% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="form-group">
                 <label class="form-label form-label--required">走行距離 (km)</label>
@@ -203,5 +208,14 @@ document.addEventListener('change', function(e) {
         document.getElementById('body_option_value').value = total;
     }
 });
+
+// Default registration_month to current month
+(function() {
+    var monthSelect = document.getElementById('registration-month');
+    if (monthSelect) {
+        var mm = String(new Date().getMonth() + 1).padStart(2, '0');
+        monthSelect.value = mm;
+    }
+})();
 </script>
 {% endblock %}
