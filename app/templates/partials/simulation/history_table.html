@@ -1,0 +1,59 @@
+{# Render the simulation history table fragment.
+   Required context:
+     simulations -- list[dict] (raw rows)
+     meta        -- PaginationMeta-like object (or dict) with .page/.per_page/.total_pages
+#}
+{% if not simulations %}
+<p class="text-gray-500 py-4 text-center">シミュレーション履歴がありません。</p>
+{% else %}
+<table class="w-full text-sm">
+  <thead>
+    <tr class="bg-gray-50 border-b">
+      <th class="px-3 py-2 text-left">タイトル</th>
+      <th class="px-3 py-2 text-right">月額リース料</th>
+      <th class="px-3 py-2 text-center">判定</th>
+      <th class="px-3 py-2 text-center">作成日</th>
+      <th class="px-3 py-2 text-center">操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for sim in simulations %}
+      {% set sim_result = sim.get('result', {}) %}
+      {% set assessment = sim_result.get('assessment', '-') %}
+      {% set assessment_color = {'推奨': 'text-green-700', '要検討': 'text-yellow-700', '非推奨': 'text-red-700'}.get(assessment, '') %}
+      {% set monthly_fee = sim_result.get('monthly_lease_fee', 0) %}
+      {% set created = (sim.get('created_at') or '')[:10] %}
+    <tr class="border-b hover:bg-gray-50">
+      <td class="px-3 py-2">
+        <a href="/simulation/{{ sim['id'] }}/result"
+           hx-get="/api/v1/simulations/{{ sim['id'] }}"
+           hx-target="#main-content"
+           class="text-blue-600 hover:underline">
+          {{ sim.get('title', '-') }}
+        </a>
+      </td>
+      <td class="px-3 py-2 text-right">&yen;{{ "{:,}".format(monthly_fee) }}</td>
+      <td class="px-3 py-2 text-center {{ assessment_color }}">{{ assessment }}</td>
+      <td class="px-3 py-2 text-center">{{ created }}</td>
+      <td class="px-3 py-2 text-center">
+        <button hx-delete="/api/v1/simulations/{{ sim['id'] }}"
+                hx-confirm="このシミュレーションを削除しますか？"
+                hx-target="closest tr" hx-swap="outerHTML"
+                class="text-red-500 hover:text-red-700 text-sm">削除</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if meta.total_pages > 1 %}
+<div class="flex gap-1 justify-center mt-4">
+  {% for p in range(1, meta.total_pages + 1) %}
+  <button hx-get="/api/v1/simulations?page={{ p }}&per_page={{ meta.per_page }}"
+          hx-target="#simulation-history" hx-swap="innerHTML"
+          class="px-3 py-1 border rounded {% if p == meta.page %}bg-blue-600 text-white{% else %}hover:bg-gray-100{% endif %}">
+    {{ p }}
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}

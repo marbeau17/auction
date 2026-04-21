@@ -1,0 +1,249 @@
+{# Render the rich simulation result card.
+   Required context:
+     result            -- SimulationResult model instance
+     input_data        -- SimulationInput model instance
+     saved_simulation_id -- str | None  (None means "not persisted")
+     equipment_list    -- list[str]
+     chart_labels      -- JSON-safe list of month labels
+     chart_asset       -- JSON-safe list of asset values
+     chart_cum_income  -- JSON-safe list of cumulative income values
+     chart_monthly_pl  -- JSON-safe list of monthly profit values
+     chart_cum_pl      -- JSON-safe list of cumulative profit values
+     chart_nav_ratios  -- JSON-safe list of NAV ratio percentages
+     chart_nav_baseline-- JSON-safe list (60% reference line)
+#}
+{% set assessment_class = {'推奨': 'success', '要検討': 'warning', '非推奨': 'danger'}.get(result.assessment, '') %}
+<style>
+.sim-result { display: block; width: 100%; max-width: 100%; }
+.sim-result .card { display: block; width: 100%; margin-top: 24px; }
+.sim-result .card__body { display: block; }
+.sim-result .card__body.hidden { display: none; }
+.sim-result .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; width: 100%; }
+@media (max-width: 1024px) { .sim-result .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .sim-result .kpi-grid { grid-template-columns: 1fr; } }
+.sim-result .chart-wrap { position: relative; width: 100%; height: 350px; }
+@media (max-width: 768px) { .sim-result .chart-wrap { height: 250px; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+<div class="sim-result" id="simulation-result">
+  <h3>シミュレーション結果</h3>
+  <p class="text-muted">
+    {{ input_data.maker }} {{ input_data.model }} |
+    {{ input_data.lease_term_months }}ヶ月 |
+    目標利回り {{ "%.1f"|format(input_data.target_yield_rate * 100) }}%
+  </p>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-card__label">推奨買取価格</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.recommended_purchase_price) }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">上限買取価格</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.max_purchase_price) }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">月額リース料</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.monthly_lease_fee) }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">リース料総額</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.total_lease_fee) }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">想定残価</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.estimated_residual_value) }}</div>
+      <div class="kpi-card__sub">残価率 {{ "%.0f"|format(result.residual_rate_result * 100) }}%</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">実質利回り</div>
+      <div class="kpi-card__value">{{ "%.1f"|format(result.effective_yield_rate * 100) }}%</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">損益分岐点</div>
+      <div class="kpi-card__value">{{ result.breakeven_months if result.breakeven_months else "--" }}ヶ月</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">判定</div>
+      <div class="kpi-card__value"><span class="badge badge--{{ assessment_class }}">{{ result.assessment }}</span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label">市場中央値</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.market_median_price) }}</div>
+      <div class="kpi-card__sub">サンプル {{ result.market_sample_count }}件 / 乖離 {{ "%.1f"|format(result.market_deviation_rate * 100) }}%</div>
+    </div>
+    {% if equipment_list %}
+    <div class="kpi-card" style="grid-column: span 2;">
+      <div class="kpi-card__label">装備オプション</div>
+      <div class="kpi-card__value" style="font-size:0.875rem">{{ equipment_list|join(', ') }}</div>
+      {% if input_data.body_option_value %}
+      <div class="kpi-card__sub">合計 &yen;{{ "{:,}".format(input_data.body_option_value) }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if saved_simulation_id %}
+  <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+    <span class="badge badge--success" style="padding:8px 16px; font-size:0.9rem">保存済み</span>
+    <a href="/simulation/{{ saved_simulation_id }}/result" class="btn btn--text btn--sm">保存結果を確認 &rarr;</a>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card__header"><h3>バリュートランスファー分析</h3></div>
+    <div class="card__body">
+      <div class="chart-wrap">
+        <canvas id="chart-value-transfer"
+                data-labels='{{ chart_labels|tojson }}'
+                data-asset='{{ chart_asset|tojson }}'
+                data-cum-income='{{ chart_cum_income|tojson }}'></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__header"><h3>NAV（純資産価値）推移</h3></div>
+    <div class="card__body">
+      <div class="chart-wrap">
+        <canvas id="chart-nav"
+                data-labels='{{ chart_labels|tojson }}'
+                data-nav='{{ chart_nav_ratios|tojson }}'
+                data-baseline='{{ chart_nav_baseline|tojson }}'></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__header"><h3>月次損益推移</h3></div>
+    <div class="card__body">
+      <div class="chart-wrap">
+        <canvas id="chart-pnl"
+                data-labels='{{ chart_labels|tojson }}'
+                data-monthly='{{ chart_monthly_pl|tojson }}'
+                data-cum='{{ chart_cum_pl|tojson }}'></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__header" style="display:flex;justify-content:space-between;align-items:center">
+      <h3>月次リーススケジュール</h3>
+      <button type="button" class="btn btn--text btn--sm"
+              onclick="this.closest('.card').querySelector('.card__body').classList.toggle('hidden')">
+        展開/折りたたみ
+      </button>
+    </div>
+    <div class="card__body hidden">
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>月</th>
+              <th>資産簿価</th>
+              <th>リース収入</th>
+              <th>累積収入</th>
+              <th>減価償却費</th>
+              <th>金融費用</th>
+              <th>月次損益</th>
+              <th>累積損益</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in result.monthly_schedule %}
+            <tr>
+              <td>{{ item.month }}月</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.asset_value) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.lease_income) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_income) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.depreciation_expense) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.financing_cost) }}</td>
+              <td class="text-right" style="color: {{ '#10b981' if item.monthly_profit >= 0 else '#ef4444' }}">
+                &yen;{{ "{:,}".format(item.monthly_profit) }}
+              </td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_profit) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  if (typeof Chart === 'undefined') return;
+
+  var fmtYenMan = function(v) { return '\u00a5' + (v / 10000).toFixed(0) + '\u4e07'; };
+
+  var vt = document.getElementById('chart-value-transfer');
+  if (vt) {
+    new Chart(vt, {
+      type: 'line',
+      data: {
+        labels: JSON.parse(vt.dataset.labels || '[]'),
+        datasets: [
+          { label: '資産簿価', data: JSON.parse(vt.dataset.asset || '[]'),
+            borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3 },
+          { label: '累積リース収入', data: JSON.parse(vt.dataset.cumIncome || '[]'),
+            borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: { y: { ticks: { callback: fmtYenMan } } }
+      }
+    });
+  }
+
+  var nav = document.getElementById('chart-nav');
+  if (nav) {
+    new Chart(nav, {
+      type: 'line',
+      data: {
+        labels: JSON.parse(nav.dataset.labels || '[]'),
+        datasets: [
+          { label: 'NAV比率 (%)', data: JSON.parse(nav.dataset.nav || '[]'),
+            borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.3 },
+          { label: '60%ライン', data: JSON.parse(nav.dataset.baseline || '[]'),
+            borderColor: '#f59e0b', borderDash: [8, 4], borderWidth: 2, pointRadius: 0, fill: false }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: { y: { min: 0, max: 200, ticks: { callback: function(v) { return v + '%'; } } } }
+      }
+    });
+  }
+
+  var pnl = document.getElementById('chart-pnl');
+  if (pnl) {
+    var monthlyData = JSON.parse(pnl.dataset.monthly || '[]');
+    new Chart(pnl, {
+      type: 'bar',
+      data: {
+        labels: JSON.parse(pnl.dataset.labels || '[]'),
+        datasets: [
+          { label: '月次損益', data: monthlyData,
+            backgroundColor: monthlyData.map(function(v) { return v >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'; }),
+            borderRadius: 3 },
+          { label: '累積損益', data: JSON.parse(pnl.dataset.cum || '[]'), type: 'line',
+            borderColor: '#2563eb', backgroundColor: 'transparent', tension: 0.3, yAxisID: 'y1' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { ticks: { callback: fmtYenMan } },
+          y1: { position: 'right', ticks: { callback: fmtYenMan }, grid: { display: false } }
+        }
+      }
+    });
+  }
+})();
+</script>
