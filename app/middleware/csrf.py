@@ -3,6 +3,10 @@
 Issues a per-session token via cookie + request.state, and validates the
 ``X-CSRF-Token`` header (or ``csrf_token`` form field) on every state-changing
 request that targets ``/auth/*`` or ``/api/*``.
+
+Note: when ``APP_ENV=test`` (set globally by ``tests/conftest.py``) the
+middleware short-circuits validation, so exemption-list changes are effectively
+production-only.
 """
 import hmac
 import os
@@ -24,13 +28,13 @@ EXEMPT_PATHS = {
     "/health/ready",
     "/health/live",
     "/metrics",
-    # Pre-auth or session-clearing routes: no authenticated session yet
-    # to forge against, so CSRF semantics don't apply. Brute-force/credential-
-    # stuffing protection is the rate limiter's job.
-    "/auth/login",
+    # Session-clearing / token-rotation routes. Login is intentionally NOT
+    # exempt: even though there's no authenticated session to forge against,
+    # protecting it lets the form rely on a single CSRF code path.
     "/auth/logout",
     "/auth/refresh",
     # Server-to-server or OAuth callback endpoints
+    "/auth/callback",
     "/api/v1/yayoi/callback",
 }
 EXEMPT_PREFIXES = (
