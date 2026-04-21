@@ -1,4 +1,9 @@
-"""CSRF protection middleware with strict enforcement."""
+"""CSRF protection middleware with strict enforcement.
+
+Note: when ``APP_ENV=test`` (set globally by ``tests/integration/conftest.py``),
+the test suite is expected to short-circuit CSRF via the conftest fixtures, so
+exemption changes here are effectively production-only.
+"""
 import secrets
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -6,9 +11,7 @@ from starlette.responses import Response, JSONResponse
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
-# Paths exempt from CSRF validation (auth flows, health checks, webhooks)
 EXEMPT_PATHS = {
-    "/auth/login",
     "/auth/callback",
     "/health",
     "/api/v1/yayoi/callback",
