@@ -421,66 +421,148 @@ async def simulation_list_page(request: Request):
     })
 
 
+_MARKET_DATA_FILTER_KEYS = (
+    "maker",
+    "body_type",
+    "year_from",
+    "year_to",
+    "price_from",
+    "price_to",
+    "keyword",
+)
+
+
+def _market_data_filter_query_string(filters: dict[str, Any]) -> str:
+    from urllib.parse import urlencode
+
+    pairs = [
+        (key, filters[key])
+        for key in _MARKET_DATA_FILTER_KEYS
+        if filters.get(key) not in (None, "")
+    ]
+    return urlencode(pairs)
+
+
+def _fetch_market_data(
+    *,
+    maker: Optional[str],
+    body_type: Optional[str],
+    year_from: Optional[int],
+    year_to: Optional[int],
+    price_from: Optional[int],
+    price_to: Optional[int],
+    keyword: Optional[str],
+    page: int,
+    per_page: int,
+) -> tuple[list[dict[str, Any]], int, int, dict[str, Any]]:
+    from app.db.supabase_client import get_supabase_client
+
+    def _apply_filters(query: Any) -> Any:
+        if maker:
+            query = query.eq("manufacturer_id", maker)
+        if body_type:
+            query = query.ilike("body_type", f"%{body_type}%")
+        if year_from is not None:
+            query = query.gte("model_year", year_from)
+        if year_to is not None:
+            query = query.lte("model_year", year_to)
+        if price_from is not None:
+            query = query.gte("price_yen", price_from * 10000)
+        if price_to is not None:
+            query = query.lte("price_yen", price_to * 10000)
+        if keyword:
+            query = query.or_(
+                f"model_name.ilike.%{keyword}%,maker.ilike.%{keyword}%"
+            )
+        return query
+
+    client = get_supabase_client(service_role=True)
+    offset = (page - 1) * per_page
+
+    data_query = (
+        client.table("vehicles")
+        .select("*", count="exact")
+        .eq("is_active", True)
+        .order("scraped_at", desc=True)
+        .range(offset, offset + per_page - 1)
+    )
+    data_query = _apply_filters(data_query)
+    data_result = data_query.execute()
+    vehicles = data_result.data or []
+    total_count: int = data_result.count or 0
+
+    stats_query = (
+        client.table("vehicles")
+        .select("price_yen")
+        .eq("is_active", True)
+        .not_.is_("price_yen", "null")
+    )
+    stats_query = _apply_filters(stats_query)
+    stats_result = stats_query.execute()
+    prices = [
+        row["price_yen"]
+        for row in (stats_result.data or [])
+        if row.get("price_yen") is not None
+    ]
+    if prices:
+        summary = {
+            "count": len(prices),
+            "avg": round(statistics.mean(prices)),
+            "median": round(statistics.median(prices)),
+        }
+    else:
+        summary = {"count": 0, "avg": 0, "median": 0}
+
+    total_pages = math.ceil(total_count / per_page) if total_count else 0
+    return vehicles, total_count, total_pages, summary
+
+
 @router.get("/market-data", response_class=HTMLResponse)
-async def market_data_list_page(request: Request):
+async def market_data_list_page(
+    request: Request,
+    maker: Optional[str] = Query(default=None),
+    body_type: Optional[str] = Query(default=None),
+    year_from: Optional[int] = Query(default=None),
+    year_to: Optional[int] = Query(default=None),
+    price_from: Optional[int] = Query(default=None),
+    price_to: Optional[int] = Query(default=None),
+    keyword: Optional[str] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+):
     user = await _get_optional_user(request)
     redirect = _require_auth(user, request)
     if redirect:
         return redirect
 
-    page = int(request.query_params.get("page", 1))
     per_page = 20
-    offset = (page - 1) * per_page
 
-    # Pre-fetch vehicles for initial render
     vehicles: list[dict[str, Any]] = []
     total_count = 0
     total_pages = 0
-    stats: dict[str, Any] = {"total_count": 0, "avg_price": 0, "median_price": 0}
+    summary: dict[str, Any] = {"count": 0, "avg": 0, "median": 0}
     makers: list[dict[str, Any]] = []
     body_types: list[dict[str, Any]] = []
 
+    filters = {
+        "maker": maker,
+        "body_type": body_type,
+        "year_from": year_from,
+        "year_to": year_to,
+        "price_from": price_from,
+        "price_to": price_to,
+        "keyword": keyword,
+    }
+
     try:
+        vehicles, total_count, total_pages, summary = _fetch_market_data(
+            **filters,
+            page=page,
+            per_page=per_page,
+        )
+
         from app.db.supabase_client import get_supabase_client
 
         client = get_supabase_client(service_role=True)
-
-        # Data with count
-        result = (
-            client.table("vehicles")
-            .select("*", count="exact")
-            .eq("is_active", True)
-            .order("scraped_at", desc=True)
-            .range(offset, offset + per_page - 1)
-            .execute()
-        )
-        vehicles = result.data or []
-        total_count = result.count or 0
-        total_pages = (total_count + per_page - 1) // per_page
-
-        # Stats
-        stats_result = (
-            client.table("vehicles")
-            .select("price_yen")
-            .eq("is_active", True)
-            .not_.is_("price_yen", "null")
-            .execute()
-        )
-        prices = [
-            row["price_yen"]
-            for row in (stats_result.data or [])
-            if row.get("price_yen") is not None
-        ]
-        if prices:
-            stats = {
-                "total_count": total_count,
-                "avg_price": round(statistics.mean(prices)),
-                "median_price": round(statistics.median(prices)),
-            }
-        else:
-            stats = {"total_count": total_count, "avg_price": 0, "median_price": 0}
-
-        # Fetch makers and body_types for filter dropdowns
         makers_resp = client.table("manufacturers").select("*").order("name").execute()
         makers = makers_resp.data or []
         bt_resp = client.table("body_types").select("*").order("name").execute()
@@ -488,6 +570,13 @@ async def market_data_list_page(request: Request):
     except Exception as exc:
         logger.warning("market_data_list_fetch_failed", error=str(exc))
         error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+
+    meta = {
+        "total_count": total_count,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+    }
 
     return _render(
         request,
@@ -501,7 +590,12 @@ async def market_data_list_page(request: Request):
             "page": page,
             "per_page": per_page,
             "total_pages": total_pages,
-            "stats": stats,
+            "stats": summary,
+            "meta": meta,
+            "filter": filters,
+            "query_string": _market_data_filter_query_string(filters),
+            "base_url": "/market-data/table",
+            "hx_target": "#vehicle-table-container",
             "error_message": locals().get("error_message"),
         },
     )
@@ -522,80 +616,23 @@ async def market_data_table_fragment(
 ):
     """Return an HTML table fragment for HTMX requests from the market data page."""
     from app.main import templates
-    from app.db.supabase_client import get_supabase_client
+
+    filters = {
+        "maker": maker,
+        "body_type": body_type,
+        "year_from": year_from,
+        "year_to": year_to,
+        "price_from": price_from,
+        "price_to": price_to,
+        "keyword": keyword,
+    }
 
     try:
-        client = get_supabase_client(service_role=True)
-
-        # --- Build filtered query ---
-        def _apply_filters(query: Any) -> Any:
-            if maker:
-                query = query.eq("manufacturer_id", maker)
-            if body_type:
-                query = query.ilike("body_type", f"%{body_type}%")
-            if year_from is not None:
-                query = query.gte("model_year", year_from)
-            if year_to is not None:
-                query = query.lte("model_year", year_to)
-            if price_from is not None:
-                # Price filter is in 万円 (10,000 yen units)
-                query = query.gte("price_yen", price_from * 10000)
-            if price_to is not None:
-                query = query.lte("price_yen", price_to * 10000)
-            if keyword:
-                query = query.or_(
-                    f"model_name.ilike.%{keyword}%,maker.ilike.%{keyword}%"
-                )
-            return query
-
-        # Count
-        count_query = (
-            client.table("vehicles")
-            .select("id", count="exact")
-            .eq("is_active", True)
+        vehicles, total_count, total_pages, summary = _fetch_market_data(
+            **filters,
+            page=page,
+            per_page=per_page,
         )
-        count_query = _apply_filters(count_query)
-        count_result = count_query.execute()
-        total_count: int = count_result.count or 0
-
-        # Data
-        offset = (page - 1) * per_page
-        data_query = (
-            client.table("vehicles")
-            .select("*")
-            .eq("is_active", True)
-            .order("scraped_at", desc=True)
-            .range(offset, offset + per_page - 1)
-        )
-        data_query = _apply_filters(data_query)
-        data_result = data_query.execute()
-        vehicles = data_result.data or []
-
-        # Stats
-        stats_query = (
-            client.table("vehicles")
-            .select("price_yen")
-            .eq("is_active", True)
-            .not_.is_("price_yen", "null")
-        )
-        stats_query = _apply_filters(stats_query)
-        stats_result = stats_query.execute()
-        prices = [
-            row["price_yen"]
-            for row in (stats_result.data or [])
-            if row.get("price_yen") is not None
-        ]
-        if prices:
-            summary = {
-                "count": len(prices),
-                "avg": round(statistics.mean(prices)),
-                "median": round(statistics.median(prices)),
-            }
-        else:
-            summary = {"count": 0, "avg": 0, "median": 0}
-
-        total_pages = math.ceil(total_count / per_page) if total_count else 0
-
     except Exception as exc:
         logger.warning("market_data_table_fetch_failed", error=str(exc))
         vehicles = []
@@ -615,6 +652,10 @@ async def market_data_table_fragment(
                 "total_pages": total_pages,
             },
             "stats": summary,
+            "filter": filters,
+            "query_string": _market_data_filter_query_string(filters),
+            "base_url": "/market-data/table",
+            "hx_target": "#vehicle-table-container",
         },
     )
 

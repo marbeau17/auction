@@ -1,14 +1,13 @@
 {# HTMX partial: market prices table with stats OOB swap #}
 
-{# Out-of-band stats update #}
-<div id="stats-count" hx-swap-oob="innerHTML">#{{ meta.total_count | default(0) }}件</div>
+<div id="stats-count" hx-swap-oob="innerHTML">{{ meta.total_count | default(0) }}件</div>
 <div id="stats-avg" hx-swap-oob="innerHTML">&yen;{{ "{:,.0f}".format(stats.avg) if stats and stats.avg else "--" }}</div>
 <div id="stats-median" hx-swap-oob="innerHTML">&yen;{{ "{:,.0f}".format(stats.median) if stats and stats.median else "--" }}</div>
 
-{# Main table content #}
 <div id="vehicle-table-container">
+  {% if vehicles %}
   <div class="table-responsive">
-    <table class="table table--hover">
+    <table class="table table--hover data-table">
       <thead>
         <tr>
           <th>メーカー</th>
@@ -29,10 +28,10 @@
             hx-swap="innerHTML"
             role="link"
             tabindex="0">
-          <td>{{ vehicle.maker }}</td>
-          <td>{{ vehicle.model_name }}</td>
-          <td>{{ vehicle.model_year }}年</td>
-          <td class="text-right">{{ "{:,}".format(vehicle.mileage_km) if vehicle.mileage_km is not none else "-" }} km</td>
+          <td>{{ vehicle.maker | default("-") }}</td>
+          <td>{{ vehicle.model_name | default("-") }}</td>
+          <td>{{ vehicle.model_year | default("-") }}{% if vehicle.model_year %}年{% endif %}</td>
+          <td class="text-right">{% if vehicle.mileage_km is not none %}{{ "{:,}".format(vehicle.mileage_km) }} km{% else %}-{% endif %}</td>
           <td class="text-right">
             {% if vehicle.price_yen is not none %}
               &yen;{{ "{:,}".format(vehicle.price_yen) }}
@@ -48,30 +47,25 @@
           <td>{{ vehicle.body_type or "-" }}</td>
           <td>{{ vehicle.location_prefecture or "-" }}</td>
         </tr>
-        {% else %}
-        <tr>
-          <td colspan="7" class="table__empty">
-            該当する車両が見つかりませんでした。
-          </td>
-        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  {# Pagination #}
-  {% if meta and meta.total_pages > 1 %}
+  {% if meta %}
   <div class="pagination-bar">
     <span class="pagination-bar__info">
-      {{ meta.total_count }}件中 {{ meta.page }}/{{ meta.total_pages }}ページ
+      {{ meta.total_count }}件中 {{ meta.page }}/{{ meta.total_pages | default(1) }}ページ
     </span>
-    {% include "components/pagination.html" %}
+    {% if meta.total_pages and meta.total_pages > 1 %}
+      {% include "components/pagination.html" %}
+    {% endif %}
   </div>
-  {% elif meta %}
-  <div class="pagination-bar">
-    <span class="pagination-bar__info">
-      {{ meta.total_count }}件中 {{ meta.page }}/{{ meta.total_pages }}ページ
-    </span>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    <p class="empty-state__message">検索条件に一致する車両データがありません。</p>
+    <a href="/market-data" class="btn btn--text">フィルターをリセットして再検索</a>
   </div>
   {% endif %}
 </div>
