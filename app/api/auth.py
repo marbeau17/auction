@@ -88,10 +88,7 @@ async def login(
     On success the JWT pair is stored in HttpOnly cookies and the client is
     redirected to ``/dashboard``.  Both regular and HTMX requests are handled.
     """
-    # Create a fresh client for auth (avoid cached client issues in serverless)
-    from supabase import create_client as _create
-
-    supabase = _create(settings.supabase_url, settings.supabase_anon_key)
+    supabase = get_supabase_client()
 
     try:
         auth_response = supabase.auth.sign_in_with_password(
@@ -99,7 +96,11 @@ async def login(
         )
     except Exception as exc:
         logger.warning("login_failed", email=email, error=str(exc))
-        return _login_error_response(request, "メールアドレスまたはパスワードが正しくありません。")
+        return _login_error_response(
+            request,
+            "メールアドレスまたはパスワードが正しくありません。",
+            detail=str(exc),
+        )
 
     session = auth_response.session
     if session is None:
@@ -124,17 +125,21 @@ async def login(
     return response
 
 
-def _login_error_response(request: Request, message: str) -> Response:
+def _login_error_response(
+    request: Request, message: str, *, detail: str | None = None
+) -> Response:
     """Return an error response appropriate for the request type."""
     if _is_htmx(request):
+        body = message
+        if detail:
+            body = f"{message} <!-- {detail} -->"
         html = (
             '<div id="login-error" class="alert alert-error" role="alert">'
-            f"{message}"
+            f"{body}"
             "</div>"
         )
         return HTMLResponse(content=html, status_code=200)
 
-    # For a regular request redirect back to login with an error query param.
     return RedirectResponse(
         url=f"/login?error={message}",
         status_code=302,
@@ -262,13 +267,10 @@ async def forgot_password(request: Request):
         )
 
     try:
-        from supabase import create_client as _create_client
-
-        settings = get_settings()
-        client = _create_client(settings.supabase_url, settings.supabase_anon_key)
+        client = get_supabase_client()
         client.auth.reset_password_email(email)
     except Exception:
-        pass  # Don't reveal if email exists
+        pass
 
     return HTMLResponse(
         '<div class="alert alert--success">リセットリンクをメールに送信しました。メールをご確認ください。</div>'

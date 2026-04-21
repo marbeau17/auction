@@ -185,9 +185,10 @@ class TestProtectedEndpoint:
         self,
         client_unauthenticated: AsyncClient,
     ) -> None:
-        """Accessing /dashboard without auth should return 401."""
+        """Accessing /dashboard without auth should redirect to /login."""
         response = await client_unauthenticated.get("/dashboard")
-        assert response.status_code == 401
+        assert response.status_code == 302
+        assert "/login" in response.headers.get("location", "")
 
     async def test_auth_me_without_token(
         self,
