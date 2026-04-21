@@ -4,6 +4,7 @@
 {% block page_title %}請求書管理{% endblock %}
 
 {% block content %}
+{% include "partials/_error_banner.html" %}
 <div class="page-header">
     <h2 class="page-header__title">請求書管理</h2>
     <p class="page-header__description">請求書の発行・承認・送付を管理 / 全{{ total_count | default(0) }}件</p>

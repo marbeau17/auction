@@ -110,13 +110,14 @@ async def dashboard_page(request: Request):
 
     kpi = {"simulation_count": 0, "avg_yield": 0.0, "active_vehicle_count": 0}
     recent_sims: list[dict[str, Any]] = []
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
         # Count simulations
         sims = client.table("simulations").select("id", count="exact").execute()
         kpi["simulation_count"] = sims.count or 0
-        # Active vehicles currently in the catalog
+        # Active vehicles currently in the catalog (label: 稼働車両数)
         vehs = client.table("vehicles").select("id", count="exact").eq("is_active", True).execute()
         kpi["active_vehicle_count"] = vehs.count or 0
         # Avg yield
@@ -126,17 +127,18 @@ async def dashboard_page(request: Request):
         # Recent simulations
         recent = client.table("simulations").select("*").order("created_at", desc=True).limit(5).execute()
         recent_sims = recent.data or []
-    except Exception as exc:
-        logger.warning("dashboard_data_error", error=str(exc))
+    except Exception:
+        logger.exception("dashboard_data_fetch_failed", handler="dashboard_page")
         recent_sims = []
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+        error_banner = "ダッシュボードデータの取得に失敗しました。表示されている数値は不完全な可能性があります。"
 
     context = {
         "user": user,
         "kpi": kpi,
         "recent_simulations": recent_sims,
         "stats": kpi,
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
         "kpi_json_url": "/api/v1/dashboard/kpi/json",
     }
     return _render(request, "pages/dashboard.html", context)
@@ -153,6 +155,7 @@ async def simulation_new_page(request: Request):
     categories: list[dict[str, Any]] = []
     models: list[dict[str, Any]] = []
     equipment_options: list[dict[str, Any]] = []
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
@@ -166,9 +169,9 @@ async def simulation_new_page(request: Request):
         models = models_resp.data or []
         options_resp = client.table("equipment_options").select("*").eq("is_active", True).order("category,display_order").execute()
         equipment_options = options_resp.data or []
-    except Exception as exc:
-        logger.warning("simulation_new_form_data_failed", error=str(exc))
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+    except Exception:
+        logger.exception("simulation_new_form_data_failed", handler="simulation_new_page")
+        error_banner = "マスタデータの取得に失敗しました。一部のドロップダウンが空になっている可能性があります。"
 
     return _render(request, "pages/simulation.html", {
         "user": user,
@@ -177,7 +180,8 @@ async def simulation_new_page(request: Request):
         "categories": categories,
         "models": models,
         "equipment_options": equipment_options,
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
     })
 
 
@@ -326,6 +330,7 @@ async def proposal_preview_page(request: Request, simulation_id: str):
         return redirect
 
     simulation: dict[str, Any] | None = None
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
@@ -343,15 +348,20 @@ async def proposal_preview_page(request: Request, simulation_id: str):
             input_data = simulation.get("input_data") or simulation.get("result_summary_json") or {}
             if not simulation.get("input_data"):
                 simulation["input_data"] = input_data
-    except Exception as exc:
-        logger.warning("proposal_preview_fetch_failed", simulation_id=simulation_id, error=str(exc))
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+    except Exception:
+        logger.exception(
+            "proposal_preview_fetch_failed",
+            handler="proposal_preview_page",
+            simulation_id=simulation_id,
+        )
+        error_banner = "提案書データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/proposal_preview.html", {
         "user": user,
         "simulation_id": simulation_id,
         "simulation": simulation,
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
     })
 
 
@@ -362,21 +372,23 @@ async def simulation_list_page(request: Request):
     if redirect:
         return redirect
 
-    simulations = []
+    simulations: list[dict[str, Any]] = []
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
         result = client.table("simulations").select("*").order("created_at", desc=True).limit(50).execute()
         simulations = result.data or []
-    except Exception as exc:
-        logger.warning("simulation_list_fetch_failed", error=str(exc))
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+    except Exception:
+        logger.exception("simulation_list_fetch_failed", handler="simulation_list_page")
+        error_banner = "シミュレーション一覧の取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/simulation_list.html", {
         "user": user,
         "simulations": simulations,
         "total_count": len(simulations),
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
     })
 
 
@@ -616,6 +628,7 @@ async def invoice_list_page(request: Request):
         return redirect
 
     invoices: list[dict[str, Any]] = []
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
 
@@ -628,15 +641,16 @@ async def invoice_list_page(request: Request):
             .execute()
         )
         invoices = result.data or []
-    except Exception as exc:
-        logger.warning("invoice_list_fetch_failed", error=str(exc))
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+    except Exception:
+        logger.exception("invoice_list_fetch_failed", handler="invoice_list_page")
+        error_banner = "請求書データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/invoice_list.html", {
         "user": user,
         "invoices": invoices,
         "total_count": len(invoices),
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
     })
 
 
@@ -648,6 +662,7 @@ async def invoice_detail_page(request: Request, invoice_id: str):
         return redirect
 
     invoice: dict[str, Any] | None = None
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
 
@@ -660,15 +675,20 @@ async def invoice_detail_page(request: Request, invoice_id: str):
             .execute()
         )
         invoice = result.data
-    except Exception as exc:
-        logger.warning("invoice_detail_fetch_failed", invoice_id=invoice_id, error=str(exc))
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+    except Exception:
+        logger.exception(
+            "invoice_detail_fetch_failed",
+            handler="invoice_detail_page",
+            invoice_id=invoice_id,
+        )
+        error_banner = "請求書詳細の取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/invoice_detail.html", {
         "user": user,
         "invoice_id": invoice_id,
         "invoice": invoice,
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
     })
 
 
@@ -679,8 +699,9 @@ async def market_data_detail_page(request: Request, item_id: str):
     if redirect:
         return redirect
 
-    vehicle = None
+    vehicle: dict[str, Any] | None = None
     similar_vehicles: list[dict[str, Any]] = []
+    error_banner: str | None = None
     try:
         from app.db.supabase_client import get_supabase_client
         client = get_supabase_client(service_role=True)
@@ -701,15 +722,20 @@ async def market_data_detail_page(request: Request, item_id: str):
                 similar_query = similar_query.eq("body_type", vehicle["body_type"])
             similar_result = similar_query.limit(5).execute()
             similar_vehicles = similar_result.data or []
-    except Exception as exc:
-        logger.warning("market_data_detail_fetch_failed", item_id=item_id, error=str(exc))
-        error_message = "データの取得に失敗しました。しばらくしてから再度お試しください。"
+    except Exception:
+        logger.exception(
+            "market_data_detail_fetch_failed",
+            handler="market_data_detail_page",
+            item_id=item_id,
+        )
+        error_banner = "車両データの取得に失敗しました。しばらくしてから再度お試しください。"
 
     return _render(request, "pages/market_data_detail.html", {
         "user": user,
         "vehicle": vehicle,
         "similar_vehicles": similar_vehicles,
-        "error_message": locals().get("error_message"),
+        "error_banner": error_banner,
+        "error_message": error_banner,
     })
 
 
