@@ -292,18 +292,25 @@ def create_app() -> FastAPI:
         "http://localhost:3000",
         "https://auction-ten-iota.vercel.app",
     ]
+    allowed_origins.extend(parse_allowed_origins(settings.cors_allowed_origins))
     allowed_origins.extend(parse_allowed_origins(settings.allowed_origins))
     if settings.supabase_url:
         allowed_origins.append(settings.supabase_url)
-    # De-duplicate while preserving order
     allowed_origins = list(dict.fromkeys(allowed_origins))
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "HX-Request", "HX-Target", "HX-Trigger"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-CSRF-Token",
+            "HX-Request",
+            "HX-Target",
+            "HX-Current-URL",
+        ],
     )
 
     # -- SLA logging + Prometheus metrics ------------------------------
