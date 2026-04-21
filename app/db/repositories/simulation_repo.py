@@ -31,6 +31,23 @@ class SimulationRepository:
         ym = input_data.get("registration_year_month", "")
         return f"{maker} {model} {ym} シミュレーション"
 
+    @staticmethod
+    def _hydrate_legacy_keys(row: dict[str, Any]) -> dict[str, Any]:
+        """Re-attach ``input_data`` / ``result`` keys for legacy consumers.
+
+        The simulations table stores the engine payload in
+        ``result_summary_json``; SimulationResponse / _row_to_response still
+        read the unflattened keys, so we project them back here.
+        """
+        if "input_data" in row and "result" in row:
+            return row
+        rsj = row.get("result_summary_json") or {}
+        if isinstance(rsj, dict):
+            row.setdefault("input_data", rsj.get("input_data") or {})
+            if "result" not in row:
+                row["result"] = {k: v for k, v in rsj.items() if k != "input_data"}
+        return row
+
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
@@ -51,15 +68,34 @@ class SimulationRepository:
             title: Optional custom title. Auto-generated if omitted.
 
         Returns:
-            The created simulation record.
+            The created simulation record (with ``input_data`` and ``result``
+            keys re-attached so legacy callers that read them keep working).
         """
         try:
             now = datetime.now(timezone.utc).isoformat()
-            record = {
+
+            # Schema has flat columns + result_summary_json; persisting only
+            # the JSON would leak through dashboards / read paths that read
+            # the columns directly.
+            reg_year = self._parse_year(input_data.get("registration_year_month"))
+            summary_json = {**result, "input_data": input_data}
+
+            record: dict[str, Any] = {
                 "user_id": user_id,
                 "title": title or self._build_title(input_data),
-                "input_data": input_data,
-                "result": result,
+                "target_model_name": (
+                    f"{input_data.get('maker', '')} {input_data.get('model', '')}".strip()
+                    or None
+                ),
+                "target_model_year": reg_year,
+                "target_mileage_km": input_data.get("mileage_km"),
+                "market_price_yen": result.get("market_median_price"),
+                "purchase_price_yen": result.get("recommended_purchase_price"),
+                "lease_monthly_yen": result.get("monthly_lease_fee"),
+                "lease_term_months": input_data.get("lease_term_months"),
+                "total_lease_revenue_yen": result.get("total_lease_fee"),
+                "expected_yield_rate": result.get("effective_yield_rate"),
+                "result_summary_json": summary_json,
                 "status": "completed",
                 "created_at": now,
                 "updated_at": now,
@@ -73,13 +109,27 @@ class SimulationRepository:
 
             data = response.data
             if data and len(data) > 0:
-                return data[0]
+                row = dict(data[0])
+                row.setdefault("input_data", input_data)
+                row.setdefault("result", result)
+                return row
 
             raise RuntimeError("Simulation insert returned no data")
 
         except Exception:
             logger.exception("simulation_create_failed", user_id=user_id)
             raise
+
+    @staticmethod
+    def _parse_year(reg_ym: Any) -> Optional[int]:
+        if not reg_ym:
+            return None
+        s = str(reg_ym)
+        head = s.split("-", 1)[0]
+        try:
+            return int(head)
+        except ValueError:
+            return None
 
     async def list_by_user(
         self,
@@ -117,7 +167,9 @@ class SimulationRepository:
 
             response = query.execute()
 
-            data: list[dict[str, Any]] = response.data or []
+            data: list[dict[str, Any]] = [
+                self._hydrate_legacy_keys(dict(r)) for r in (response.data or [])
+            ]
             total_count: int = response.count or 0
 
             return data, total_count
@@ -144,7 +196,10 @@ class SimulationRepository:
                 .maybe_single()
                 .execute()
             )
-            return response.data
+            data = response.data
+            if data is None:
+                return None
+            return self._hydrate_legacy_keys(dict(data))
         except Exception:
             logger.exception(
                 "simulation_get_by_id_failed",
@@ -167,7 +222,7 @@ class SimulationRepository:
                 .in_("id", simulation_ids)
                 .execute()
             )
-            return response.data or []
+            return [self._hydrate_legacy_keys(dict(r)) for r in (response.data or [])]
         except Exception:
             logger.exception(
                 "simulation_get_multiple_failed",
