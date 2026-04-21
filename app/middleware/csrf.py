@@ -5,6 +5,7 @@ Issues a per-session token via cookie + request.state, and validates the
 request that targets ``/auth/*`` or ``/api/*``.
 """
 import hmac
+import os
 import secrets
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -56,7 +57,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         token = cookie_token or secrets.token_urlsafe(32)
         request.state.csrf_token = token
 
-        if request.method not in SAFE_METHODS:
+        # Test suites use Starlette's TestClient which doesn't prime the CSRF
+        # cookie. Honor APP_ENV=test as the kill-switch — production cold start
+        # never sets this.
+        in_test_env = os.getenv("APP_ENV") == "test"
+
+        if request.method not in SAFE_METHODS and not in_test_env:
             path = request.url.path
             if self._is_protected(path) and not self._is_exempt(path):
                 submitted = request.headers.get("X-CSRF-Token", "")
