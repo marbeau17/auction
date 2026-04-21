@@ -5,6 +5,13 @@
 
 {% block content %}
 {% if simulation %}
+{# Resolve summary fields from either the flat columns (quick-calc save path)
+   or the nested result/result_summary_json (engine SimulationResult path). #}
+{% set _rsj = simulation.result_summary_json or simulation.result or {} %}
+{% set _purchase = simulation.purchase_price_yen or _rsj.recommended_purchase_price or _rsj.purchase_price or 0 %}
+{% set _monthly = simulation.lease_monthly_yen or _rsj.monthly_lease_fee or _rsj.monthly_lease or 0 %}
+{% set _total = simulation.total_lease_revenue_yen or _rsj.total_lease_fee or (_monthly * (simulation.lease_term_months or 0)) %}
+{% set _yield = simulation.expected_yield_rate or _rsj.effective_yield_rate or _rsj.actual_yield_rate or 0 %}
 <div class="page-header">
     <h2 class="page-header__title">{{ simulation.title or "シミュレーション結果" }}</h2>
     <p class="page-header__description">
@@ -13,7 +20,7 @@
         ステータス: <span class="badge badge--{% if simulation.status == 'completed' %}success{% elif simulation.status == 'approved' %}success{% elif simulation.status == 'draft' %}warning{% else %}neutral{% endif %}">{{ simulation.status }}</span>
         {% if simulation.assessment %}
         | 評価:
-        <span class="badge badge--{% if simulation.assessment == 'A' or simulation.assessment == 'excellent' %}success{% elif simulation.assessment == 'B' or simulation.assessment == 'good' %}info{% elif simulation.assessment == 'C' or simulation.assessment == 'fair' %}warning{% else %}danger{% endif %}">{{ simulation.assessment }}</span>
+        <span class="badge badge--{% if simulation.assessment == 'A' or simulation.assessment == 'excellent' or simulation.assessment == '推奨' %}success{% elif simulation.assessment == 'B' or simulation.assessment == 'good' %}info{% elif simulation.assessment == 'C' or simulation.assessment == 'fair' or simulation.assessment == '要検討' %}warning{% else %}danger{% endif %}">{{ simulation.assessment }}</span>
         {% endif %}
     </p>
 </div>
@@ -22,20 +29,20 @@
 <div class="kpi-grid">
     <div class="kpi-card">
         <div class="kpi-card__label">買取価格</div>
-        <div class="kpi-card__value">&yen;{{ "{:,}".format(simulation.purchase_price_yen or 0) }}</div>
+        <div class="kpi-card__value">&yen;{{ "{:,}".format(_purchase | int) }}</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-card__label">月額リース料</div>
-        <div class="kpi-card__value">&yen;{{ "{:,}".format(simulation.lease_monthly_yen or 0) }}</div>
+        <div class="kpi-card__value">&yen;{{ "{:,}".format(_monthly | int) }}</div>
         <div class="kpi-card__sub">{{ simulation.lease_term_months or "--" }}ヶ月</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-card__label">リース料総額</div>
-        <div class="kpi-card__value">&yen;{{ "{:,}".format(simulation.total_lease_revenue_yen or 0) }}</div>
+        <div class="kpi-card__value">&yen;{{ "{:,}".format(_total | int) }}</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-card__label">想定利回り</div>
-        <div class="kpi-card__value">{{ "%.1f" | format((simulation.expected_yield_rate or 0) * 100) }}%</div>
+        <div class="kpi-card__value">{{ "%.1f" | format((_yield or 0) * 100) }}%</div>
     </div>
 </div>
 
@@ -73,8 +80,8 @@
 </div>
 
 {# ===== Result Details from JSON ===== #}
-{% if simulation.result_summary_json %}
-{% set r = simulation.result_summary_json %}
+{% if _rsj %}
+{% set r = _rsj %}
 <div class="card" style="margin-top: 24px;">
     <div class="card__header">
         <h3>計算結果詳細</h3>
@@ -82,28 +89,33 @@
     <div class="card__body">
         <table class="data-table">
             <tbody>
-                {% if r.purchase_price is defined %}
-                <tr><th>買取価格</th><td>&yen;{{ "{:,}".format(r.purchase_price | int) }}</td></tr>
+                {% set _detail_purchase = r.purchase_price if r.purchase_price is defined else r.recommended_purchase_price %}
+                {% if _detail_purchase is defined and _detail_purchase %}
+                <tr><th>買取価格</th><td>&yen;{{ "{:,}".format(_detail_purchase | int) }}</td></tr>
                 {% endif %}
-                {% if r.market_price is defined %}
-                <tr><th>市場価格</th><td>&yen;{{ "{:,}".format(r.market_price | int) }}</td></tr>
+                {% set _detail_market = r.market_price if r.market_price is defined else r.market_median_price %}
+                {% if _detail_market is defined and _detail_market %}
+                <tr><th>市場価格</th><td>&yen;{{ "{:,}".format(_detail_market | int) }}</td></tr>
                 {% endif %}
-                {% if r.monthly_lease is defined %}
-                <tr><th>月額リース料</th><td>&yen;{{ "{:,}".format(r.monthly_lease | int) }}</td></tr>
+                {% set _detail_monthly = r.monthly_lease if r.monthly_lease is defined else r.monthly_lease_fee %}
+                {% if _detail_monthly is defined and _detail_monthly %}
+                <tr><th>月額リース料</th><td>&yen;{{ "{:,}".format(_detail_monthly | int) }}</td></tr>
                 {% endif %}
-                {% if simulation.residual_value %}
-                <tr><th>残価</th><td>&yen;{{ "{:,}".format(simulation.residual_value | int) }}</td></tr>
+                {% set _detail_residual = simulation.residual_value or r.estimated_residual_value or r.residual_value %}
+                {% if _detail_residual %}
+                <tr><th>残価</th><td>&yen;{{ "{:,}".format(_detail_residual | int) }}</td></tr>
                 {% endif %}
-                {% if simulation.residual_rate %}
-                <tr><th>残価率</th><td>{{ "%.1f" | format(simulation.residual_rate * 100) }}%</td></tr>
+                {% set _detail_residual_rate = simulation.residual_rate or r.residual_rate_result or r.residual_rate %}
+                {% if _detail_residual_rate %}
+                <tr><th>残価率</th><td>{{ "%.1f" | format(_detail_residual_rate * 100) }}%</td></tr>
                 {% endif %}
-                {% if simulation.actual_yield_rate %}
-                <tr><th>実質利回り</th><td>{{ "%.2f" | format(simulation.actual_yield_rate * 100) }}%</td></tr>
-                {% elif r.actual_yield_rate is defined %}
-                <tr><th>実質利回り</th><td>{{ "%.2f" | format(r.actual_yield_rate * 100) }}%</td></tr>
+                {% set _detail_yield = simulation.actual_yield_rate or r.effective_yield_rate or r.actual_yield_rate %}
+                {% if _detail_yield %}
+                <tr><th>実質利回り</th><td>{{ "%.2f" | format(_detail_yield * 100) }}%</td></tr>
                 {% endif %}
-                {% if simulation.breakeven_months is not none %}
-                <tr><th>損益分岐月</th><td>{{ simulation.breakeven_months }}ヶ月</td></tr>
+                {% set _detail_breakeven = simulation.breakeven_months if simulation.breakeven_months is not none else r.breakeven_months %}
+                {% if _detail_breakeven is not none %}
+                <tr><th>損益分岐月</th><td>{{ _detail_breakeven }}ヶ月</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -221,9 +233,23 @@
 {% endif %}
 
 {# ===== Actions ===== #}
+{# Prefill the new-simulation form by passing prior inputs as query params.
+   /simulation/new must read these param names (see prefill contract). #}
+{% set _prefill = {} %}
+{% if simulation.maker %}{% set _ = _prefill.update({'maker': simulation.maker}) %}{% endif %}
+{% if simulation.model %}{% set _ = _prefill.update({'model': simulation.model}) %}{% endif %}
+{% if simulation.target_model_year %}{% set _ = _prefill.update({'registration_year_month': simulation.target_model_year}) %}{% endif %}
+{% if simulation.target_mileage_km %}{% set _ = _prefill.update({'mileage_km': simulation.target_mileage_km}) %}{% endif %}
+{% if simulation.vehicle_class %}{% set _ = _prefill.update({'vehicle_class': simulation.vehicle_class}) %}{% endif %}
+{% if simulation.body_type_display %}{% set _ = _prefill.update({'body_type': simulation.body_type_display}) %}{% endif %}
+{% if simulation.market_price_yen %}{% set _ = _prefill.update({'acquisition_price': simulation.market_price_yen}) %}{% endif %}
+{% if _rsj.book_value %}{% set _ = _prefill.update({'book_value': _rsj.book_value}) %}{% endif %}
+{% if _rsj.target_yield_rate %}{% set _ = _prefill.update({'target_yield_rate': _rsj.target_yield_rate}) %}{% endif %}
+{% if simulation.lease_term_months %}{% set _ = _prefill.update({'lease_term_months': simulation.lease_term_months}) %}{% endif %}
+{% set _ = _prefill.update({'prefill_from': simulation.id}) %}
 <div class="actions-row" style="margin-top: 24px;">
     <a href="/simulation/{{ simulation.id }}/contracts" class="btn btn--outline btn--lg">📋 契約書作成</a>
-    <a href="/simulation/new" class="btn btn--outline">条件変更して再計算</a>
+    <a href="/simulation/new?{{ _prefill | urlencode }}" class="btn btn--outline">条件変更して再計算</a>
     <a href="/dashboard" class="btn btn--primary">ダッシュボードへ</a>
 </div>
 

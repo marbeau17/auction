@@ -202,31 +202,52 @@ async def simulation_result_page(request: Request, simulation_id: str):
         simulation = result.data
 
         if simulation:
-            # Merge result_summary_json into top-level for template access
+            # Merge result_summary_json into top-level for template access.
+            # rsj is the canonical engine result blob; older quick-calc rows
+            # store a flatter shape, so try both spellings for each field.
             rsj = simulation.get("result_summary_json") or {}
             simulation["maker"] = rsj.get("maker", "")
             simulation["model"] = rsj.get("model", "")
             simulation["body_type_display"] = rsj.get("body_type", "")
             simulation["vehicle_class"] = rsj.get("vehicle_class", "")
-            simulation["max_price"] = rsj.get("max_price", 0)
-            simulation["residual_value"] = rsj.get("residual_value", 0)
-            simulation["residual_rate"] = rsj.get("residual_rate", 0)
+            simulation["max_price"] = rsj.get("max_price") or rsj.get("max_purchase_price", 0)
+            simulation["residual_value"] = (
+                rsj.get("residual_value") or rsj.get("estimated_residual_value", 0)
+            )
+            simulation["residual_rate"] = (
+                rsj.get("residual_rate") or rsj.get("residual_rate_result", 0)
+            )
             simulation["assessment"] = rsj.get("assessment", "")
             simulation["breakeven_months"] = rsj.get("breakeven_months")
-            simulation["actual_yield_rate"] = rsj.get("actual_yield_rate", 0)
+            simulation["actual_yield_rate"] = (
+                rsj.get("actual_yield_rate") or rsj.get("effective_yield_rate", 0)
+            )
             simulation["equipment"] = rsj.get("equipment", [])
 
-            # Generate chart data from saved simulation
-            purchase = simulation.get("purchase_price_yen", 0) or 0
-            monthly = simulation.get("lease_monthly_yen", 0) or 0
-            term = simulation.get("lease_term_months", 36) or 36
+            # Resolve canonical inputs, allowing engine-result fallbacks for
+            # rows persisted via the JSON API (which only fills the JSON blob).
+            purchase = (
+                simulation.get("purchase_price_yen")
+                or rsj.get("recommended_purchase_price")
+                or 0
+            )
+            monthly = (
+                simulation.get("lease_monthly_yen")
+                or rsj.get("monthly_lease_fee")
+                or 0
+            )
+            term = (
+                simulation.get("lease_term_months")
+                or (rsj.get("input_data") or {}).get("lease_term_months")
+                or 36
+            )
 
-            if purchase > 0 and monthly > 0 and term > 0:
-                residual_rate_val = rsj.get("residual_rate", 0.20)
-                residual = int(purchase * residual_rate_val) if residual_rate_val else int(purchase * 0.20)
-                dep_per_month = (purchase - residual) / term
-                mr = (rsj.get("target_yield_rate", 8) / 100) / 12
+            saved_schedule = rsj.get("monthly_schedule")
+            has_schedule = (
+                isinstance(saved_schedule, list) and len(saved_schedule) > 0
+            )
 
+            if has_schedule or (purchase > 0 and monthly > 0 and term > 0):
                 months: list[str] = []
                 asset_values: list[int] = []
                 cumulative_incomes: list[int] = []
@@ -234,13 +255,11 @@ async def simulation_result_page(request: Request, simulation_id: str):
                 monthly_profits: list[int] = []
                 cumulative_profits: list[int] = []
 
-                # Use saved monthly_schedule from result_summary_json if available
-                saved_schedule = rsj.get("monthly_schedule")
-                if saved_schedule and isinstance(saved_schedule, list) and len(saved_schedule) > 0:
+                if has_schedule:
+                    # Primary path: use the engine-emitted monthly_schedule
+                    # (incorporates body depreciation tables, mileage adj, etc.)
                     for row in saved_schedule:
                         m = row.get("month", 0)
-                        # PricingEngine / quick-calc canonical field is asset_value;
-                        # fall back to book_value for any legacy rows.
                         asset = row.get("asset_value", row.get("book_value", 0))
                         cum_income = row.get("cumulative_income", 0)
                         profit = row.get("monthly_profit", row.get("net_profit", 0))
@@ -259,7 +278,17 @@ async def simulation_result_page(request: Request, simulation_id: str):
                         cumulative_profits.append(int(cum_profit))
                     term = len(saved_schedule)
                 else:
-                    # Fallback: recalculate from simulation fields
+                    # Legacy fallback: straight-line approx for old rows that
+                    # were saved before monthly_schedule was persisted.
+                    residual_rate_val = (
+                        rsj.get("residual_rate")
+                        or rsj.get("residual_rate_result")
+                        or (0.20 if term <= 36 else 0.10)
+                    )
+                    residual = int(purchase * residual_rate_val)
+                    dep_per_month = (purchase - residual) / term if term else 0
+                    mr = (rsj.get("target_yield_rate", 8) / 100) / 12
+
                     cum_income = 0
                     cum_profit = 0
                     for m in range(1, term + 1):
