@@ -25,7 +25,7 @@
   </div>
   <div class="spacer"></div>
   <button class="btn-mx"
-          hx-post="/yayoi/sync"
+          hx-post="/api/v1/yayoi/sync-invoices"
           hx-target="#invoice-table-container"
           hx-swap="outerHTML"
           hx-confirm="弥生会計と同期しますか？"
@@ -66,7 +66,7 @@
       <select name="fund_id"
               class="btn-mx"
               style="padding:6px 10px;"
-              hx-get="/invoices/table"
+              hx-get="/api/v1/invoices/"
               hx-target="#invoice-table-container"
               hx-trigger="change"
               hx-include="#filter-form"
@@ -79,7 +79,7 @@
       <select name="status"
               class="btn-mx"
               style="padding:6px 10px;"
-              hx-get="/invoices/table"
+              hx-get="/api/v1/invoices/"
               hx-target="#invoice-table-container"
               hx-trigger="change"
               hx-include="#filter-form"
@@ -95,7 +95,7 @@
       <select name="due_month"
               class="btn-mx"
               style="padding:6px 10px;"
-              hx-get="/invoices/table"
+              hx-get="/api/v1/invoices/"
               hx-target="#invoice-table-container"
               hx-trigger="change"
               hx-include="#filter-form"
@@ -115,7 +115,7 @@
              placeholder="番号検索"
              value="{{ request.query_params.get('q', '') }}"
              style="padding:6px 10px 6px 30px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;width:100%;"
-             hx-get="/invoices/table"
+             hx-get="/api/v1/invoices/"
              hx-target="#invoice-table-container"
              hx-trigger="keyup changed delay:300ms, search"
              hx-include="#filter-form"
@@ -213,7 +213,7 @@
           {% for p in range(1, meta.total_pages + 1) %}
             <button class="btn-mx"
                     style="margin-left:3px;padding:4px 10px;{% if p == meta.page %}font-weight:700;background:var(--navy);color:#fff;border-color:var(--navy);{% endif %}"
-                    hx-get="/invoices/table?page={{ p }}"
+                    hx-get="/api/v1/invoices/?page={{ p }}"
                     hx-target="#invoice-table-container"
                     hx-include="#filter-form"
                     hx-indicator="#table-loading">{{ p }}</button>

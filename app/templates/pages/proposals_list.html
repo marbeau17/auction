@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+{% block title %}提案書PDF生成 - CVLPOS{% endblock %}
+{% block page_title %}提案書{% endblock %}
+
+{% block content %}
+{% include "partials/_error_banner.html" %}
+<div class="page-head">
+    <div>
+        <h1>提案書PDF生成</h1>
+        <div class="sub">シミュレーションを選択して提案書を生成</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card__body card__body--flush">
+        {% if simulations %}
+        <div style="overflow-x:auto">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>車両</th>
+                        <th>作成日</th>
+                        <th>ステータス</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in simulations %}
+                    <tr style="cursor:pointer" onclick="location.href='/proposals/preview/{{ s.id }}'">
+                        <td><a href="/proposals/preview/{{ s.id }}">{{ s.target_model_name or s.title or "無題" }} {{ s.target_model_year or "" }}{% if s.target_model_year %}年{% endif %}</a></td>
+                        <td>{{ s.created_at[:10] if s.created_at else "-" }}</td>
+                        <td>
+                            {% if s.status == 'completed' %}{{ chip("完了", "ok") }}
+                            {% elif s.status == 'approved' %}{{ chip("承認済", "ok") }}
+                            {% elif s.status == 'draft' %}{{ chip("下書き", "warn") }}
+                            {% else %}{{ chip(s.status or "-", "neutral") }}{% endif %}
+                        </td>
+                        <td><a href="/proposals/preview/{{ s.id }}" class="btn-mx">提案書を生成</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>提案書生成に使えるシミュレーションがありません</p>
+            <a href="/simulation/new" class="btn-mx primary" style="margin-top:16px">新規シミュレーション</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

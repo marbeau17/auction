@@ -922,3 +922,56 @@ body.matsu[data-theme="dark"] .note-mx { background: rgba(230,196,106,.08); colo
 body.matsu[data-theme="dark"] #cvl-theme-toggle .theme-icon-light { display: none; }
 body.matsu[data-theme="dark"] #cvl-theme-toggle .theme-icon-dark  { display: inline; }
 body.matsu[data-theme="dark"] #cvl-theme-toggle .theme-icon-dark[hidden] { display: inline !important; }
+
+/* ============================================================
+   Phase 7 — dark mode contrast fixes
+   ============================================================ */
+body.matsu[data-theme="dark"] .fund-switch-menu {
+  background: var(--card);
+  border-color: var(--line-2);
+}
+body.matsu[data-theme="dark"] .fund-switch-menu .opt { color: var(--text); }
+body.matsu[data-theme="dark"] .fund-switch-menu .opt:hover { background: #283348; }
+body.matsu[data-theme="dark"] .fund-switch-menu .opt[aria-selected="true"] {
+  background: rgba(230,196,106,.15);
+  color: #fff;
+}
+body.matsu[data-theme="dark"] .fund-switch-menu .opt .aum { color: var(--muted); }
+
+body.matsu[data-theme="dark"] .var-bar {
+  background: var(--card);
+  border-color: var(--line-2);
+}
+body.matsu[data-theme="dark"] .var-bar .lbl { color: var(--muted); }
+body.matsu[data-theme="dark"] .var-bar button { color: var(--text); }
+
+body.matsu[data-theme="dark"] .tweaks {
+  background: var(--card);
+  border-color: var(--line-2);
+}
+body.matsu[data-theme="dark"] .tweaks h4 { color: #fff; }
+body.matsu[data-theme="dark"] .tweaks label { color: var(--muted); }
+body.matsu[data-theme="dark"] .tweaks select,
+body.matsu[data-theme="dark"] .tweaks input[type="text"] {
+  background: #232d3f;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+body.matsu[data-theme="dark"] .mx-topbar .search input { color: var(--text); }
+body.matsu[data-theme="dark"] .mx-topbar .search input::placeholder { color: var(--muted); }
+
+body.matsu[data-theme="dark"] .kpi-sm .bar { background: #283348; }
+
+body.matsu[data-theme="dark"] .user-chip {
+  background: var(--card);
+  border-color: var(--line-2);
+  color: var(--text);
+}
+body.matsu[data-theme="dark"] .user-chip .role { color: var(--muted); }
+
+body.matsu[data-theme="dark"] #cvl-bell-panel {
+  background: var(--card);
+  border-color: var(--line-2);
+}
+body.matsu[data-theme="dark"] #cvl-bell-panel b { color: #fff; }

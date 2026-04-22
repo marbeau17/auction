@@ -436,7 +436,8 @@ def create_app() -> FastAPI:
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     # -- Favicon --------------------------------------------------------
-    @app.get("/favicon.ico", include_in_schema=False)
+    # Accept HEAD too — browsers + health checkers probe with HEAD before GET.
+    @app.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
     async def favicon():
         from fastapi.responses import FileResponse
 

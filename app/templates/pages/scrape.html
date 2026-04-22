@@ -18,10 +18,24 @@
   <div>
     <span class="tag">松プラン限定 NEW</span>
     <h1>自動価格収集</h1>
-    <div class="sub">AI-NET / トラックキングダム / USS / TAA / JU を横断スクレイピング + API連携</div>
+    <div class="sub">AI-NET / トラックキングダム / USS / TAA / JU を横断スクレイピング + API連携（一部サイトは手動インポート対応中）</div>
   </div>
   <div class="spacer"></div>
   <button class="btn-mx primary" type="button">{{ icon("play", 12) }}全JOB 実行</button>
+</div>
+
+{# ===== Manual import callout ===== #}
+<div class="alert-mx amber" role="note" style="margin-bottom:16px">
+  <span class="dot" aria-hidden="true"></span>
+  <div style="flex:1; min-width:0">
+    <div><b>スクレイパー未対応のサイトは手動インポート</b></div>
+    <div style="margin-top:2px; font-size:12px">
+      AI-NET / USS / TAA / JU は現在 API 直接連携に対応中です。その間は CSV / XLSX 形式で相場データを手動アップロードできます。
+    </div>
+  </div>
+  <a href="/market-data/import" class="btn-mx gold" style="align-self:center">
+    {{ icon("dl", 14) }} 手動インポート画面へ
+  </a>
 </div>
 
 {# ===== KPI row ===== #}

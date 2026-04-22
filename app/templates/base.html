@@ -17,6 +17,10 @@
     <link rel="stylesheet" href="/static/css/matsu-components.css">
 
     <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+    {# json-enc extension: required by invoice_detail.html's approve/reject/submit-review buttons
+       which send JSON bodies to Pydantic-backed POST endpoints. Without this, htmx falls back
+       to form-encoding and the handlers 422. Flagged by monkey-test M3. #}
+    <script src="https://unpkg.com/htmx-ext-json-enc@2.0.2/json-enc.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js"></script>
     {% block head_extra %}{% endblock %}
 </head>

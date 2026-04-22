@@ -41,6 +41,8 @@
     font-weight: 700;
     color: var(--navy);
     padding: 0 6px;
+    margin: -16px 6px 0;    /* pull legend up over border */
+    display: block;         /* explicit block */
   }
   .form-row {
     display: grid;
@@ -309,7 +311,7 @@
             <div class="form-group" style="margin-bottom:0">
               <label class="form-label">プライシングマスタから読込</label>
               <select name="pricing_master_id" id="pricing-master-select" class="form-select"
-                      hx-get="/api/v1/pricing/master-params"
+                      hx-get="/api/v1/pricing/masters"
                       hx-target="#pricing-params-area"
                       hx-swap="innerHTML"
                       hx-trigger="change"

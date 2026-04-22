@@ -32,7 +32,9 @@
 <div id="invoice-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
   {% if invoice.status == 'created' %}
   <button class="btn-mx primary"
-          hx-post="/invoices/{{ invoice.id }}/submit-review"
+          hx-put="/api/v1/invoices/{{ invoice.id }}/status"
+          hx-vals='{"status": "pending_review"}'
+          hx-ext="json-enc"
           hx-target="#invoice-actions"
           hx-swap="outerHTML"
           hx-confirm="この請求書を承認申請しますか？">
@@ -42,7 +44,9 @@
 
   {% if invoice.status == 'pending_review' %}
   <button class="btn-mx primary"
-          hx-post="/invoices/{{ invoice.id }}/approve"
+          hx-post="/api/v1/invoices/{{ invoice.id }}/approve"
+          hx-vals='{"invoice_id": "{{ invoice.id }}", "action": "approve"}'
+          hx-ext="json-enc"
           hx-target="#invoice-actions"
           hx-swap="outerHTML"
           hx-confirm="この請求書を承認しますか？">
@@ -50,7 +54,9 @@
   </button>
   <button class="btn-mx"
           style="color:var(--red);border-color:var(--red);"
-          hx-post="/invoices/{{ invoice.id }}/reject"
+          hx-post="/api/v1/invoices/{{ invoice.id }}/approve"
+          hx-vals='{"invoice_id": "{{ invoice.id }}", "action": "reject"}'
+          hx-ext="json-enc"
           hx-target="#invoice-actions"
           hx-swap="outerHTML"
           hx-confirm="この請求書を差し戻しますか？">
@@ -60,7 +66,7 @@
 
   {% if invoice.status == 'approved' %}
   <button class="btn-mx primary"
-          hx-post="/invoices/{{ invoice.id }}/generate-pdf"
+          hx-get="/api/v1/invoices/{{ invoice.id }}/pdf"
           hx-target="#invoice-actions"
           hx-swap="outerHTML"
           hx-indicator=".btn-mx">
@@ -70,7 +76,7 @@
 
   {% if invoice.status == 'pdf_ready' %}
   <button class="btn-mx primary"
-          hx-post="/invoices/{{ invoice.id }}/send-email"
+          hx-post="/api/v1/invoices/{{ invoice.id }}/send"
           hx-target="#invoice-actions"
           hx-swap="outerHTML"
           hx-confirm="請求書をメールで送信しますか？">

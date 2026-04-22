@@ -12,7 +12,7 @@
      chart_nav_ratios  -- JSON-safe list of NAV ratio percentages
      chart_nav_baseline-- JSON-safe list (60% reference line)
 #}
-{% set assessment_class = {'推奨': 'success', '要検討': 'warning', '非推奨': 'danger'}.get(result.assessment, '') %}
+{% set assessment_class = {'推奨': 'success', '要検討': 'warning', '非推奨': 'danger'}.get(result.assessment, '') if result.assessment else '' %}
 <style>
 .sim-result { display: block; width: 100%; max-width: 100%; }
 .sim-result .card { display: block; width: 100%; margin-top: 24px; }
@@ -29,36 +29,36 @@
 <div class="sim-result" id="simulation-result">
   <h3>シミュレーション結果</h3>
   <p class="text-muted">
-    {{ input_data.maker }} {{ input_data.model }} |
-    {{ input_data.lease_term_months }}ヶ月 |
-    目標利回り {{ "%.1f"|format(input_data.target_yield_rate * 100) }}%
+    {{ input_data.maker | default('') }} {{ input_data.model | default('') }} |
+    {{ input_data.lease_term_months | default(0) }}ヶ月 |
+    目標利回り {{ "%.1f"|format((input_data.target_yield_rate | default(0)) * 100) }}%
   </p>
 
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-card__label">推奨買取価格</div>
-      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.recommended_purchase_price) }}</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.recommended_purchase_price | default(0)) }}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">上限買取価格</div>
-      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.max_purchase_price) }}</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.max_purchase_price | default(0)) }}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">月額リース料</div>
-      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.monthly_lease_fee) }}</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.monthly_lease_fee | default(0)) }}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">リース料総額</div>
-      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.total_lease_fee) }}</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.total_lease_fee | default(0)) }}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">想定残価</div>
-      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.estimated_residual_value) }}</div>
-      <div class="kpi-card__sub">残価率 {{ "%.0f"|format(result.residual_rate_result * 100) }}%</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.estimated_residual_value | default(0)) }}</div>
+      <div class="kpi-card__sub">残価率 {{ "%.0f"|format((result.residual_rate_result | default(0)) * 100) }}%</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">実質利回り</div>
-      <div class="kpi-card__value">{{ "%.1f"|format(result.effective_yield_rate * 100) }}%</div>
+      <div class="kpi-card__value">{{ "%.1f"|format((result.effective_yield_rate | default(0)) * 100) }}%</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">損益分岐点</div>
@@ -66,19 +66,19 @@
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">判定</div>
-      <div class="kpi-card__value"><span class="badge badge--{{ assessment_class }}">{{ result.assessment }}</span></div>
+      <div class="kpi-card__value"><span class="badge badge--{{ assessment_class }}">{{ result.assessment | default('') }}</span></div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__label">市場中央値</div>
-      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.market_median_price) }}</div>
-      <div class="kpi-card__sub">サンプル {{ result.market_sample_count }}件 / 乖離 {{ "%.1f"|format(result.market_deviation_rate * 100) }}%</div>
+      <div class="kpi-card__value">&yen;{{ "{:,}".format(result.market_median_price | default(0)) }}</div>
+      <div class="kpi-card__sub">サンプル {{ result.market_sample_count | default(0) }}件 / 乖離 {{ "%.1f"|format((result.market_deviation_rate | default(0)) * 100) }}%</div>
     </div>
     {% if equipment_list %}
     <div class="kpi-card" style="grid-column: span 2;">
       <div class="kpi-card__label">装備オプション</div>
       <div class="kpi-card__value" style="font-size:0.875rem">{{ equipment_list|join(', ') }}</div>
       {% if input_data.body_option_value %}
-      <div class="kpi-card__sub">合計 &yen;{{ "{:,}".format(input_data.body_option_value) }}</div>
+      <div class="kpi-card__sub">合計 &yen;{{ "{:,}".format(input_data.body_option_value | default(0)) }}</div>
       {% endif %}
     </div>
     {% endif %}
@@ -151,18 +151,18 @@
             </tr>
           </thead>
           <tbody>
-            {% for item in result.monthly_schedule %}
+            {% for item in result.monthly_schedule or [] %}
             <tr>
-              <td>{{ item.month }}月</td>
-              <td class="text-right">&yen;{{ "{:,}".format(item.asset_value) }}</td>
-              <td class="text-right">&yen;{{ "{:,}".format(item.lease_income) }}</td>
-              <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_income) }}</td>
-              <td class="text-right">&yen;{{ "{:,}".format(item.depreciation_expense) }}</td>
-              <td class="text-right">&yen;{{ "{:,}".format(item.financing_cost) }}</td>
-              <td class="text-right" style="color: {{ '#10b981' if item.monthly_profit >= 0 else '#ef4444' }}">
-                &yen;{{ "{:,}".format(item.monthly_profit) }}
+              <td>{{ item.month | default(0) }}月</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.asset_value | default(0)) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.lease_income | default(0)) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_income | default(0)) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.depreciation_expense | default(0)) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.financing_cost | default(0)) }}</td>
+              <td class="text-right" style="color: {{ '#10b981' if (item.monthly_profit | default(0)) >= 0 else '#ef4444' }}">
+                &yen;{{ "{:,}".format(item.monthly_profit | default(0)) }}
               </td>
-              <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_profit) }}</td>
+              <td class="text-right">&yen;{{ "{:,}".format(item.cumulative_profit | default(0)) }}</td>
             </tr>
             {% endfor %}
           </tbody>

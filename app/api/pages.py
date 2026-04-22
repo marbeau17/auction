@@ -59,7 +59,7 @@ NAV_CONFIG = {
                 # Kept per 2026-04-22 decision (spec §9.3): operators need per-vehicle
                 # depth that the aggregated Price / Portfolio views don't expose.
                 {"id": "simulation", "label": "個別シミュレーション", "href": "/simulation/new", "icon": "fund"},
-                {"id": "contracts", "label": "契約書自動生成", "href": "/simulation", "icon": "contract"},
+                {"id": "contracts", "label": "契約書自動生成", "href": "/simulations", "icon": "contract"},
                 {"id": "invoices", "label": "請求書管理・弥生連携", "href": "/invoices", "icon": "invoice"},
             ],
         },
@@ -601,6 +601,39 @@ async def simulation_list_page(request: Request):
     })
 
 
+@router.get("/simulation", response_class=RedirectResponse)
+async def simulation_root_redirect(request: Request):
+    # Legacy/bookmark compatibility: /simulation → /simulations list page.
+    return RedirectResponse(url="/simulations", status_code=302)
+
+
+@router.get("/proposals", response_class=HTMLResponse)
+async def proposals_list_page(request: Request):
+    user = await _get_optional_user(request)
+    redirect = _require_auth(user, request)
+    if redirect:
+        return redirect
+
+    simulations: list[dict[str, Any]] = []
+    error_banner: str | None = None
+    try:
+        from app.db.supabase_client import get_supabase_client
+        client = get_supabase_client(service_role=True)
+        result = client.table("simulations").select("*").order("created_at", desc=True).limit(50).execute()
+        simulations = result.data or []
+    except Exception:
+        logger.exception("proposals_list_fetch_failed", handler="proposals_list_page")
+        error_banner = "提案書一覧の取得に失敗しました。しばらくしてから再度お試しください。"
+
+    return _render(request, "pages/proposals_list.html", {
+        "user": user,
+        "simulations": simulations,
+        "total_count": len(simulations),
+        "error_banner": error_banner,
+        "error_message": error_banner,
+    })
+
+
 _MARKET_DATA_FILTER_KEYS = (
     "maker",
     "body_type",
@@ -1004,16 +1037,6 @@ async def market_data_detail_page(request: Request, item_id: str):
         "error_banner": error_banner,
         "error_message": error_banner,
     })
-
-
-@router.get("/financial-analysis", response_class=HTMLResponse)
-async def financial_analysis_page(request: Request):
-    user = await _get_optional_user(request)
-    redirect = _require_auth(user, request)
-    if redirect:
-        return redirect
-
-    return _render(request, "pages/financial_analysis.html", {"user": user})
 
 
 @router.get("/yayoi/status", response_class=HTMLResponse)

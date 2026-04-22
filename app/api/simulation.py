@@ -253,9 +253,16 @@ async def _parse_simulation_payload(
             equipment_list = payload.pop("_equipment", []) or []
             sim_input = SimulationInput(**payload)
     except ValidationError as exc:
+        # Pydantic v2's ValidationError.errors() embeds raw `ValueError` objects
+        # under `ctx.error`, which FastAPI then tries to json.dumps → 500.
+        # Strip non-serialisable ctx so the client gets a clean 422 instead.
+        safe_errors = [
+            {k: v for k, v in err.items() if k != "ctx"}
+            for err in exc.errors()
+        ]
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=exc.errors(),
+            detail=safe_errors,
         )
     except (ValueError, TypeError) as exc:
         raise HTTPException(
@@ -705,11 +712,34 @@ async def calculate_simulation_quick(
             "equipment_list": equipment_list,
             **_build_chart_context(result, result.recommended_purchase_price),
         }
-        return templates.TemplateResponse(
-            "partials/simulation/result_card.html",
-            ctx,
-            status_code=201 if saved_id else 200,
-        )
+        try:
+            return templates.TemplateResponse(
+                "partials/simulation/result_card.html",
+                ctx,
+                status_code=201 if saved_id else 200,
+            )
+        except Exception:
+            # Template rendering failure must not surface as a 500 — the
+            # calculation (and persistence, if any) already succeeded.
+            logger.exception(
+                "sim_calc_template_render_failed", saved_id=saved_id
+            )
+            if saved_id:
+                fallback = (
+                    '<div class="alert alert--error">'
+                    '結果表示でエラーが発生しました。シミュレーションは保存されました。'
+                    f' <a href="/simulation/{saved_id}/result">保存結果を確認</a>'
+                    '</div>'
+                )
+                return HTMLResponse(content=fallback, status_code=200)
+            return HTMLResponse(
+                content=(
+                    '<div class="alert alert--error">'
+                    '結果表示でエラーが発生しました。'
+                    '</div>'
+                ),
+                status_code=500,
+            )
 
     payload: dict[str, Any] = {
         "input_data": sim_input.model_dump(mode="json"),
