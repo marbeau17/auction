@@ -461,3 +461,417 @@ class TestRBACCreateInvoice:
             pytest.skip("Invoices create endpoint not available")
 
         assert response.status_code == 403, response.text
+
+
+# ===========================================================================
+# Bug 1 — Japanese filename in Content-Disposition must round-trip without
+# 500ing via Starlette's latin-1 header encoder.
+# ===========================================================================
+
+
+class TestInvoicePDFJapaneseFilename:
+    async def test_pdf_with_japanese_invoice_number(
+        self, client_invoices: AsyncClient
+    ) -> None:
+        """Japanese invoice_number must not crash the Content-Disposition header."""
+        fake: _FakeClient = client_invoices._fake  # type: ignore[attr-defined]
+        invoice_id = str(uuid4())
+        fake.tables["invoices"] = [
+            {
+                "id": invoice_id,
+                "fund_id": str(uuid4()),
+                "lease_contract_id": str(uuid4()),
+                # Non-ASCII invoice number triggers the latin-1 bug pre-fix.
+                "invoice_number": "請求書-2026年4月-甲第一号",
+                "status": "approved",
+                "total_amount": 100_000,
+                "subtotal": 90_909,
+                "tax_amount": 9_091,
+                "tax_rate": 0.10,
+                "due_date": "2026-04-30",
+                "billing_period_start": "2026-04-01",
+                "billing_period_end": "2026-04-30",
+                "created_at": NOW_ISO,
+            }
+        ]
+        fake.tables["invoice_line_items"] = []
+
+        response = await client_invoices.get(f"/api/v1/invoices/{invoice_id}/pdf")
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice PDF endpoint not available")
+
+        # Must NOT 500 on the Japanese filename.
+        assert response.status_code == 200, response.text
+
+        disposition = response.headers.get("content-disposition", "")
+        assert "filename*=UTF-8''" in disposition, disposition
+        # The ASCII filename field must be pure latin-1 (no raw non-ASCII).
+        disposition.encode("latin-1")  # raises UnicodeEncodeError if broken
+
+    async def test_pdf_html_fallback_japanese_filename(
+        self, client_invoices: AsyncClient
+    ) -> None:
+        """HTML fallback branch (fpdf2 failure path) also round-trips Japanese names.
+
+        We force the HTML fallback by making ``LightweightPDFGenerator`` raise.
+        """
+        fake: _FakeClient = client_invoices._fake  # type: ignore[attr-defined]
+        invoice_id = str(uuid4())
+        fake.tables["invoices"] = [
+            {
+                "id": invoice_id,
+                "fund_id": str(uuid4()),
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "請求書-テスト-日本語",
+                "status": "approved",
+                "total_amount": 100_000,
+                "subtotal": 90_909,
+                "tax_amount": 9_091,
+                "tax_rate": 0.10,
+                "due_date": "2026-04-30",
+                "billing_period_start": "2026-04-01",
+                "billing_period_end": "2026-04-30",
+                "created_at": NOW_ISO,
+            }
+        ]
+        fake.tables["invoice_line_items"] = []
+
+        # Force the fpdf2 path to fail so we hit the HTML fallback branch.
+        with patch(
+            "app.api.invoices.LightweightPDFGenerator"
+        ) as mock_gen:
+            instance = mock_gen.return_value
+            instance.generate_invoice_pdf.side_effect = RuntimeError("boom")
+
+            response = await client_invoices.get(
+                f"/api/v1/invoices/{invoice_id}/pdf"
+            )
+
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice PDF endpoint not available")
+
+        assert response.status_code == 200, response.text
+        disposition = response.headers.get("content-disposition", "")
+        assert "filename*=UTF-8''" in disposition, disposition
+        disposition.encode("latin-1")
+
+
+# ===========================================================================
+# Bug 2 — Cross-fund read isolation. A non-admin user must only see invoices
+# belonging to funds they manage (via ``funds.manager_user_id``).
+# ===========================================================================
+
+
+OPERATOR_USER_ID = str(uuid4())
+OPERATOR_EMAIL = "operator@example.com"
+
+
+@pytest.fixture
+async def client_operator_invoices(
+    fake_supabase: _FakeClient,
+) -> AsyncClient:
+    """Operator-authenticated client — allowed to read invoices, but only
+    for funds they manage (fund-scoped)."""
+    for t in ("invoices", "invoice_line_items", "invoice_approvals", "email_logs", "funds"):
+        fake_supabase.tables.setdefault(t, [])
+
+    app = create_app()
+
+    async def _override_user() -> dict[str, Any]:
+        return {
+            "id": OPERATOR_USER_ID,
+            "email": OPERATOR_EMAIL,
+            "role": "operator",
+            "stakeholder_role": "operator",
+        }
+
+    def _override_supabase() -> _FakeClient:
+        return fake_supabase
+
+    app.dependency_overrides[get_current_user] = _override_user
+    app.dependency_overrides[get_supabase_client] = _override_supabase
+
+    token = _make_jwt(OPERATOR_USER_ID, OPERATOR_EMAIL, "operator")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        cookies={"access_token": token},
+    ) as ac:
+        ac._fake = fake_supabase  # type: ignore[attr-defined]
+        yield ac
+
+
+class TestCrossFundReadIsolation:
+    async def test_list_only_returns_funds_user_manages(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """GET / for a non-admin only returns invoices in funds they manage."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())  # operator-owned
+        fund_b = str(uuid4())  # owned by someone else
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+        fake.tables["invoices"] = [
+            {
+                "id": str(uuid4()),
+                "fund_id": fund_a,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-A-0001",
+                "status": "approved",
+                "total_amount": 100_000,
+                "due_date": "2026-04-30",
+                "created_at": NOW_ISO,
+            },
+            {
+                "id": str(uuid4()),
+                "fund_id": fund_b,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-B-0001",
+                "status": "approved",
+                "total_amount": 999_999,
+                "due_date": "2026-04-30",
+                "created_at": NOW_ISO,
+            },
+        ]
+
+        response = await client_operator_invoices.get("/api/v1/invoices")
+        if response.status_code in (404, 405):
+            pytest.skip("Invoices list endpoint not available")
+        assert response.status_code == 200, response.text
+
+        items = response.json().get("data") or []
+        numbers = [i["invoice_number"] for i in items]
+        assert "INV-A-0001" in numbers
+        assert "INV-B-0001" not in numbers, (
+            "fund B invoice leaked to non-member operator"
+        )
+
+    async def test_get_invoice_in_other_fund_is_forbidden(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """GET /{id} for an invoice in an inaccessible fund returns 403."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())
+        fund_b = str(uuid4())
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+
+        invoice_b_id = str(uuid4())
+        fake.tables["invoices"] = [
+            {
+                "id": invoice_b_id,
+                "fund_id": fund_b,  # NOT operator's fund
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-B-0002",
+                "status": "approved",
+                "total_amount": 100_000,
+                "due_date": "2026-04-30",
+                "created_at": NOW_ISO,
+            }
+        ]
+        fake.tables["invoice_line_items"] = []
+
+        response = await client_operator_invoices.get(
+            f"/api/v1/invoices/{invoice_b_id}"
+        )
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice detail endpoint not available")
+        assert response.status_code == 403, response.text
+
+    async def test_pdf_in_other_fund_is_forbidden(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """GET /{id}/pdf for an invoice in an inaccessible fund returns 403."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())
+        fund_b = str(uuid4())
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+
+        invoice_b_id = str(uuid4())
+        fake.tables["invoices"] = [
+            {
+                "id": invoice_b_id,
+                "fund_id": fund_b,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-B-0003",
+                "status": "approved",
+                "total_amount": 100_000,
+                "subtotal": 90_909,
+                "tax_amount": 9_091,
+                "tax_rate": 0.10,
+                "due_date": "2026-04-30",
+                "billing_period_start": "2026-04-01",
+                "billing_period_end": "2026-04-30",
+                "created_at": NOW_ISO,
+            }
+        ]
+        fake.tables["invoice_line_items"] = []
+
+        response = await client_operator_invoices.get(
+            f"/api/v1/invoices/{invoice_b_id}/pdf"
+        )
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice PDF endpoint not available")
+        assert response.status_code == 403, response.text
+
+    async def test_approvals_in_other_fund_is_forbidden(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """GET /{id}/approvals for an invoice in an inaccessible fund returns 403."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())
+        fund_b = str(uuid4())
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+
+        invoice_b_id = str(uuid4())
+        fake.tables["invoices"] = [
+            {
+                "id": invoice_b_id,
+                "fund_id": fund_b,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-B-0004",
+                "status": "approved",
+                "total_amount": 100_000,
+                "due_date": "2026-04-30",
+                "created_at": NOW_ISO,
+            }
+        ]
+
+        response = await client_operator_invoices.get(
+            f"/api/v1/invoices/{invoice_b_id}/approvals"
+        )
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice approvals endpoint not available")
+        assert response.status_code == 403, response.text
+
+    async def test_email_logs_in_other_fund_is_forbidden(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """GET /{id}/email-logs for an invoice in an inaccessible fund returns 403."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())
+        fund_b = str(uuid4())
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+
+        invoice_b_id = str(uuid4())
+        fake.tables["invoices"] = [
+            {
+                "id": invoice_b_id,
+                "fund_id": fund_b,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-B-0005",
+                "status": "approved",
+                "total_amount": 100_000,
+                "due_date": "2026-04-30",
+                "created_at": NOW_ISO,
+            }
+        ]
+
+        response = await client_operator_invoices.get(
+            f"/api/v1/invoices/{invoice_b_id}/email-logs"
+        )
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice email-logs endpoint not available")
+        assert response.status_code == 403, response.text
+
+    async def test_overdue_list_excludes_other_fund_invoices(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """GET /overdue for non-admin excludes invoices in funds they don't manage."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())
+        fund_b = str(uuid4())
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+
+        fake.tables["invoices"] = [
+            {
+                "id": str(uuid4()),
+                "fund_id": fund_a,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-A-OVERDUE",
+                "status": "sent",
+                "total_amount": 100_000,
+                "due_date": "2020-01-01",
+                "created_at": NOW_ISO,
+            },
+            {
+                "id": str(uuid4()),
+                "fund_id": fund_b,
+                "lease_contract_id": str(uuid4()),
+                "invoice_number": "INV-B-OVERDUE",
+                "status": "sent",
+                "total_amount": 200_000,
+                "due_date": "2020-01-01",
+                "created_at": NOW_ISO,
+            },
+        ]
+
+        response = await client_operator_invoices.get("/api/v1/invoices/overdue")
+        if response.status_code in (404, 405):
+            pytest.skip("Invoice overdue endpoint not available")
+        assert response.status_code == 200, response.text
+
+        items = response.json().get("data") or []
+        numbers = [i["invoice_number"] for i in items]
+        assert "INV-A-OVERDUE" in numbers
+        assert "INV-B-OVERDUE" not in numbers, (
+            "fund B overdue invoice leaked to non-member operator"
+        )
+
+    async def test_explicit_fund_filter_for_other_fund_is_forbidden(
+        self, client_operator_invoices: AsyncClient
+    ) -> None:
+        """Query param fund_id pointing to an inaccessible fund returns 403."""
+        fake: _FakeClient = client_operator_invoices._fake  # type: ignore[attr-defined]
+
+        fund_a = str(uuid4())
+        fund_b = str(uuid4())
+        other_user = str(uuid4())
+
+        fake.tables["funds"] = [
+            {"id": fund_a, "manager_user_id": OPERATOR_USER_ID},
+            {"id": fund_b, "manager_user_id": other_user},
+        ]
+
+        response = await client_operator_invoices.get(
+            "/api/v1/invoices",
+            params={"fund_id": fund_b},
+        )
+        if response.status_code in (404, 405):
+            pytest.skip("Invoices list endpoint not available")
+        assert response.status_code == 403, response.text

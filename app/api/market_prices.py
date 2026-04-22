@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import HTMLResponse, StreamingResponse
 from supabase import Client
 
+from app.core.http import content_disposition
 from app.dependencies import get_current_user, get_supabase_client, require_role
 from app.main import templates
 from app.models.common import PaginatedResponse, PaginationMeta, SuccessResponse
@@ -316,7 +317,7 @@ async def export_csv(
     return StreamingResponse(
         _generate(),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
@@ -553,7 +554,7 @@ async def download_import_template() -> StreamingResponse:
     return StreamingResponse(
         iter([content]),
         media_type="text/csv; charset=utf-8-sig",
-        headers={"Content-Disposition": 'attachment; filename="market_data_import_template.csv"'},
+        headers={"Content-Disposition": content_disposition("market_data_import_template.csv")},
     )
 
 

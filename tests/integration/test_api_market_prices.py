@@ -166,6 +166,57 @@ class TestExportCsv:
         assert response.status_code == 200
         assert "text/csv" in response.headers.get("content-type", "")
 
+    async def test_export_csv_japanese_filename_regression(
+        self,
+        client: AsyncClient,
+        mock_supabase: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Regression: a Japanese filename must not crash the response.
+
+        Starlette encodes response headers as latin-1, so any non-ASCII char in
+        Content-Disposition previously 500ed. The content_disposition helper
+        emits both an ASCII fallback and RFC 5987 filename* so the header
+        stays latin-1-safe even when the underlying filename is Japanese.
+        """
+        import app.api.market_prices as market_prices_module
+
+        # Force the export endpoint to build a Japanese token into its filename
+        # by patching datetime.now().strftime() to return Japanese text.
+        class _FakeDT:
+            def strftime(self, _fmt: str) -> str:
+                return "テスト_20260422"
+
+        class _FakeNow:
+            @staticmethod
+            def now(tz=None):  # noqa: ANN001
+                return _FakeDT()
+
+        monkeypatch.setattr(market_prices_module, "datetime", _FakeNow)
+
+        vehicles = [_sample_vehicle()]
+        query = _make_chainable_query(data=vehicles)
+        mock_supabase.table.return_value = query
+
+        response = await client.get("/api/v1/market-prices/export")
+
+        assert response.status_code == 200, response.text
+        disposition = response.headers.get("content-disposition", "")
+        assert "attachment" in disposition
+        # RFC 5987 encoded form must be present so Japanese is preserved.
+        assert "filename*=UTF-8''" in disposition
+
+    async def test_import_template_uses_rfc5987_disposition(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        """Template download should also emit the RFC 5987 header form."""
+        response = await client.get("/api/v1/market-prices/import/template")
+        assert response.status_code == 200
+        disposition = response.headers.get("content-disposition", "")
+        assert "attachment" in disposition
+        assert "filename*=UTF-8''" in disposition
+
 
 class TestCreateVehicle:
     """POST /api/v1/market-prices/"""

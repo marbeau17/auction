@@ -21,9 +21,10 @@ from pydantic import BaseModel, Field
 from supabase import Client
 
 from app.db.repositories.invoice_repo import InvoiceRepository
+from app.core.http import content_disposition
 from app.core.pdf_generator import LightweightPDFGenerator, HAS_FPDF
 from app.dependencies import get_current_user, get_supabase_client, require_role
-from app.middleware.rbac import require_permission
+from app.middleware.rbac import get_user_role, require_permission
 from app.models.common import (
     ErrorResponse,
     PaginatedResponse,
@@ -68,6 +69,55 @@ def _is_htmx(request: Request) -> bool:
 def _get_repo(supabase: Client = Depends(get_supabase_client)) -> InvoiceRepository:
     """Provide an ``InvoiceRepository`` via dependency injection."""
     return InvoiceRepository(client=supabase)
+
+
+# ---------------------------------------------------------------------------
+# Fund-scoping helpers
+# ---------------------------------------------------------------------------
+
+
+def _accessible_fund_ids(
+    supabase: Client, user: dict[str, Any]
+) -> list[str] | None:
+    """Return fund IDs the user may access, or ``None`` for unrestricted.
+
+    Admins get full access (``None``). Other roles are scoped to funds they
+    manage via ``funds.manager_user_id``. Users with no managed funds get an
+    empty list, which callers should treat as "no access".
+    """
+    if get_user_role(user) == "admin":
+        return None
+    try:
+        resp = (
+            supabase.table("funds")
+            .select("id")
+            .eq("manager_user_id", user["id"])
+            .execute()
+        )
+        return [str(row["id"]) for row in (resp.data or [])]
+    except Exception:
+        logger.exception(
+            "accessible_fund_ids_failed", user_id=user.get("id")
+        )
+        return []
+
+
+def _user_can_access_invoice(
+    invoice: dict[str, Any],
+    accessible_fund_ids: list[str] | None,
+) -> bool:
+    """Return True when the user may access this invoice.
+
+    ``None`` accessible list means admin (allow all). An empty list means the
+    user has no fund membership — deny. Otherwise the invoice's ``fund_id``
+    must be in the list.
+    """
+    if accessible_fund_ids is None:
+        return True
+    fund_id = invoice.get("fund_id")
+    if fund_id is None:
+        return False
+    return str(fund_id) in accessible_fund_ids
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +380,8 @@ async def list_invoices(
     invoice_status: Optional[str] = Query(
         default=None, alias="status", description="Filter by invoice status"
     ),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "read")),
+    supabase: Client = Depends(get_supabase_client),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Return a paginated list of invoices with optional filters."""
@@ -341,11 +392,27 @@ async def list_invoices(
         status=invoice_status,
     )
 
+    allowed_fund_ids = _accessible_fund_ids(supabase, current_user)
+
+    # If the caller supplied an explicit ``fund_id`` filter, ensure they are
+    # allowed to see it; otherwise the repo filter below would silently return
+    # an empty page instead of communicating the denial.
+    if (
+        fund_id is not None
+        and allowed_fund_ids is not None
+        and str(fund_id) not in allowed_fund_ids
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="指定されたファンドへのアクセス権限がありません",
+        )
+
     items, total_count = await repo.list_invoices(
         fund_id=fund_id,
         status=invoice_status,
         page=page,
         per_page=per_page,
+        allowed_fund_ids=allowed_fund_ids,
     )
 
     total_pages = max(1, math.ceil(total_count / per_page))
@@ -384,13 +451,15 @@ async def list_invoices(
 )
 async def list_overdue_invoices(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "read")),
+    supabase: Client = Depends(get_supabase_client),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Return all invoices that are past their due date and not paid."""
     logger.info("invoice_overdue_list", user_id=current_user["id"])
 
-    overdue = await repo.get_overdue_invoices()
+    allowed_fund_ids = _accessible_fund_ids(supabase, current_user)
+    overdue = await repo.get_overdue_invoices(allowed_fund_ids=allowed_fund_ids)
 
     if _is_htmx(request):
         if not overdue:
@@ -453,7 +522,8 @@ async def list_overdue_invoices(
 async def get_invoice(
     request: Request,
     invoice_id: UUID,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "read")),
+    supabase: Client = Depends(get_supabase_client),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Return the full detail of a single invoice including line items."""
@@ -468,6 +538,13 @@ async def get_invoice(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="請求書が見つかりません",
+        )
+
+    allowed_fund_ids = _accessible_fund_ids(supabase, current_user)
+    if not _user_can_access_invoice(invoice, allowed_fund_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="この請求書へのアクセス権限がありません",
         )
 
     if _is_htmx(request):
@@ -956,7 +1033,8 @@ async def send_invoice(
 )
 async def get_invoice_pdf(
     invoice_id: UUID,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "read")),
+    supabase: Client = Depends(get_supabase_client),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> StreamingResponse:
     """Generate and download an invoice PDF.
@@ -978,6 +1056,13 @@ async def get_invoice_pdf(
             detail="請求書が見つかりません",
         )
 
+    allowed_fund_ids = _accessible_fund_ids(supabase, current_user)
+    if not _user_can_access_invoice(invoice, allowed_fund_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="この請求書へのアクセス権限がありません",
+        )
+
     invoice_number = invoice.get("invoice_number", str(invoice_id)[:8])
 
     # --- Attempt: fpdf2 lightweight PDF ---
@@ -989,8 +1074,8 @@ async def get_invoice_pdf(
                 io.BytesIO(pdf_bytes),
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": (
-                        f'attachment; filename="{invoice_number}.pdf"'
+                    "Content-Disposition": content_disposition(
+                        f"{invoice_number}.pdf"
                     ),
                 },
             )
@@ -1005,8 +1090,8 @@ async def get_invoice_pdf(
         buffer,
         media_type="text/html; charset=utf-8",
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="{invoice_number}.html"'
+            "Content-Disposition": content_disposition(
+                f"{invoice_number}.html"
             ),
         },
     )
@@ -1030,7 +1115,8 @@ async def get_invoice_pdf(
 async def get_invoice_approvals(
     request: Request,
     invoice_id: UUID,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "read")),
+    supabase: Client = Depends(get_supabase_client),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Return the approval history for a single invoice."""
@@ -1046,6 +1132,13 @@ async def get_invoice_approvals(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="請求書が見つかりません",
+        )
+
+    allowed_fund_ids = _accessible_fund_ids(supabase, current_user)
+    if not _user_can_access_invoice(existing, allowed_fund_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="この請求書へのアクセス権限がありません",
         )
 
     approvals = await repo.get_approvals(invoice_id)
@@ -1116,7 +1209,8 @@ async def get_invoice_approvals(
 async def get_invoice_email_logs(
     request: Request,
     invoice_id: UUID,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "read")),
+    supabase: Client = Depends(get_supabase_client),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Return the email send history for a single invoice."""
@@ -1132,6 +1226,13 @@ async def get_invoice_email_logs(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="請求書が見つかりません",
+        )
+
+    allowed_fund_ids = _accessible_fund_ids(supabase, current_user)
+    if not _user_can_access_invoice(existing, allowed_fund_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="この請求書へのアクセス権限がありません",
         )
 
     logs = await repo.get_email_logs(invoice_id)

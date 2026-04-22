@@ -36,6 +36,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from supabase import Client
 
 from app.config import Settings, get_settings
+from app.core.http import content_disposition
 from app.core.investor_report_generator import InvestorReportGenerator
 from app.db.repositories.investor_report_repo import InvestorReportRepository
 from app.dependencies import get_current_user, get_supabase_client
@@ -425,5 +426,5 @@ async def download_report(
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename)},
     )

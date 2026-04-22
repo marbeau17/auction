@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from supabase import Client
 
+from app.core.http import content_disposition
 from app.db.repositories.privacy_repo import PrivacyRepository
 from app.dependencies import get_current_user, get_supabase_client
 from app.middleware.rbac import require_any_role
@@ -196,7 +197,7 @@ async def export_my_data(
     return StreamingResponse(
         buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 

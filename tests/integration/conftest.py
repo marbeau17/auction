@@ -84,9 +84,13 @@ def _make_chainable_query(
     query.neq.return_value = query
     query.gte.return_value = query
     query.lte.return_value = query
+    query.lt.return_value = query
     query.ilike.return_value = query
+    query.like.return_value = query
+    query.in_.return_value = query
     query.not_.return_value = query
     query.not_.is_.return_value = query
+    query.not_.in_.return_value = query
     query.is_.return_value = query
     query.order.return_value = query
     query.range.return_value = query

@@ -33,13 +33,21 @@ class InvoiceRepository:
         status: Optional[str] = None,
         page: int = 1,
         per_page: int = 20,
+        allowed_fund_ids: Optional[list[str]] = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """List invoices with optional filters.
+
+        ``allowed_fund_ids`` restricts results to the given fund IDs (used by
+        non-admin callers for tenant scoping). ``None`` means unrestricted,
+        an empty list means the caller may not see any invoices.
 
         Returns:
             A tuple of (list of invoice dicts, total count).
         """
         try:
+            if allowed_fund_ids is not None and len(allowed_fund_ids) == 0:
+                return [], 0
+
             query = (
                 self._client.table(TABLE)
                 .select("*", count="exact")
@@ -49,6 +57,8 @@ class InvoiceRepository:
                 query = query.eq("fund_id", str(fund_id))
             if status:
                 query = query.eq("status", status)
+            if allowed_fund_ids is not None:
+                query = query.in_("fund_id", allowed_fund_ids)
 
             offset = (page - 1) * per_page
             query = query.order("created_at", desc=True).range(
@@ -471,22 +481,34 @@ class InvoiceRepository:
             )
             raise
 
-    async def get_overdue_invoices(self) -> list[dict[str, Any]]:
+    async def get_overdue_invoices(
+        self,
+        allowed_fund_ids: Optional[list[str]] = None,
+    ) -> list[dict[str, Any]]:
         """Get all overdue invoices (past due date, not paid).
+
+        ``allowed_fund_ids`` restricts the result set to the given fund IDs;
+        ``None`` means unrestricted, empty list means the caller may see none.
 
         Returns:
             List of overdue invoice dicts.
         """
         try:
+            if allowed_fund_ids is not None and len(allowed_fund_ids) == 0:
+                return []
+
             today = date.today().isoformat()
 
-            response = (
+            query = (
                 self._client.table(TABLE)
                 .select("*")
                 .lt("due_date", today)
                 .not_.in_("status", ["paid", "cancelled"])
-                .execute()
             )
+            if allowed_fund_ids is not None:
+                query = query.in_("fund_id", allowed_fund_ids)
+
+            response = query.execute()
             return response.data or []
 
         except Exception:
