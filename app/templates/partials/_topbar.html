@@ -1,0 +1,37 @@
+{# ================================================================
+   松プラン topbar
+   Expects: current_page_title, user (optional)
+   Source spec: docs/uiux_migration_spec.md §2.2
+   ================================================================ #}
+{% from "partials/_icons.html" import icon %}
+
+<header class="mx-topbar">
+  <div class="crumbs">ホーム / <b>{{ current_page_title }}</b></div>
+
+  <div class="search">
+    {{ icon("search", 16) }}
+    <input type="search" placeholder="車両ID、契約番号、運送会社で検索…" aria-label="横断検索" disabled>
+  </div>
+
+  <div class="fund-switch" role="button" tabindex="0" aria-label="ファンド切替">
+    <span class="fund-dot" style="background:var(--gold)"></span>
+    <span style="color:var(--muted)">ファンド:</span>
+    <b>カーチスファンド15号</b>
+    <span class="caret">{{ icon("down", 12, "") }}</span>
+  </div>
+
+  <button type="button" class="btn-mx" style="padding:6px 10px; position:relative" aria-label="通知">
+    {{ icon("bell", 16) }}
+    <span class="chip bad" style="position:absolute; top:-4px; right:-4px; padding:0 5px; min-width:16px; text-align:center; font-size:9px">3</span>
+  </button>
+
+  <div class="user-chip">
+    <span class="av" aria-hidden="true">
+      {% if user and user.display_name %}{{ user.display_name[0] | upper }}{% elif user and user.email %}{{ user.email[0] | upper }}{% else %}?{% endif %}
+    </span>
+    <div>
+      <b>{{ (user.display_name or user.email) if user else "ゲスト" }}</b>
+      <div class="role">{{ user.stakeholder_role if user and user.stakeholder_role else "ロール未設定" }}</div>
+    </div>
+  </div>
+</header>

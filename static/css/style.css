@@ -7,50 +7,81 @@
    1. Custom Properties / Theme
    -------------------------------------------------------------------------- */
 :root {
-  /* Brand colors */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-light: #dbeafe;
-  --danger: #dc2626;
-  --danger-hover: #b91c1c;
-  --danger-light: #fee2e2;
-  --success: #16a34a;
-  --success-hover: #15803d;
-  --success-light: #dcfce7;
-  --warning: #f59e0b;
-  --warning-hover: #d97706;
-  --warning-light: #fef3c7;
-  --info: #0ea5e9;
-  --info-light: #e0f2fe;
+  /* ==========================================================================
+     松プラン デザイントークン (2026-04-22 migration)
+     Source: docs/CVLPOS_松プラン_ワイヤーフレーム.html
+     Spec:   docs/uiux_migration_spec.md §1
+     Legacy --primary/--danger/--success/--warning/--info/--border/etc. are
+     preserved as aliases so the existing 2000+ CSS rules keep working.
+     ========================================================================== */
 
-  /* Neutrals */
-  --bg: #f8fafc;
-  --bg-white: #ffffff;
-  --text: #1e293b;
-  --text-muted: #64748b;
-  --text-light: #94a3b8;
-  --border: #e2e8f0;
-  --border-dark: #cbd5e1;
+  /* --- Core brand --- */
+  --navy: #0E2747;
+  --navy-2: #143258;
+  --navy-3: #1d4272;
+  --ink: #0b1b33;
+  --gold: #C9A24A;
+  --gold-2: #E6C46A;
+  --gold-3: #8B6F2C;
 
-  /* Layout */
-  --sidebar-width: 240px;
+  /* --- Surfaces --- */
+  --bg: #F4F3EE;          /* cream */
+  --card: #FFFFFF;
+  --line: #E2E0D6;
+  --line-2: #CFCCBE;
+  --wire: #A7A699;        /* dashed placeholder border */
+
+  /* --- Typography colors --- */
+  --text: #1F2433;
+  --muted: #6E6A5C;
+
+  /* --- Status --- */
+  --green: #3E8E5A;
+  --amber: #C48A2A;
+  --red: #B5443A;
+
+  /* --- Legacy aliases (backwards compat, do not remove) --- */
+  --primary: var(--navy);
+  --primary-hover: var(--navy-2);
+  --primary-light: #DDE4EE;
+  --danger: var(--red);
+  --danger-hover: #8F3329;
+  --danger-light: #F4DDD8;
+  --success: var(--green);
+  --success-hover: #2F6E45;
+  --success-light: #E5F1EA;
+  --warning: var(--amber);
+  --warning-hover: #9A6C1F;
+  --warning-light: #F7EED6;
+  --info: #1F4A7D;
+  --info-light: #E1ECF7;
+  --bg-white: var(--card);
+  --text-muted: var(--muted);
+  --text-light: #8E8A7A;
+  --border: var(--line);
+  --border-dark: var(--line-2);
+
+  /* --- Layout --- */
+  --sidebar-width: 248px;        /* was 240px */
   --header-height: 56px;
-  --radius-sm: 4px;
-  --radius: 8px;
-  --radius-lg: 12px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;              /* was 4px — bump to match buttons/nav-items */
+  --radius: 10px;                /* was 8px — bump to match kpi-sm/inv-card */
+  --radius-lg: 12px;             /* same — card, tweaks panel */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow: 0 1px 3px rgba(14, 39, 71, 0.1), 0 1px 2px rgba(14, 39, 71, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(14, 39, 71, 0.1), 0 2px 4px -2px rgba(14, 39, 71, 0.1);
+  --shadow-lg: 0 10px 30px rgba(14, 39, 71, 0.12);
 
-  /* Transitions */
+  /* --- Transitions --- */
   --transition-fast: 150ms ease;
   --transition: 200ms ease;
   --transition-slow: 300ms ease;
 
-  /* Typography */
-  --font-sans: "Inter", "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  /* --- Typography --- */
+  --font-sans: "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-hand: "Caveat", cursive;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-base: 1rem;
@@ -59,7 +90,7 @@
   --text-2xl: 1.5rem;
   --text-3xl: 1.875rem;
 
-  /* Spacing */
+  /* --- Spacing --- */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -2140,3 +2171,4 @@ legend {
   height: 16px;
   accent-color: var(--primary);
 }
+

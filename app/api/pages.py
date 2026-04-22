@@ -19,30 +19,104 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request", "").lower() == "true"
 
 
+# ---------------------------------------------------------------------------
+# 松プラン redesign (2026-04-22): sidebar nav config
+# ---------------------------------------------------------------------------
+# Source of truth for the 11-item sidebar. Consumed by
+# app/templates/partials/_sidebar.html via the template context key "nav_config".
+# Phase 1: items that don't have a real page yet point to placeholders.
+# Phase 3 agents replace those hrefs with the real routes.
+
+NAV_CONFIG = {
+    "groups": [
+        {
+            "label": "サマリー",
+            "items": [
+                {"id": "dashboard", "label": "統合ダッシュボード", "href": "/dashboard", "icon": "dash"},
+                {"id": "portfolio", "label": "ポートフォリオ", "href": "/portfolio", "icon": "portfolio"},
+            ],
+        },
+        {
+            "label": "パフォーマンス",
+            "items": [
+                {"id": "fund", "label": "ファンドパフォーマンス", "href": "/fund", "icon": "fund"},
+                {
+                    "id": "risk",
+                    "label": "リスクモニタリング",
+                    "href": "/risk",
+                    "icon": "risk",
+                    "required_plan": "matsu",
+                    "badge_count": 3,
+                },
+            ],
+        },
+        {
+            "label": "オペレーション",
+            "items": [
+                {"id": "inventory", "label": "インベントリ管理", "href": "/inventory", "icon": "inv"},
+                {"id": "integrated_pricing", "label": "統合プライシング", "href": "/integrated-pricing", "icon": "price"},
+                {"id": "contracts", "label": "契約書自動生成", "href": "/simulation", "icon": "contract"},
+                {"id": "invoices", "label": "請求書管理・弥生連携", "href": "/invoices", "icon": "invoice"},
+            ],
+        },
+        {
+            "label": "松プラン限定",
+            "items": [
+                {"id": "scrape", "label": "自動価格収集", "href": "/scrape", "icon": "scrape", "required_plan": "matsu", "new": True},
+                {"id": "esg", "label": "ESGレポート", "href": "/esg", "icon": "esg", "required_plan": "matsu", "new": True},
+                {"id": "proposal", "label": "提案書PDF生成", "href": "/proposals", "icon": "proposal", "new": True},
+            ],
+        },
+    ],
+}
+
+# URL path prefix -> active_page id (for sidebar highlighting)
+_ACTIVE_PAGE_RULES = (
+    ("/simulation", "simulation"),
+    ("/market", "market_data"),
+    ("/integrated-pricing", "integrated_pricing"),
+    ("/financial-analysis", "fund"),
+    ("/yayoi", "invoices"),
+    ("/lease-contracts", "inventory"),
+    ("/invoices", "invoices"),
+    ("/portfolio", "portfolio"),
+    ("/fund", "fund"),
+    ("/risk", "risk"),
+    ("/inventory", "inventory"),
+    ("/scrape", "scrape"),
+    ("/esg", "esg"),
+    ("/proposals", "proposal"),
+)
+
+
+def _resolve_active_page(path: str) -> str:
+    for prefix, page_id in _ACTIVE_PAGE_RULES:
+        if path.startswith(prefix):
+            return page_id
+    return "dashboard"
+
+
+def _resolve_page_title(active_page: str) -> str:
+    for group in NAV_CONFIG["groups"]:
+        for item in group["items"]:
+            if item["id"] == active_page:
+                return item["label"]
+    return "ダッシュボード"
+
+
 def _render(request: Request, template: str, context: dict | None = None):
     from app.main import templates
 
     ctx = context or {}
     token = getattr(request.state, "csrf_token", None) or request.cookies.get("csrf_token", "")
     ctx.setdefault("csrf_token", token)
-    # Auto-detect active page from URL path for sidebar highlighting
-    path = request.url.path
-    if path.startswith("/simulation"):
-        ctx.setdefault("active_page", "simulation")
-    elif path.startswith("/market"):
-        ctx.setdefault("active_page", "market_data")
-    elif path.startswith("/integrated-pricing"):
-        ctx.setdefault("active_page", "integrated_pricing")
-    elif path.startswith("/financial-analysis"):
-        ctx.setdefault("active_page", "financial_analysis")
-    elif path.startswith("/yayoi"):
-        ctx.setdefault("active_page", "yayoi")
-    elif path.startswith("/lease-contracts"):
-        ctx.setdefault("active_page", "lease_contracts")
-    elif path.startswith("/invoices"):
-        ctx.setdefault("active_page", "invoices")
-    else:
-        ctx.setdefault("active_page", "dashboard")
+    active_page = ctx.get("active_page") or _resolve_active_page(request.url.path)
+    ctx["active_page"] = active_page
+    ctx.setdefault("nav_config", NAV_CONFIG)
+    ctx.setdefault("current_page_title", _resolve_page_title(active_page))
+    # Phase 4 will inject the real user.plan via auth dep. For now, default to
+    # "matsu" so tier-gated items render (spec §5).
+    ctx.setdefault("current_plan", "matsu")
     return templates.TemplateResponse(request, template, ctx)
 
 
@@ -884,3 +958,53 @@ async def lease_contract_import_page(request: Request):
         return redirect
 
     return _render(request, "pages/lease_contract_import.html", {"user": user})
+
+
+# ---------------------------------------------------------------------------
+# 松プラン redesign: Phase 3 stub pages
+# ---------------------------------------------------------------------------
+# The sidebar (nav_config) now advertises 6 new pages that Phase 3 agents
+# will build out. Until then, each stub renders a "Coming soon" placeholder
+# using the new base shell so the navigation works without 404s.
+
+_PHASE3_STUBS = [
+    ("/portfolio", "portfolio.html", "portfolio"),
+    ("/fund", "fund.html", "fund"),
+    ("/risk", "risk.html", "risk"),
+    ("/inventory", "inventory.html", "inventory"),
+    ("/scrape", "scrape.html", "scrape"),
+    ("/esg", "esg.html", "esg"),
+]
+
+
+def _make_stub_route(path: str, template: str, active_page: str):
+    async def _handler(request: Request):
+        user = await _get_optional_user(request)
+        redirect = _require_auth(user, request)
+        if redirect:
+            return redirect
+        return _render(
+            request,
+            f"pages/{template}",
+            {"user": user, "active_page": active_page},
+        )
+
+    _handler.__name__ = f"{active_page}_page"
+    return _handler
+
+
+for _path, _tpl, _page in _PHASE3_STUBS:
+    router.add_api_route(
+        _path,
+        _make_stub_route(_path, _tpl, _page),
+        methods=["GET"],
+        response_class=HTMLResponse,
+        name=f"{_page}_page",
+    )
+
+
+@router.get("/upgrade", response_class=HTMLResponse)
+async def upgrade_page(request: Request):
+    """Shown when a lower-tier user follows a 松限定 sidebar link."""
+    user = await _get_optional_user(request)
+    return _render(request, "pages/upgrade.html", {"user": user})

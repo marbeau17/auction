@@ -6,79 +6,39 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}商用車リースバック価格最適化システム{% endblock %}</title>
     <link rel="icon" href="/favicon.ico">
+
+    {# Google Fonts — 松プラン typography (Noto Sans JP / JetBrains Mono / Caveat) #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+
+    {# Core stylesheet (legacy + new tokens) + 松プラン component library #}
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/matsu-components.css">
+
     <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js"></script>
     {% block head_extra %}{% endblock %}
 </head>
-<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+<body class="matsu" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
     {# ===== Global Error Handler ===== #}
     <div id="global-error" class="global-error" role="alert" aria-live="assertive" hidden></div>
 
-    <div class="app">
-        {# ===== Sidebar Navigation ===== #}
-        <aside class="sidebar" aria-label="メインナビゲーション">
-            <a href="/dashboard" class="sidebar__brand">
-                <span aria-hidden="true">&#x1F69A;</span>
-                <span>CVLPOS</span>
-            </a>
-            <nav class="sidebar__nav">
-                <ul>
-                    <li class="sidebar__item">
-                        <a href="/dashboard" class="sidebar__link {% if active_page == 'dashboard' %}sidebar__link--active{% endif %}">
-                            <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                                <rect x="2" y="2" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                                <rect x="11" y="2" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                                <rect x="2" y="11" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                                <rect x="11" y="11" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/>
-                            </svg>
-                            <span>ダッシュボード</span>
-                        </a>
-                    </li>
-                    <li class="sidebar__item">
-                        <a href="/simulation/new" class="sidebar__link {% if active_page == 'simulation' %}sidebar__link--active{% endif %}">
-                            <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                                <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                            </svg>
-                            <span>シミュレーション</span>
-                        </a>
-                    </li>
-                    <li class="sidebar__item">
-                        <a href="/market-data" class="sidebar__link {% if active_page == 'market_data' %}sidebar__link--active{% endif %}">
-                            <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                                <path d="M3 17V7l4 3 4-6 4 4v9H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-                            </svg>
-                            <span>相場データ</span>
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-            <div class="sidebar__footer">
-                <div class="sidebar__user">{{ (user.display_name or user.email) if user else "" }}</div>
-                <a href="/auth/logout" class="sidebar__link">ログアウト</a>
-            </div>
-        </aside>
+    <div class="app-shell">
+        {# ===== Sidebar (data-driven) ===== #}
+        {% include "partials/_sidebar.html" %}
 
         {# ===== Mobile Overlay ===== #}
         <div class="sidebar-overlay"></div>
 
         {# ===== Main Content ===== #}
-        <main class="main-content" id="main-content">
-            <header class="app-header">
-                <button class="hamburger" type="button" aria-label="メニュー">&#9776;</button>
-                <h1 class="app-header__title">{% block page_title %}{% endblock %}</h1>
-                <div class="app-header__user">{{ (user.display_name or user.email) if user else "" }}</div>
-            </header>
-            <div class="content">
+        <main class="mx-main" id="main-content">
+            {% include "partials/_topbar.html" %}
+            <div class="canvas">
                 {% block content %}{% endblock %}
             </div>
         </main>
     </div>
-
-    {# ===== Footer ===== #}
-    <footer class="footer">
-        <p class="footer__text">&copy; {{ current_year | default("2026") }} 商用車リースバック価格最適化システム All Rights Reserved.</p>
-    </footer>
 
     <script src="/static/js/app.js" defer></script>
     {% block scripts %}{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}プランアップグレード - CVLPOS{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>プランアップグレードが必要です</h1>
+    <div class="sub">このページは松プランでのみ利用可能です</div>
+  </div>
+</div>
+
+<div class="card-mx" style="max-width:640px">
+  <div class="card-h"><h3>松プラン(Premium)で解放される機能</h3></div>
+  <div class="card-b">
+    <ul style="list-style:disc; padding-left:20px; font-size:13px; line-height:1.8; color:var(--text)">
+      <li>リスクモニタリング(LTV / NFAV / 延滞 を横断監視)</li>
+      <li>自動価格収集(AI-NET / トラックキングダム / USS / TAA / JU)</li>
+      <li>ESGレポート(環境・社会・ガバナンス)</li>
+      <li>弥生会計との双方向連携 + 承認ワークフロー</li>
+      <li>インベントリのテレマティクス連携</li>
+      <li>ダッシュボードの A/B/C バリアント切替</li>
+    </ul>
+    <div style="margin-top:18px; display:flex; gap:12px">
+      <a href="#" class="btn-mx gold">松プランへアップグレード</a>
+      <a href="/dashboard" class="btn-mx">ダッシュボードに戻る</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

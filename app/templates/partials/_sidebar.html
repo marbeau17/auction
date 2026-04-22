@@ -1,0 +1,52 @@
+{# ================================================================
+   松プラン sidebar (data-driven)
+   Expects context: nav_config, active_page, current_plan, user
+   Source spec: docs/uiux_migration_spec.md §2.1 + §5
+   ================================================================ #}
+{% from "partials/_icons.html" import icon %}
+
+{% set _plan_rank = {"ume": 1, "take": 2, "matsu": 3} %}
+{% set _my_rank = _plan_rank.get(current_plan, 2) %}
+
+<aside class="mx-sidebar" aria-label="メインナビゲーション">
+  <a href="/dashboard" class="brand" style="text-decoration:none">
+    <span class="mark">C</span>
+    <span class="name">CVLPOS</span>
+    {% if current_plan == "matsu" %}
+      <span class="tier">松 Premium</span>
+    {% elif current_plan == "take" %}
+      <span class="tier" style="background:var(--line-2);color:var(--text)">竹</span>
+    {% else %}
+      <span class="tier" style="background:var(--line);color:var(--muted)">梅</span>
+    {% endif %}
+  </a>
+
+  <nav style="flex:1; overflow-y:auto">
+    {% for group in nav_config.groups %}
+      <div class="nav-group">{{ group.label }}</div>
+      {% for item in group["items"] %}
+        {% set required = item.get("required_plan") %}
+        {% set required_rank = _plan_rank.get(required, 0) %}
+        {% set accessible = required is none or _my_rank >= required_rank %}
+        <a
+          href="{{ item.href if accessible else '/upgrade' }}"
+          class="nav-item {% if active_page == item.id %}active{% endif %}"
+          {% if not accessible %}aria-disabled="true" style="opacity:.55"{% endif %}
+        >
+          {{ icon(item.icon, 18) }}
+          <span>{{ item.label }}</span>
+          {% if item.get("new") %}<span class="new">NEW</span>{% endif %}
+          {% if item.get("badge_count") %}<span class="count">{{ item.badge_count }}</span>{% endif %}
+        </a>
+      {% endfor %}
+    {% endfor %}
+  </nav>
+
+  <div class="side-foot">
+    <span class="dot" aria-hidden="true"></span>
+    <div style="line-height:1.4">
+      <div style="color:#fff; font-weight:600">システム稼働中</div>
+      <div>全サービス正常</div>
+    </div>
+  </div>
+</aside>
