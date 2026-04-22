@@ -428,13 +428,7 @@ class TestRBACGenerateMonthly:
     async def test_non_admin_blocked_on_generate_monthly(
         self, client_sales_invoices: AsyncClient
     ) -> None:
-        """POST /generate-monthly is admin-only; sales role should get 403.
-
-        The invoices router protects /generate-monthly via the 'invoices' RBAC
-        resource (write access). We only verify the non-admin path here and
-        accept 403. If the implementation instead relies on a different
-        layer (401 because of require_role), we fail to make that visible.
-        """
+        """Sales role must be rejected by require_permission('invoices', 'write')."""
         csrf = await _prime_csrf(client_sales_invoices)
         response = await client_sales_invoices.post(
             "/api/v1/invoices/generate-monthly",
@@ -448,8 +442,22 @@ class TestRBACGenerateMonthly:
         if response.status_code in (404, 405):
             pytest.skip("generate-monthly endpoint not available")
 
-        # The current route does NOT have explicit RBAC enforcement; it only
-        # checks auth. If RBAC is later added, this assert becomes tighter.
-        # For now, accept 403 (RBAC block) or 201/500 (no RBAC + repo path).
-        # Mark the looser outcomes as observed bugs in the report.
-        assert response.status_code in (201, 403, 500), response.text
+        assert response.status_code == 403, response.text
+
+
+class TestRBACCreateInvoice:
+    async def test_non_admin_blocked_on_create(
+        self, client_sales_invoices: AsyncClient
+    ) -> None:
+        """POST /api/v1/invoices write gate: sales role -> 403."""
+        csrf = await _prime_csrf(client_sales_invoices)
+        response = await client_sales_invoices.post(
+            "/api/v1/invoices",
+            json=_sample_invoice_payload(),
+            headers={"X-CSRF-Token": csrf},
+            cookies={"csrf_token": csrf},
+        )
+        if response.status_code in (404, 405):
+            pytest.skip("Invoices create endpoint not available")
+
+        assert response.status_code == 403, response.text

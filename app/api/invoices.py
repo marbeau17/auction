@@ -23,6 +23,7 @@ from supabase import Client
 from app.db.repositories.invoice_repo import InvoiceRepository
 from app.core.pdf_generator import LightweightPDFGenerator, HAS_FPDF
 from app.dependencies import get_current_user, get_supabase_client, require_role
+from app.middleware.rbac import require_permission
 from app.models.common import (
     ErrorResponse,
     PaginatedResponse,
@@ -545,7 +546,7 @@ async def get_invoice(
 async def create_invoice(
     request: Request,
     body: InvoiceCreate,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "write")),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Create a new invoice with line items."""
@@ -622,7 +623,7 @@ async def create_invoice(
 async def generate_monthly_invoices(
     request: Request,
     body: MonthlyGenerateRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "write")),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Auto-generate invoices for all active lease contracts in a fund."""
@@ -687,7 +688,7 @@ async def update_invoice_status(
     request: Request,
     invoice_id: UUID,
     body: InvoiceStatusUpdate,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "write")),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Update the status of an invoice."""
@@ -746,7 +747,7 @@ async def approve_invoice(
     request: Request,
     invoice_id: UUID,
     body: InvoiceApprovalCreate,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "write")),
     repo: InvoiceRepository = Depends(_get_repo),
 ) -> HTMLResponse | JSONResponse:
     """Record an approval, rejection, or change-request decision."""
@@ -833,7 +834,7 @@ async def send_invoice(
     request: Request,
     invoice_id: UUID,
     body: InvoiceSendRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("invoices", "write")),
     repo: InvoiceRepository = Depends(_get_repo),
     supabase: Client = Depends(get_supabase_client),
 ) -> HTMLResponse | JSONResponse:
