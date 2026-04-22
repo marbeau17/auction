@@ -57,29 +57,138 @@ document.addEventListener('DOMContentLoaded', function () {
     initCharts(event.detail.target);
   });
 
-  // -- Mobile hamburger toggle --
-  var hamburger = document.querySelector('.hamburger');
-  var sidebar = document.querySelector('.sidebar');
-  var overlay = document.querySelector('.sidebar-overlay');
+  // -- Mobile drawer toggle (Phase 5) --
+  // The new shell uses body[data-drawer="open"] + .mx-sidebar. The legacy
+  // .hamburger / .sidebar selectors below stay so existing pages that still
+  // render the old shell (none in main) keep working.
+  var menuBtn = document.getElementById('cvl-mobile-menu-btn');
 
-  function closeSidebar() {
-    if (sidebar) sidebar.classList.remove('open');
-    if (overlay) overlay.classList.remove('active');
+  function closeDrawer() {
+    document.body.removeAttribute('data-drawer');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
   }
 
-  if (hamburger) {
-    hamburger.addEventListener('click', function () {
-      sidebar.classList.toggle('open');
-      if (overlay) overlay.classList.toggle('active');
+  function openDrawer() {
+    document.body.setAttribute('data-drawer', 'open');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  if (menuBtn) {
+    menuBtn.addEventListener('click', function () {
+      if (document.body.getAttribute('data-drawer') === 'open') closeDrawer();
+      else openDrawer();
     });
   }
 
-  if (overlay) {
-    overlay.addEventListener('click', closeSidebar);
+  // Tap outside the sidebar closes the drawer (mobile only).
+  document.addEventListener('click', function (ev) {
+    if (document.body.getAttribute('data-drawer') !== 'open') return;
+    var sb = document.getElementById('cvl-sidebar');
+    if (!sb || sb.contains(ev.target) || menuBtn.contains(ev.target)) return;
+    closeDrawer();
+  });
+
+  // Close on ESC + on HTMX nav.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeDrawer();
+  });
+  document.body.addEventListener('htmx:beforeRequest', closeDrawer);
+
+  // Legacy hamburger (old shell — safe no-op if not present).
+  var legacyHamburger = document.querySelector('.hamburger');
+  var legacySidebar = document.querySelector('.sidebar');
+  var legacyOverlay = document.querySelector('.sidebar-overlay');
+  if (legacyHamburger && legacySidebar) {
+    legacyHamburger.addEventListener('click', function () {
+      legacySidebar.classList.toggle('open');
+      if (legacyOverlay) legacyOverlay.classList.toggle('active');
+    });
+  }
+  if (legacyOverlay) {
+    legacyOverlay.addEventListener('click', function () {
+      if (legacySidebar) legacySidebar.classList.remove('open');
+      legacyOverlay.classList.remove('active');
+    });
   }
 
-  // Close sidebar on navigate (mobile)
-  document.body.addEventListener('htmx:beforeRequest', closeSidebar);
+  // -- Fund switcher (Phase 5) --
+  var fundSwitch = document.getElementById('cvl-fund-switch');
+  if (fundSwitch) {
+    var fundNameEl = document.getElementById('cvl-fund-name');
+    var fundDotEl = document.getElementById('cvl-fund-dot');
+    var opts = fundSwitch.querySelectorAll('.opt');
+
+    // Restore last selection from localStorage.
+    var stored = localStorage.getItem('cvl_fund');
+    if (stored) {
+      opts.forEach(function (o) {
+        var selected = o.dataset.fundId === stored;
+        o.setAttribute('aria-selected', selected ? 'true' : 'false');
+        if (selected) {
+          fundNameEl.textContent = o.dataset.fundName;
+          fundDotEl.style.background = o.dataset.fundColor;
+        }
+      });
+    }
+
+    function toggleMenu(open) {
+      var current = fundSwitch.getAttribute('aria-expanded') === 'true';
+      var next = typeof open === 'boolean' ? open : !current;
+      fundSwitch.setAttribute('aria-expanded', next ? 'true' : 'false');
+    }
+
+    fundSwitch.addEventListener('click', function (ev) {
+      // Ignore clicks on individual options — they handle themselves.
+      if (ev.target.closest('.opt')) return;
+      toggleMenu();
+    });
+    fundSwitch.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggleMenu(); }
+      else if (ev.key === 'Escape') toggleMenu(false);
+    });
+    document.addEventListener('click', function (ev) {
+      if (!fundSwitch.contains(ev.target)) toggleMenu(false);
+    });
+
+    opts.forEach(function (opt) {
+      opt.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var id = opt.dataset.fundId;
+        var name = opt.dataset.fundName;
+        var color = opt.dataset.fundColor;
+        localStorage.setItem('cvl_fund', id);
+        fundNameEl.textContent = name;
+        fundDotEl.style.background = color;
+        opts.forEach(function (o) {
+          o.setAttribute('aria-selected', o === opt ? 'true' : 'false');
+        });
+        toggleMenu(false);
+        window.dispatchEvent(new CustomEvent('cvl:fund-change', { detail: { fund: id, name: name } }));
+      });
+    });
+  }
+
+  // -- Notification bell (Phase 5) --
+  var bellBtn = document.getElementById('cvl-bell-btn');
+  var bellPanel = document.getElementById('cvl-bell-panel');
+  var bellClose = document.getElementById('cvl-bell-close');
+  if (bellBtn && bellPanel) {
+    function toggleBell(open) {
+      var current = !bellPanel.hasAttribute('hidden');
+      var next = typeof open === 'boolean' ? open : !current;
+      if (next) bellPanel.removeAttribute('hidden');
+      else bellPanel.setAttribute('hidden', '');
+      bellBtn.setAttribute('aria-expanded', next ? 'true' : 'false');
+    }
+    bellBtn.addEventListener('click', function (ev) { ev.stopPropagation(); toggleBell(); });
+    if (bellClose) bellClose.addEventListener('click', function () { toggleBell(false); });
+    document.addEventListener('click', function (ev) {
+      if (!bellPanel.contains(ev.target) && ev.target !== bellBtn && !bellBtn.contains(ev.target)) toggleBell(false);
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') toggleBell(false);
+    });
+  }
 
   // -- Initial chart boot --
   initCharts(document);

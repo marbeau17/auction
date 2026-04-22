@@ -2,30 +2,84 @@
    松プラン topbar
    Expects: current_page_title, user (optional)
    Source spec: docs/uiux_migration_spec.md §2.2
+   Phase 5: fund-switch is now an interactive dropdown, hamburger
+   toggles the mobile drawer, bell opens a lightweight panel.
    ================================================================ #}
 {% from "partials/_icons.html" import icon %}
 
-<header class="mx-topbar">
+{% set _funds = [
+  {"id": "15", "name": "カーチスファンド15号", "aum": "¥3.2億", "color": "var(--gold)"},
+  {"id": "14", "name": "カーチスファンド14号", "aum": "¥2.8億", "color": "#7E9DBF"},
+  {"id": "13", "name": "カーチスファンド13号", "aum": "¥2.3億", "color": "#3E8E5A"},
+  {"id": "12", "name": "カーチスファンド12号", "aum": "¥1.6億", "color": "#B5443A"},
+  {"id": "11", "name": "カーチスファンド11号", "aum": "¥1.3億", "color": "#6E6A5C"}
+] %}
+
+<header class="mx-topbar" role="banner">
+  <button
+    type="button"
+    class="mobile-menu-btn"
+    id="cvl-mobile-menu-btn"
+    aria-label="ナビゲーションを開く"
+    aria-controls="cvl-sidebar"
+    aria-expanded="false"
+  >≡</button>
+
   <div class="crumbs">ホーム / <b>{{ current_page_title }}</b></div>
 
   <div class="search">
     {{ icon("search", 16) }}
-    <input type="search" placeholder="車両ID、契約番号、運送会社で検索…" aria-label="横断検索" disabled>
+    <label class="sr-only" for="cvl-search-input">横断検索</label>
+    <input id="cvl-search-input" type="search" placeholder="車両ID、契約番号、運送会社で検索…" disabled>
   </div>
 
-  <div class="fund-switch" role="button" tabindex="0" aria-label="ファンド切替">
-    <span class="fund-dot" style="background:var(--gold)"></span>
+  <div
+    class="fund-switch"
+    id="cvl-fund-switch"
+    role="combobox"
+    tabindex="0"
+    aria-expanded="false"
+    aria-haspopup="listbox"
+    aria-label="ファンド切替"
+  >
+    <span class="fund-dot" id="cvl-fund-dot" style="background:var(--gold)"></span>
     <span style="color:var(--muted)">ファンド:</span>
-    <b>カーチスファンド15号</b>
+    <b id="cvl-fund-name">カーチスファンド15号</b>
     <span class="caret">{{ icon("down", 12, "") }}</span>
+
+    <div class="fund-switch-menu" role="listbox" aria-label="利用可能なファンド">
+      {% for f in _funds %}
+        <button
+          type="button"
+          class="opt"
+          data-fund-id="{{ f.id }}"
+          data-fund-name="{{ f.name }}"
+          data-fund-color="{{ f.color }}"
+          role="option"
+          aria-selected="{{ 'true' if f.id == '15' else 'false' }}"
+        >
+          <span class="fund-dot" style="background:{{ f.color }}"></span>
+          <span class="name">{{ f.name }}</span>
+          <span class="aum">{{ f.aum }}</span>
+        </button>
+      {% endfor %}
+    </div>
   </div>
 
-  <button type="button" class="btn-mx" style="padding:6px 10px; position:relative" aria-label="通知">
+  <button
+    type="button"
+    class="btn-mx"
+    id="cvl-bell-btn"
+    style="padding:6px 10px; position:relative"
+    aria-label="通知 (3件の未読)"
+    aria-expanded="false"
+    aria-controls="cvl-bell-panel"
+  >
     {{ icon("bell", 16) }}
     <span class="chip bad" style="position:absolute; top:-4px; right:-4px; padding:0 5px; min-width:16px; text-align:center; font-size:9px">3</span>
   </button>
 
-  <div class="user-chip">
+  <div class="user-chip" role="button" tabindex="0" aria-label="ユーザーメニュー">
     <span class="av" aria-hidden="true">
       {% if user and user.display_name %}{{ user.display_name[0] | upper }}{% elif user and user.email %}{{ user.email[0] | upper }}{% else %}?{% endif %}
     </span>
@@ -35,3 +89,28 @@
     </div>
   </div>
 </header>
+
+{# Lightweight notification panel (Phase 5 UI only — Phase 6 wires data) #}
+<aside
+  id="cvl-bell-panel"
+  hidden
+  role="dialog"
+  aria-label="通知一覧"
+  style="position:fixed; right:20px; top:64px; width:320px; background:#fff; border:1px solid var(--line-2); border-radius:10px; box-shadow:0 10px 30px rgba(14,39,71,.12); padding:10px; z-index:80"
+>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
+    <b style="font-size:13px; color:var(--navy)">通知 (3)</b>
+    <button type="button" class="btn-mx" style="padding:3px 8px; font-size:11px" id="cvl-bell-close" aria-label="閉じる">×</button>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:6px">
+    <div style="padding:8px; border-left:3px solid var(--red); background:#FCF1EF; border-radius:4px; font-size:12px">
+      <b>LTV 閾値超過</b><div style="color:var(--muted); margin-top:2px">Fund 14号 / T-1498 — 3分前</div>
+    </div>
+    <div style="padding:8px; border-left:3px solid var(--amber); background:#FBF4E0; border-radius:4px; font-size:12px">
+      <b>延滞 60日経過</b><div style="color:var(--muted); margin-top:2px">㈱東西運輸 — 1時間前</div>
+    </div>
+    <div style="padding:8px; border-left:3px solid var(--amber); background:#FBF4E0; border-radius:4px; font-size:12px">
+      <b>スクレイピングJOB 失敗</b><div style="color:var(--muted); margin-top:2px">AI-NET — 本日 14:02</div>
+    </div>
+  </div>
+</aside>

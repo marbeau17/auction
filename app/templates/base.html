@@ -21,6 +21,8 @@
     {% block head_extra %}{% endblock %}
 </head>
 <body class="matsu" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+    <a class="skip-link" href="#main-content">メインコンテンツへスキップ</a>
+
     {# ===== Global Error Handler ===== #}
     <div id="global-error" class="global-error" role="alert" aria-live="assertive" hidden></div>
 
@@ -32,7 +34,7 @@
         <div class="sidebar-overlay"></div>
 
         {# ===== Main Content ===== #}
-        <main class="mx-main" id="main-content">
+        <main class="mx-main" id="main-content" tabindex="-1">
             {% include "partials/_topbar.html" %}
             <div class="canvas">
                 {% block content %}{% endblock %}
