@@ -77,8 +77,22 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                         or "multipart/form-data" in content_type
                     ):
                         try:
+                            # Reading the body consumes the ASGI receive stream.
+                            # Rewire request._receive to replay the cached bytes
+                            # so downstream route handlers can still parse the form.
+                            body_bytes = await request.body()
+
+                            async def _replay_receive() -> dict:
+                                return {
+                                    "type": "http.request",
+                                    "body": body_bytes,
+                                    "more_body": False,
+                                }
+
+                            request._receive = _replay_receive
                             form = await request.form()
                             submitted = form.get("csrf_token", "") or ""
+                            request._receive = _replay_receive
                         except Exception:
                             submitted = ""
 
