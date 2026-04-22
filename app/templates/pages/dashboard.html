@@ -407,6 +407,10 @@
       <a href="/funds" class="btn-mx" style="font-size:11px;padding:4px 10px;">すべて表示</a>
     </div>
     <div class="card-b" style="padding:0;">
+      {# Fund rows come from the `funds` context var (app/services/sample_data/funds.py).
+         If the route didn't attach one (legacy callers / error), fall back to an
+         empty list so the table still renders instead of erroring out. #}
+      {% set fund_rows = funds if funds is defined and funds else [] %}
       <table class="tbl" aria-label="ファンド概況テーブル">
         <thead>
           <tr>
@@ -419,86 +423,24 @@
           </tr>
         </thead>
         <tbody>
+          {% for f in fund_rows %}
           <tr>
             <td>
               <div style="display:flex;align-items:center;gap:8px;">
-                <span class="fund-swatch" style="background:#C9A24A;" aria-hidden="true"></span>
+                <span class="fund-swatch" style="background:{{ f.color }};" aria-hidden="true"></span>
                 <div>
-                  <div style="font-weight:700;color:var(--navy);">カーチスファンド15号</div>
-                  <div style="font-size:11px;color:var(--muted);">28台 / 36ヶ月</div>
+                  <div style="font-weight:700;color:var(--navy);">{{ f.name }}</div>
+                  <div style="font-size:11px;color:var(--muted);">{{ f.vehicle_count }}台 / 36ヶ月</div>
                 </div>
               </div>
             </td>
-            <td class="num"><b>¥320M</b></td>
-            <td class="num">8.1%</td>
-            <td class="num" style="color:var(--green);font-weight:700;">104.2%</td>
-            <td class="num">58%</td>
-            <td>{{ chip("運用中", "ok") }}</td>
+            <td class="num"><b>¥{{ (f.aum_yen / 1000000) | int }}M</b></td>
+            <td class="num">{{ f.yield_pct }}%</td>
+            <td class="num" style="color:var(--green);font-weight:700;">{{ f.nfav_pct }}%</td>
+            <td class="num"{% if f.ltv_pct >= 60 %} style="color:var(--red);"{% endif %}>{{ f.ltv_pct }}%</td>
+            <td>{{ chip(f.status_label, f.status_kind) }}</td>
           </tr>
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="fund-swatch" style="background:#7E9DBF;" aria-hidden="true"></span>
-                <div>
-                  <div style="font-weight:700;color:var(--navy);">カーチスファンド14号</div>
-                  <div style="font-size:11px;color:var(--muted);">24台 / 36ヶ月</div>
-                </div>
-              </div>
-            </td>
-            <td class="num"><b>¥280M</b></td>
-            <td class="num">7.6%</td>
-            <td class="num" style="color:var(--green);font-weight:700;">106.8%</td>
-            <td class="num" style="color:var(--red);">62%</td>
-            <td>{{ chip("運用中", "ok") }}</td>
-          </tr>
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="fund-swatch" style="background:#3E8E5A;" aria-hidden="true"></span>
-                <div>
-                  <div style="font-weight:700;color:var(--navy);">カーチスファンド13号</div>
-                  <div style="font-size:11px;color:var(--muted);">22台 / 36ヶ月</div>
-                </div>
-              </div>
-            </td>
-            <td class="num"><b>¥230M</b></td>
-            <td class="num">7.2%</td>
-            <td class="num" style="color:var(--green);font-weight:700;">109.1%</td>
-            <td class="num">54%</td>
-            <td>{{ chip("運用中", "ok") }}</td>
-          </tr>
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="fund-swatch" style="background:#B5443A;" aria-hidden="true"></span>
-                <div>
-                  <div style="font-weight:700;color:var(--navy);">カーチスファンド12号</div>
-                  <div style="font-size:11px;color:var(--muted);">18台 / 36ヶ月</div>
-                </div>
-              </div>
-            </td>
-            <td class="num"><b>¥160M</b></td>
-            <td class="num">6.8%</td>
-            <td class="num" style="color:var(--green);font-weight:700;">108.5%</td>
-            <td class="num">51%</td>
-            <td>{{ chip("償還準備", "warn") }}</td>
-          </tr>
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="fund-swatch" style="background:#6E6A5C;" aria-hidden="true"></span>
-                <div>
-                  <div style="font-weight:700;color:var(--navy);">カーチスファンド11号</div>
-                  <div style="font-size:11px;color:var(--muted);">16台 / 36ヶ月</div>
-                </div>
-              </div>
-            </td>
-            <td class="num"><b>¥130M</b></td>
-            <td class="num">6.5%</td>
-            <td class="num" style="color:var(--green);font-weight:700;">110.4%</td>
-            <td class="num">47%</td>
-            <td>{{ chip("運用中", "ok") }}</td>
-          </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>

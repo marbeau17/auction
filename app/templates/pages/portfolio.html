@@ -50,14 +50,11 @@
   </section>
 </div>
 
-{# ===== Bottom: 5 invested funds ===== #}
-{% set invested_funds = [
-  {"id": "f15", "name": "カーチスファンド15号", "aum": "¥3.2億", "yield": "8.1%", "nfav": "104.2%", "ltv": "58%", "vehicles": 28, "status_label": "運用中", "status_kind": "ok"},
-  {"id": "f14", "name": "カーチスファンド14号", "aum": "¥2.8億", "yield": "7.6%", "nfav": "106.8%", "ltv": "62%", "vehicles": 24, "status_label": "運用中", "status_kind": "ok"},
-  {"id": "f13", "name": "カーチスファンド13号", "aum": "¥2.3億", "yield": "7.2%", "nfav": "109.1%", "ltv": "54%", "vehicles": 22, "status_label": "運用中", "status_kind": "ok"},
-  {"id": "f12", "name": "カーチスファンド12号", "aum": "¥1.6億", "yield": "6.8%", "nfav": "108.5%", "ltv": "51%", "vehicles": 18, "status_label": "償還準備", "status_kind": "warn"},
-  {"id": "f11", "name": "カーチスファンド11号", "aum": "¥1.3億", "yield": "6.5%", "nfav": "110.4%", "ltv": "47%", "vehicles": 16, "status_label": "運用中", "status_kind": "ok"}
-] %}
+{# ===== Bottom: 5 invested funds =====
+     Source of truth: ``funds`` context var from pages.py
+     (app/services/sample_data/funds.py::get_funds). The template renders the
+     raw numeric fields into display form (¥X.X億 / %). #}
+{% set invested_funds = funds if funds is defined and funds else [] %}
 
 {{ card_open("出資ファンド一覧", "全 5 ファンド（LP 出資分）") }}
 <table class="tbl">
@@ -76,11 +73,11 @@
     {% for f in invested_funds %}
     <tr>
       <td>{{ f.name }}</td>
-      <td class="num">{{ f.aum }}</td>
-      <td class="num">{{ f.yield }}</td>
-      <td class="num">{{ f.nfav }}</td>
-      <td class="num">{{ f.ltv }}</td>
-      <td class="num">{{ f.vehicles }}</td>
+      <td class="num">¥{{ '%.1f' % (f.aum_yen / 100000000) }}億</td>
+      <td class="num">{{ f.yield_pct }}%</td>
+      <td class="num">{{ f.nfav_pct }}%</td>
+      <td class="num">{{ f.ltv_pct }}%</td>
+      <td class="num">{{ f.vehicle_count }}</td>
       <td>{{ chip(f.status_label, f.status_kind) }}</td>
     </tr>
     {% endfor %}

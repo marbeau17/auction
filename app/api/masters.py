@@ -66,16 +66,33 @@ async def list_makers(
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List all makers. Returns <option> HTML when called via HTMX."""
+    makers: list[dict[str, Any]] = []
+    repo_failed = False
     try:
         makers = await repo.list_makers()
     except Exception:
         logger.exception("list_makers_endpoint_failed")
+        makers = []
+        repo_failed = True
+
+    htmx = _is_htmx(request)
+
+    # Silent fixture fallback — only for HTMX dropdown callers (the simulation
+    # form). JSON API consumers (pricing-masters admin UI) keep seeing the
+    # authoritative empty response so they can render their own empty-state
+    # without a misleading demo payload.
+    if htmx and not makers:
+        from app.services.sample_data import get_makers as _fx_makers
+        makers = _fx_makers()
+
+    # If Supabase raised and the caller wants JSON, preserve the legacy 500.
+    if repo_failed and not htmx:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch makers",
         )
 
-    if _is_htmx(request):
+    if htmx:
         html = _options_html(makers, placeholder="メーカーを選択")
         return HTMLResponse(content=html)
 
@@ -178,16 +195,30 @@ async def list_body_types(
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
     """List all body types. Returns <option> HTML when called via HTMX."""
+    body_types: list[dict[str, Any]] = []
+    repo_failed = False
     try:
         body_types = await repo.list_body_types()
     except Exception:
         logger.exception("list_body_types_endpoint_failed")
+        body_types = []
+        repo_failed = True
+
+    htmx = _is_htmx(request)
+
+    # Fixture fallback only for HTMX dropdown callers — keep the JSON admin
+    # CRUD contract (empty → 200 []; failure → 500) intact.
+    if htmx and not body_types:
+        from app.services.sample_data import get_body_types as _fx_body_types
+        body_types = _fx_body_types()
+
+    if repo_failed and not htmx:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch body types",
         )
 
-    if _is_htmx(request):
+    if htmx:
         html = _options_html(body_types, placeholder="ボディタイプを選択")
         return HTMLResponse(content=html)
 
@@ -288,7 +319,13 @@ async def list_categories(
     current_user: dict[str, Any] = Depends(require_permission("pricing_masters", "read")),
     repo: MasterRepository = Depends(_get_repo),
 ) -> Any:
-    """List all vehicle categories."""
+    """List all vehicle categories.
+
+    No fixture fallback here — the JSON contract is used by the
+    pricing-masters admin UI. The simulation form reads categories via the
+    server-rendered page context (``/simulation/new``) which has its own
+    fixture fallback in ``app/api/pages.py``.
+    """
     try:
         categories = await repo.list_vehicle_categories()
     except Exception:
@@ -328,29 +365,52 @@ async def list_depreciation_curves(
 
 
 @router.get("/models-by-maker")
-async def get_models_by_maker(maker_name: str = ""):
-    """Return <option> elements for models of a given maker."""
+async def get_models_by_maker(maker: str = "", maker_name: str = ""):
+    """Return <option> elements for models of a given maker.
+
+    Accepts either ``?maker=`` (used by the simulation.html HTMX include —
+    ``hx-include="[name='maker']"`` serialises the dropdown's ``name`` attr)
+    or ``?maker_name=`` (legacy callers / direct API consumers). Falls back
+    to the bundled fixture when Supabase returns nothing.
+    """
     from app.db.supabase_client import get_supabase_client
 
-    client = get_supabase_client(service_role=True)
+    requested = maker or maker_name or ""
+    model_names: list[str] = []
 
-    # Find manufacturer by name
-    mfr = client.table("manufacturers").select("id").eq("name", maker_name).maybe_single().execute()
-    if not mfr.data:
-        return HTMLResponse('<option value="">車種を選択</option>')
+    if requested:
+        try:
+            client = get_supabase_client(service_role=True)
+            mfr = (
+                client.table("manufacturers")
+                .select("id")
+                .eq("name", requested)
+                .maybe_single()
+                .execute()
+            )
+            if mfr.data:
+                models = (
+                    client.table("vehicle_models")
+                    .select("name")
+                    .eq("manufacturer_id", mfr.data["id"])
+                    .eq("is_active", True)
+                    .order("display_order")
+                    .execute()
+                )
+                model_names = [m["name"] for m in (models.data or []) if m.get("name")]
+        except Exception:
+            logger.exception("models_by_maker_fetch_failed", maker=requested)
+            model_names = []
 
-    models = (
-        client.table("vehicle_models")
-        .select("name")
-        .eq("manufacturer_id", mfr.data["id"])
-        .eq("is_active", True)
-        .order("display_order")
-        .execute()
-    )
+        # Silent fixture fallback — kicks in whenever Supabase is empty /
+        # unreachable / returned no manufacturer match.
+        if not model_names:
+            from app.services.sample_data import get_models_by_maker as _fx_models
+            model_names = [m["name"] for m in _fx_models(requested) if m.get("name")]
 
     html = '<option value="">車種を選択してください</option>\n'
-    for m in (models.data or []):
-        html += f'<option value="{m["name"]}">{m["name"]}</option>\n'
+    for name in model_names:
+        html += f'<option value="{name}">{name}</option>\n'
     html += '<option value="__custom__">その他（手動入力）</option>'
 
     return HTMLResponse(html)

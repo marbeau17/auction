@@ -7,12 +7,22 @@
 {% block title %}ファンドパフォーマンス - CVLPOS{% endblock %}
 
 {% block content %}
+{# Primary fund shown on this page. When the `funds` context var is attached
+   (app/api/pages.py -> _make_page_route for /fund), we surface the first entry
+   (15号 by convention — newest fund first). Otherwise we fall back to static
+   wireframe defaults so the page still renders. #}
+{% set primary_fund = (funds[0] if funds is defined and funds else None) %}
+{% set pf_name        = primary_fund.name if primary_fund else "カーチスファンド15号" %}
+{% set pf_aum_yen     = primary_fund.aum_yen if primary_fund else 320000000 %}
+{% set pf_vehicles    = primary_fund.vehicle_count if primary_fund else 28 %}
+{% set pf_nfav_pct    = primary_fund.nfav_pct if primary_fund else 104.2 %}
+
 {# ===== Page head ===== #}
 <div class="page-head">
   <div>
     <span class="tag">NFAV・LTV</span>
-    <h1>ファンドパフォーマンス <span style="color:var(--muted); font-weight:500; font-size:18px">/ カーチスファンド15号</span></h1>
-    <div class="sub">設定 2024-01 · 36ヶ月 · 28台 · AUM ¥3.2億</div>
+    <h1>ファンドパフォーマンス <span style="color:var(--muted); font-weight:500; font-size:18px">/ {{ pf_name }}</span></h1>
+    <div class="sub">設定 2024-01 · 36ヶ月 · {{ pf_vehicles }}台 · AUM ¥{{ '%.1f' % (pf_aum_yen / 100000000) }}億</div>
   </div>
   <div class="spacer"></div>
   {{ tabs([
@@ -25,12 +35,15 @@
 
 {# ===== Card 1 — Net Fund Asset Value ===== #}
 {% set nfav_head %}
-  <span class="chip ok">NFAV 104.2%</span>
+  <span class="chip ok">NFAV {{ pf_nfav_pct }}%</span>
   <span class="chip info" style="margin-left:4px">目標 110%</span>
 {% endset %}
 {{ card_open("Net Fund Asset Value", "物理的車両価値 + 累積キャッシュ回収 = NFAV", nfav_head) }}
   <div style="height:360px; position:relative">
-    <canvas id="fund-nfav-chart"></canvas>
+    {# nav_series is a list of {month, physical, cash_recovered, nfav} dicts.
+       The inline script below reads data-nav when non-empty, falls back to
+       procedural generation otherwise. #}
+    <canvas id="fund-nfav-chart" data-nav='{{ (nav_series if nav_series is defined else []) | tojson }}'></canvas>
   </div>
 {{ card_close() }}
 
@@ -85,30 +98,50 @@
   var GOLD  = '#C9A24A';
   var BLUE  = '#7E9DBF';
 
-  // 36-month sample series (in 百万円, displayed as ¥xM)
-  var labels = [];
-  for (var i = 1; i <= 36; i++) { labels.push('M' + i); }
-
-  // 物理的車両価値: 320M → 130M (roughly linear depreciation)
-  var vehicleValue = [];
-  for (var i = 0; i < 36; i++) {
-    vehicleValue.push(Math.round(320 - (320 - 130) * (i / 35)));
+  // Prefer the server-rendered NAV payload (data-nav JSON from
+  // app/services/sample_data/funds.py::get_nav_series). Fall back to the
+  // procedural curve below when it's missing or empty so the page still works
+  // in demo / non-hydrated contexts.
+  var navData = [];
+  try {
+    navData = JSON.parse(el.dataset.nav || '[]');
+  } catch (_) {
+    navData = [];
   }
 
-  // 累積キャッシュ回収: 0 → 220M (roughly linear accumulation)
-  var cashRecovery = [];
-  for (var i = 0; i < 36; i++) {
-    cashRecovery.push(Math.round(220 * (i / 35)));
-  }
+  var labels, vehicleValue, cashRecovery, nfav;
 
-  // NFAV: starts ~320, dips, then recovers to ~350
-  var nfav = [];
-  for (var i = 0; i < 36; i++) {
-    var t = i / 35;
-    // Parabolic dip: min around M12-15, recovers by M36
-    var dip = -40 * Math.sin(Math.PI * t);
-    var trend = 320 + (350 - 320) * t;
-    nfav.push(Math.round(trend + dip));
+  if (navData && navData.length) {
+    labels = navData.map(function(r){ return r.month; });
+    vehicleValue = navData.map(function(r){ return Math.round(r.physical); });
+    cashRecovery = navData.map(function(r){ return Math.round(r.cash_recovered); });
+    nfav = navData.map(function(r){ return Math.round(r.nfav); });
+  } else {
+    // 36-month sample series (in 百万円, displayed as ¥xM)
+    labels = [];
+    for (var i = 1; i <= 36; i++) { labels.push('M' + i); }
+
+    // 物理的車両価値: 320M → 130M (roughly linear depreciation)
+    vehicleValue = [];
+    for (var j = 0; j < 36; j++) {
+      vehicleValue.push(Math.round(320 - (320 - 130) * (j / 35)));
+    }
+
+    // 累積キャッシュ回収: 0 → 220M (roughly linear accumulation)
+    cashRecovery = [];
+    for (var k = 0; k < 36; k++) {
+      cashRecovery.push(Math.round(220 * (k / 35)));
+    }
+
+    // NFAV: starts ~320, dips, then recovers to ~350
+    nfav = [];
+    for (var m = 0; m < 36; m++) {
+      var t = m / 35;
+      // Parabolic dip: min around M12-15, recovers by M36
+      var dip = -40 * Math.sin(Math.PI * t);
+      var trend = 320 + (350 - 320) * t;
+      nfav.push(Math.round(trend + dip));
+    }
   }
 
   new Chart(el, {

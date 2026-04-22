@@ -8,6 +8,12 @@
 {% block title %}リスクモニタリング - CVLPOS{% endblock %}
 
 {% block content %}
+{# Context (wireframe-backed fixtures from app/services/sample_data/risk_alerts.py):
+     risk_alerts : list of dict (3 rows)
+     risk_kpi    : dict         (4 KPI counters)
+   Templates degrade gracefully when either is missing. #}
+{% set k = risk_kpi | default({}) %}
+
 <div class="page-head">
   <div>
     <span class="tag">松プラン限定</span>
@@ -17,10 +23,10 @@
 </div>
 
 <div class="kpi-row">
-  {{ kpi_sm("High risk 車両", "4", "LTV 60%超", 15, "bad") }}
-  {{ kpi_sm("延滞案件", "1", "30日超", 10, "warn") }}
-  {{ kpi_sm("NFAV 要警戒", "0", "閾値 60%", 0, "warn") }}
-  {{ kpi_sm("システムヘルス", "99.2%", "直近7日", 99, "ok") }}
+  {{ kpi_sm("High risk 車両", (k.high_risk_count | default(4)) | string, "LTV 60%超", 15, "bad") }}
+  {{ kpi_sm("延滞案件", (k.overdue_count | default(1)) | string, "30日超", 10, "warn") }}
+  {{ kpi_sm("NFAV 要警戒", (k.nfav_warn_count | default(0)) | string, "閾値 60%", 0, "warn") }}
+  {{ kpi_sm("システムヘルス", (k.system_health_pct | default(99.2)) | string ~ "%", "直近7日", 99, "ok") }}
 </div>
 
 <div style="margin-top:16px"></div>
@@ -39,33 +45,55 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>{{ chip("CRITICAL", "bad") }}</td>
-          <td>LTV 超過</td>
-          <td>Fund14号 / T-1498</td>
-          <td>本日 13:42</td>
-          <td class="num">60%</td>
-          <td class="num" style="color:var(--red); font-weight:700;">71%</td>
-          <td><a href="/inventory/T-1498" class="btn-mx gold" style="font-size:11px; padding:4px 10px;">対処</a></td>
-        </tr>
-        <tr>
-          <td>{{ chip("WARN", "warn") }}</td>
-          <td>延滞60日</td>
-          <td>㈱東西運輸</td>
-          <td>本日 10:05</td>
-          <td class="num">30日</td>
-          <td class="num" style="color:var(--amber); font-weight:700;">63日</td>
-          <td><a href="#" class="btn-mx" style="font-size:11px; padding:4px 10px;">督促</a></td>
-        </tr>
-        <tr>
-          <td>{{ chip("WARN", "warn") }}</td>
-          <td>JOB失敗</td>
-          <td>AI-NET scrape</td>
-          <td>本日 14:02</td>
-          <td class="num">3 retry</td>
-          <td class="num" style="color:var(--amber); font-weight:700;">3/3</td>
-          <td><a href="/scrape" class="btn-mx" style="font-size:11px; padding:4px 10px;">再実行</a></td>
-        </tr>
+        {% if risk_alerts %}
+          {% for a in risk_alerts %}
+            {% set level_kind = "bad" if a.level == "CRITICAL" else "warn" %}
+            {% set obs_color = a.observed_color | default(None) %}
+            {% set obs_style = "" %}
+            {% if obs_color == "bad" %}{% set obs_style = "color:var(--red); font-weight:700;" %}
+            {% elif obs_color == "warn" %}{% set obs_style = "color:var(--amber); font-weight:700;" %}
+            {% endif %}
+            {% set btn_cls = "btn-mx gold" if a.level == "CRITICAL" else "btn-mx" %}
+            <tr>
+              <td>{{ chip(a.level, level_kind) }}</td>
+              <td>{{ a.kind }}</td>
+              <td>{{ a.target }}</td>
+              <td>{{ a.detected_at }}</td>
+              <td class="num">{{ a.threshold }}</td>
+              <td class="num" style="{{ obs_style }}">{{ a.observed }}</td>
+              <td><a href="{{ a.action_href }}" class="{{ btn_cls }}" style="font-size:11px; padding:4px 10px;">{{ a.action_label }}</a></td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          {# Fallback (route always injects the fixture). #}
+          <tr>
+            <td>{{ chip("CRITICAL", "bad") }}</td>
+            <td>LTV 超過</td>
+            <td>Fund14号 / T-1498</td>
+            <td>本日 13:42</td>
+            <td class="num">60%</td>
+            <td class="num" style="color:var(--red); font-weight:700;">71%</td>
+            <td><a href="/inventory/T-1498" class="btn-mx gold" style="font-size:11px; padding:4px 10px;">対処</a></td>
+          </tr>
+          <tr>
+            <td>{{ chip("WARN", "warn") }}</td>
+            <td>延滞60日</td>
+            <td>㈱東西運輸</td>
+            <td>本日 10:05</td>
+            <td class="num">30日</td>
+            <td class="num" style="color:var(--amber); font-weight:700;">63日</td>
+            <td><a href="#" class="btn-mx" style="font-size:11px; padding:4px 10px;">督促</a></td>
+          </tr>
+          <tr>
+            <td>{{ chip("WARN", "warn") }}</td>
+            <td>JOB失敗</td>
+            <td>AI-NET scrape</td>
+            <td>本日 14:02</td>
+            <td class="num">3 retry</td>
+            <td class="num" style="color:var(--amber); font-weight:700;">3/3</td>
+            <td><a href="/scrape" class="btn-mx" style="font-size:11px; padding:4px 10px;">再実行</a></td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>

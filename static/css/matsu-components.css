@@ -852,3 +852,73 @@ body.matsu .hand { font-family: var(--font-hand); letter-spacing: .01em; }
   }
   .grid-4 { grid-template-columns: 1fr; }
 }
+
+/* ================================================================
+   Dark mode overrides (Phase 5+)
+   Scope: body.matsu[data-theme="dark"]
+   Navy / gold / green / amber / red brand tokens are intentionally
+   NOT overridden — identity stays intact.
+   JS in app.js sets data-theme at boot honoring
+   localStorage.cvl_theme then prefers-color-scheme.
+   ================================================================ */
+body.matsu[data-theme="dark"] {
+  --bg: #0f1520;          /* page background */
+  --card: #1a2332;         /* card surface */
+  --line: #2a3547;         /* dividers */
+  --line-2: #374257;       /* secondary dividers */
+  --text: #E6E4DB;         /* body text */
+  --muted: #9A968A;        /* secondary text */
+  /* navy/gold/green/amber/red stay the same — they're brand-critical */
+}
+
+/* Table header + hover need re-toning */
+body.matsu[data-theme="dark"] .tbl th { background: #232d3f; color: var(--muted); }
+body.matsu[data-theme="dark"] .tbl td { border-bottom-color: #232d3f; }
+body.matsu[data-theme="dark"] .tbl tr:hover td { background: #1e2736; }
+
+/* Topbar + search input need darker surfaces */
+body.matsu[data-theme="dark"] .mx-topbar { background: var(--card); border-bottom-color: var(--line); }
+body.matsu[data-theme="dark"] .mx-topbar input { background: #232d3f; color: var(--text); }
+body.matsu[data-theme="dark"] .fund-switch { background: #232d3f; }
+
+/* Buttons: invert outline variant */
+body.matsu[data-theme="dark"] .btn-mx {
+  background: #1e2736;
+  border-color: var(--line-2);
+  color: var(--text);
+}
+body.matsu[data-theme="dark"] .btn-mx:hover { background: #283348; }
+
+/* KPI-sm cards + inv-card on dark */
+body.matsu[data-theme="dark"] .kpi-sm { background: var(--card); border-color: var(--line); }
+body.matsu[data-theme="dark"] .kpi-sm .val { color: #fff; }
+body.matsu[data-theme="dark"] .inv-card { background: var(--card); border-color: var(--line); }
+body.matsu[data-theme="dark"] .inv-card .plate { background: #242e40; border-color: var(--line-2); color: #E6C46A; }
+
+/* Tab active underline stays gold; inactive text goes lighter */
+body.matsu[data-theme="dark"] .tabs-mx { border-bottom-color: var(--line); }
+body.matsu[data-theme="dark"] .tabs-mx .tab.on { color: #fff; }
+
+/* Alerts: darken backgrounds but keep colored borders */
+body.matsu[data-theme="dark"] .alert-mx.red { background: rgba(181,68,58,.12); color: #F0A89D; }
+body.matsu[data-theme="dark"] .alert-mx.amber { background: rgba(196,138,42,.12); color: #E6C46A; }
+
+/* Wire placeholder needs a dark variant */
+body.matsu[data-theme="dark"] .wire {
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,.035) 0 2px, transparent 2px 10px), #1e2736;
+  color: var(--muted);
+}
+
+/* Card-mx + page-head heading */
+body.matsu[data-theme="dark"] .card-mx { background: var(--card); border-color: var(--line); }
+body.matsu[data-theme="dark"] .card-mx > .card-h { border-bottom-color: var(--line); }
+body.matsu[data-theme="dark"] .card-mx > .card-h h3 { color: #fff; }
+body.matsu[data-theme="dark"] .page-head h1 { color: #fff; }
+
+/* Note-mx: yellow sticky on light, subtle on dark */
+body.matsu[data-theme="dark"] .note-mx { background: rgba(230,196,106,.08); color: #E6C46A; }
+
+/* Theme-toggle icon swap — sun on light, moon on dark */
+body.matsu[data-theme="dark"] #cvl-theme-toggle .theme-icon-light { display: none; }
+body.matsu[data-theme="dark"] #cvl-theme-toggle .theme-icon-dark  { display: inline; }
+body.matsu[data-theme="dark"] #cvl-theme-toggle .theme-icon-dark[hidden] { display: inline !important; }

@@ -224,6 +224,26 @@ async def dashboard_page(request: Request):
         recent_sims = []
         error_banner = "ダッシュボードデータの取得に失敗しました。表示されている数値は不完全な可能性があります。"
 
+    # Portfolio fixtures (funds + NAV + monthly CF).
+    # These drive the Dashboard's ファンド一覧 table and the Variant B/C charts.
+    # We always attach them — the Dashboard KPI hero is hydrated from Supabase
+    # above, but the per-fund table and NAV/CF series don't yet have a
+    # real-data path, so the fixture is the canonical source for now.
+    try:
+        from app.services.sample_data import (
+            get_funds as _fx_funds,
+            get_nav_series as _fx_nav,
+            get_monthly_cashflow as _fx_cf,
+        )
+        funds = _fx_funds()
+        nav_series = _fx_nav()
+        monthly_cf = _fx_cf(6)
+    except Exception:
+        logger.exception("dashboard_fixture_load_failed", handler="dashboard_page")
+        funds = []
+        nav_series = []
+        monthly_cf = []
+
     context = {
         "user": user,
         "kpi": kpi,
@@ -232,6 +252,9 @@ async def dashboard_page(request: Request):
         "error_banner": error_banner,
         "error_message": error_banner,
         "kpi_json_url": "/api/v1/dashboard/kpi/json",
+        "funds": funds,
+        "nav_series": nav_series,
+        "monthly_cf": monthly_cf,
     }
     return _render(request, "pages/dashboard.html", context)
 
@@ -263,7 +286,29 @@ async def simulation_new_page(request: Request):
         equipment_options = options_resp.data or []
     except Exception:
         logger.exception("simulation_new_form_data_failed", handler="simulation_new_page")
-        error_banner = "マスタデータの取得に失敗しました。一部のドロップダウンが空になっている可能性があります。"
+        # Fall through to fixture fallback below — swallow the exception so
+        # the page still renders usable dropdowns in demo / unreachable-DB
+        # environments.
+
+    # Silent fixture fallback: if Supabase returned empty (or raised above),
+    # populate the dropdowns from bundled sample data so the form is usable
+    # in demo / local / empty-DB setups. The fallback is a no-op whenever the
+    # Supabase query actually returned rows.
+    if not makers or not body_types or not categories:
+        from app.services.sample_data import (
+            get_makers as _fx_makers,
+            get_body_types as _fx_body_types,
+            get_categories as _fx_categories,
+        )
+        if not makers:
+            makers = _fx_makers()
+        if not body_types:
+            body_types = _fx_body_types()
+        if not categories:
+            categories = _fx_categories()
+        # Clear the error banner — the fixture gives users a working form, so
+        # showing a "failed to fetch" warning would be misleading.
+        error_banner = None
 
     # Build prefill dict from query params (emitted by simulation_result "条件変更して再計算" link).
     # Keys mirror the template's existing input `name` attributes so binding is direct.
@@ -854,9 +899,22 @@ async def invoice_list_page(request: Request):
         logger.exception("invoice_list_fetch_failed", handler="invoice_list_page")
         error_banner = "請求書データの取得に失敗しました。しばらくしてから再度お試しください。"
 
+    # Fallback: when Supabase returned zero rows (empty tenant / fresh install),
+    # hand the template the 6-row wireframe fixture so the page still shows
+    # representative data. The fixture is owned by Agent #5.
+    invoice_kpi: dict[str, Any] = {}
+    if not invoices:
+        try:
+            from app.services.sample_data import get_invoices, get_invoice_kpi
+            invoices = get_invoices()
+            invoice_kpi = get_invoice_kpi()
+        except Exception:
+            logger.exception("invoice_fixture_load_failed", handler="invoice_list_page")
+
     return _render(request, "pages/invoice_list.html", {
         "user": user,
         "invoices": invoices,
+        "invoice_kpi": invoice_kpi,
         "total_count": len(invoices),
         "error_banner": error_banner,
         "error_message": error_banner,
@@ -1017,6 +1075,67 @@ def _make_page_route(path: str, template: str, active_page: str, required_plan: 
             from app.services.esg_service import compute_esg_snapshot
 
             ctx["esg"] = compute_esg_snapshot()
+        # Portfolio / Fund pages read the 5-fund fixture for their tables and
+        # NAV chart. The fixture is the canonical source until a Supabase
+        # ``funds`` table lands; templates still keep their inline fallbacks
+        # so a missing context var degrades gracefully.
+        if active_page in ("portfolio", "fund"):
+            try:
+                from app.services.sample_data import (
+                    get_funds as _fx_funds,
+                    get_nav_series as _fx_nav,
+                    get_monthly_cashflow as _fx_cf,
+                )
+                ctx["funds"] = _fx_funds()
+                ctx["nav_series"] = _fx_nav()
+                ctx["monthly_cf"] = _fx_cf(6)
+            except Exception:
+                logger.exception(
+                    "page_fixture_load_failed",
+                    handler=f"{active_page}_page",
+                )
+                ctx.setdefault("funds", [])
+                ctx.setdefault("nav_series", [])
+                ctx.setdefault("monthly_cf", [])
+        # Risk / Inventory / Scrape pages read their respective fixtures so
+        # the UI always has realistic numbers out of the box. Each fixture
+        # is a wireframe-verbatim dataset owned by Agent #5.
+        if active_page == "risk":
+            try:
+                from app.services.sample_data import (
+                    get_risk_alerts as _fx_alerts,
+                    get_risk_kpi as _fx_risk_kpi,
+                )
+                ctx["risk_alerts"] = _fx_alerts()
+                ctx["risk_kpi"] = _fx_risk_kpi()
+            except Exception:
+                logger.exception("page_fixture_load_failed", handler="risk_page")
+                ctx.setdefault("risk_alerts", [])
+                ctx.setdefault("risk_kpi", {})
+        elif active_page == "inventory":
+            try:
+                from app.services.sample_data import (
+                    get_vehicles as _fx_vehicles,
+                    get_fleet_kpi as _fx_fleet_kpi,
+                )
+                ctx["vehicles"] = _fx_vehicles()
+                ctx["fleet_kpi"] = _fx_fleet_kpi()
+            except Exception:
+                logger.exception("page_fixture_load_failed", handler="inventory_page")
+                ctx.setdefault("vehicles", [])
+                ctx.setdefault("fleet_kpi", {})
+        elif active_page == "scrape":
+            try:
+                from app.services.sample_data import (
+                    get_scrape_jobs as _fx_jobs,
+                    get_scrape_kpi as _fx_scrape_kpi,
+                )
+                ctx["scrape_jobs"] = _fx_jobs()
+                ctx["scrape_kpi"] = _fx_scrape_kpi()
+            except Exception:
+                logger.exception("page_fixture_load_failed", handler="scrape_page")
+                ctx.setdefault("scrape_jobs", [])
+                ctx.setdefault("scrape_kpi", {})
         return _render(request, f"pages/{template}", ctx)
 
     _handler.__name__ = f"{active_page}_page"

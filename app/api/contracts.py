@@ -5,6 +5,7 @@ import io
 import zipfile
 from typing import Any
 from datetime import datetime
+from urllib.parse import quote
 
 import structlog
 from fastapi import APIRouter, Request, Depends
@@ -178,25 +179,51 @@ async def save_stakeholder(
         return HTMLResponse(f'<div class="alert alert--error">保存エラー: {str(e)[:100]}</div>')
 
 
-# POST /api/v1/contracts/generate/{simulation_id}
-@router.post("/generate/{simulation_id}")
-async def generate_contracts(
-    simulation_id: str,
-    request: Request,
-    user: dict = Depends(require_permission("contracts", "write")),
-):
-    """Generate all contract documents for a simulation.
+def _content_disposition(filename: str) -> str:
+    """Header value safe for non-ASCII filenames.
 
-    Uses ContractGenerator to produce real DOCX files (via docxtpl variable
-    substitution) instead of plain-text fallbacks.  The generated context is
-    also persisted to the ``deal_contracts`` table for audit/traceability.
+    Starlette encodes response headers as latin-1, so we emit both an
+    ASCII fallback (``filename=``) and an RFC 5987 UTF-8-encoded
+    ``filename*`` so Japanese contract names don't crash the response.
+    """
+    encoded = quote(filename, safe="")
+    ascii_fallback = (
+        filename.encode("ascii", errors="replace").decode("ascii").replace("?", "_")
+    )
+    if not ascii_fallback.strip("_"):
+        ascii_fallback = "download"
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
+
+
+def _parse_types_param(types: str | None) -> set[str] | None:
+    """Parse a comma-separated ``types`` query param into a set of display
+    names.  Returns ``None`` when no filter is requested (generate all)."""
+    if not types:
+        return None
+    selected = {t.strip() for t in types.split(",") if t.strip()}
+    return selected or None
+
+
+def _generate_docx_bytes(
+    simulation_id: str,
+    selected_display_names: set[str] | None = None,
+    persist: bool = True,
+):
+    """Shared generation loop used by both ``POST /generate/{id}`` and
+    ``GET /bulk-zip/{id}``.
+
+    Returns a tuple ``(generated_entries, error_response)``.  When
+    ``error_response`` is not None the caller should return it directly.
+
+    ``selected_display_names`` optionally filters the contracts to generate
+    by their display (Japanese) name.
     """
     client = _get_client()
 
     # --- Fetch simulation --------------------------------------------------
     sim = client.table("simulations").select("*").eq("id", simulation_id).maybe_single().execute()
     if not sim.data:
-        return JSONResponse({"error": "Simulation not found"}, status_code=404)
+        return [], JSONResponse({"error": "Simulation not found"}, status_code=404)
     simulation = sim.data
     rsj = simulation.get("result_summary_json") or {}
 
@@ -205,7 +232,7 @@ async def generate_contracts(
     stakeholders = {s["role_type"]: s for s in (sh.data or [])}
 
     if not stakeholders:
-        return HTMLResponse(
+        return [], HTMLResponse(
             '<div class="alert alert--error">ステークホルダー情報を先に登録してください</div>'
         )
 
@@ -231,9 +258,15 @@ async def generate_contracts(
 
     # --- Generate DOCX contracts via ContractGenerator --------------------
     generator = ContractGenerator()
-    generated_entries = []
+    generated_entries: list[dict] = []
 
     for contract_type, template_file in generator.TEMPLATES.items():
+        display_name = generator.CONTRACT_NAMES.get(contract_type, contract_type)
+
+        # Filter by explicit type selection when provided
+        if selected_display_names is not None and display_name not in selected_display_names:
+            continue
+
         party_a_role, party_b_role = generator.PARTY_MAPPING.get(
             contract_type, ("spc", "operator")
         )
@@ -253,23 +286,22 @@ async def generate_contracts(
             logger.warning("template_missing", contract_type=contract_type)
             continue
 
-        display_name = generator.CONTRACT_NAMES.get(contract_type, contract_type)
-
-        # Persist to deal_contracts for audit
-        try:
-            dc_data = {
-                "simulation_id": simulation_id,
-                "contract_name": display_name,
-                "status": "generated",
-                "generated_context": context,
-                "generated_at": datetime.utcnow().isoformat(),
-            }
-            db_tmpl = db_template_by_name.get(display_name)
-            if db_tmpl:
-                dc_data["template_id"] = db_tmpl["id"]
-            client.table("deal_contracts").insert(dc_data).execute()
-        except Exception:
-            pass
+        # Persist to deal_contracts for audit (only for POST /generate)
+        if persist:
+            try:
+                dc_data = {
+                    "simulation_id": simulation_id,
+                    "contract_name": display_name,
+                    "status": "generated",
+                    "generated_context": context,
+                    "generated_at": datetime.utcnow().isoformat(),
+                }
+                db_tmpl = db_template_by_name.get(display_name)
+                if db_tmpl:
+                    dc_data["template_id"] = db_tmpl["id"]
+                client.table("deal_contracts").insert(dc_data).execute()
+            except Exception:
+                pass
 
         generated_entries.append({
             "display_name": display_name,
@@ -277,26 +309,95 @@ async def generate_contracts(
         })
 
     if not generated_entries:
-        return HTMLResponse(
+        return [], HTMLResponse(
             '<div class="alert alert--error">'
             "生成可能な契約書がありません。全ステークホルダーの情報を入力してください。"
             "</div>"
         )
 
-    # --- Package into ZIP --------------------------------------------------
+    return generated_entries, None
+
+
+def _zip_entries(simulation_id: str, entries: list[dict]) -> io.BytesIO:
+    """Package generated DOCX entries into a ZIP BytesIO."""
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for entry in generated_entries:
+        for entry in entries:
             filename = f"{entry['display_name']}_{simulation_id[:8]}.docx"
             zf.writestr(filename, entry["docx_bytes"])
-
     zip_buffer.seek(0)
+    return zip_buffer
+
+
+# POST /api/v1/contracts/generate/{simulation_id}
+@router.post("/generate/{simulation_id}")
+async def generate_contracts(
+    simulation_id: str,
+    request: Request,
+    types: str | None = None,
+    user: dict = Depends(require_permission("contracts", "write")),
+):
+    """Generate all contract documents for a simulation.
+
+    Uses ContractGenerator to produce real DOCX files (via docxtpl variable
+    substitution) instead of plain-text fallbacks.  The generated context is
+    also persisted to the ``deal_contracts`` table for audit/traceability.
+
+    Accepts an optional ``types`` query/form param — comma-separated
+    display names to filter which contracts to generate.
+    """
+    # Also accept selected types from form body (HTMX posts checkboxes by name)
+    selected: set[str] | None = _parse_types_param(types)
+    if selected is None:
+        try:
+            form = await request.form()
+            form_types = form.getlist("contract_types") if hasattr(form, "getlist") else []
+            if form_types:
+                selected = {t.strip() for t in form_types if t and t.strip()}
+        except Exception:
+            selected = None
+
+    entries, err = _generate_docx_bytes(
+        simulation_id, selected_display_names=selected, persist=True
+    )
+    if err is not None:
+        return err
+
+    zip_buffer = _zip_entries(simulation_id, entries)
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="contracts_{simulation_id[:8]}.zip"'
+            "Content-Disposition": _content_disposition(
+                f"contracts_{simulation_id[:8]}.zip"
+            )
+        },
+    )
+
+
+# GET /api/v1/contracts/bulk-zip/{simulation_id}
+@router.get("/bulk-zip/{simulation_id}")
+async def bulk_zip_contracts(
+    simulation_id: str,
+    types: str | None = None,
+    user: dict = Depends(require_permission("contracts", "read")),
+):
+    """Generate all (or selected) contract DOCX files and return as a
+    single ZIP. Does not persist audit rows (read-level endpoint)."""
+    selected = _parse_types_param(types)
+    entries, err = _generate_docx_bytes(
+        simulation_id, selected_display_names=selected, persist=False
+    )
+    if err is not None:
+        return err
+
+    zip_buffer = _zip_entries(simulation_id, entries)
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": _content_disposition(
+                f"contracts_{simulation_id[:8]}.zip"
             )
         },
     )

@@ -39,6 +39,9 @@
             <div class="canvas">
                 {% block content %}{% endblock %}
             </div>
+            <footer class="mx-footer" role="contentinfo" style="padding:14px 28px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);text-align:center;background:var(--card)">
+                © {{ current_year | default(2026) }} 株式会社カーチスロジテック All Rights Reserved.
+            </footer>
         </main>
     </div>
 

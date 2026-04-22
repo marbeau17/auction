@@ -60,14 +60,14 @@
 
 {% set CONTRACT_TYPES = [
   "匿名組合契約書",
-  "私募取扱業務委託契約書",
-  "解約払戻事務委託契約書",
-  "AM契約書",
-  "会計事務委託契約書",
-  "会計事務委託契約書（税理士）",
+  "車両売買契約書",
   "マスターリース契約書",
   "サブリース契約書",
-  "車両売買契約書",
+  "私募取扱業務契約書",
+  "顧客紹介業務契約書",
+  "アセットマネジメント契約書",
+  "会計事務委託契約書①（会計事務所）",
+  "会計事務委託契約書②（一般社団法人）",
 ] %}
 
 {% set CONTRACT_PARAMS = [
@@ -89,14 +89,28 @@
   </div>
   <div class="spacer"></div>
   <button type="button"
-          class="btn-mx gold"
-          id="contract-zip-download"
-          hx-get="/api/v1/contracts/bulk-zip/{{ simulation_id }}"
+          class="btn-mx"
+          id="contract-preview-btn"
+          onclick="document.getElementById('contract-mapper-mount').scrollIntoView({behavior:'smooth'})">
+    プレビュー
+  </button>
+  <button type="button"
+          class="btn-mx primary"
+          id="contract-bulk-generate-btn"
+          hx-post="/api/v1/contracts/generate/{{ simulation_id }}"
           hx-trigger="click"
-          hx-swap="none">
+          hx-target="#contract-generate-result"
+          hx-swap="innerHTML"
+          hx-include=".contract-list input[type='checkbox']:checked">
+    9種まとめて生成 →
+  </button>
+  <a class="btn-mx gold"
+     id="contract-zip-download"
+     href="/api/v1/contracts/bulk-zip/{{ simulation_id }}"
+     download>
     {{ icon("dl", 14) }}
     ZIP 一括ダウンロード
-  </button>
+  </a>
 </div>
 
 <div class="grid-2">
@@ -124,36 +138,27 @@
         {% endfor %}
       </tbody>
     </table>
-    <div class="contract-actions">
-      <button type="button"
-              class="btn-mx"
-              id="contract-preview-btn"
-              hx-get="/api/v1/contracts/preview/{{ simulation_id }}"
-              hx-trigger="click"
-              hx-target="#contract-preview-modal"
-              hx-swap="innerHTML">
-        プレビュー
-      </button>
-      <button type="button"
-              class="btn-mx primary"
-              id="contract-bulk-generate-btn"
-              hx-post="/api/v1/contracts/generate-all/{{ simulation_id }}"
-              hx-trigger="click"
-              hx-swap="none">
-        9種まとめて生成 →
-      </button>
-    </div>
   {{ card_close() }}
 </div>
 
-{# Mount point for preview modal content returned by HTMX #}
-<div id="contract-preview-modal"></div>
+{# Generate result area (HTMX target for the bulk-generate button) #}
+<div id="contract-generate-result" style="margin-top:16px"></div>
+
+{# Mapper mount — loads the full stakeholder editor + existing contract list
+   fragment from /api/v1/contracts/mapper/{id} (the pre-redesign "whole page"). #}
+<div id="contract-mapper-mount"
+     hx-get="/api/v1/contracts/mapper/{{ simulation_id }}"
+     hx-trigger="load"
+     hx-swap="innerHTML"
+     style="margin-top:16px">
+  <div class="card-mx"><div class="card-b">読み込み中…</div></div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // Keep ZIP download button in sync with checkbox state.
-  // Selected types are sent as a comma-separated query param for the bulk endpoint.
+  // Keep the ZIP link and generate button in sync with checkbox state.
+  // Selected types are sent as a comma-separated query param.
   (function () {
     const zipBtn = document.getElementById('contract-zip-download');
     const genBtn = document.getElementById('contract-bulk-generate-btn');
@@ -169,8 +174,8 @@
       const types = selectedTypes();
       const qs = types.length ? '?types=' + encodeURIComponent(types.join(',')) : '';
       if (zipBtn) {
-        const base = zipBtn.getAttribute('hx-get').split('?')[0];
-        zipBtn.setAttribute('hx-get', base + qs);
+        const base = zipBtn.getAttribute('href').split('?')[0];
+        zipBtn.setAttribute('href', base + qs);
       }
       if (genBtn) {
         const base = genBtn.getAttribute('hx-post').split('?')[0];

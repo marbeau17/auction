@@ -69,6 +69,18 @@
   <button
     type="button"
     class="btn-mx"
+    id="cvl-theme-toggle"
+    style="padding:6px 10px"
+    aria-label="テーマ切替"
+    data-theme-toggle
+  >
+    <span class="theme-icon-light" aria-hidden="true">{{ icon("sun", 16) }}</span>
+    <span class="theme-icon-dark" aria-hidden="true" hidden>{{ icon("moon", 16) }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="btn-mx"
     id="cvl-bell-btn"
     style="padding:6px 10px; position:relative"
     aria-label="通知 (3件の未読)"

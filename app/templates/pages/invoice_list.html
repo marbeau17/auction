@@ -9,6 +9,14 @@
 {% block content %}
 {% include "partials/_error_banner.html" %}
 
+{# Context:
+     invoices    : list of dict — real DB rows or the fixture from
+                    app/services/sample_data/invoices.py
+     invoice_kpi : dict          — KPI counters (populated when the fixture
+                                    is used; empty {} when real data exists).
+   The row rendering supports BOTH shapes so this template stays generic. #}
+{% set k = invoice_kpi | default({}) %}
+
 {# ===== Page head ===== #}
 <div class="page-head">
   <div>
@@ -35,11 +43,19 @@
 </div>
 
 {# ===== KPI row ===== #}
+{% set issued_count   = k.issued_month_count     | default(142) %}
+{% set issued_m       = ((k.issued_month_yen     | default(182000000)) // 1000000) %}
+{% set paid_count     = k.paid_count             | default(139) %}
+{% set paid_ratio     = k.paid_ratio_pct         | default(98) %}
+{% set pending_count  = k.pending_approval_count | default(2) %}
+{% set pending_k      = ((k.pending_approval_yen | default(875000)) // 1000) %}
+{% set overdue_count  = k.overdue_count          | default(1) %}
+{% set overdue_k      = ((k.overdue_yen          | default(410000)) // 1000) %}
 <div class="kpi-row" style="margin-bottom:16px">
-  {{ kpi_sm("今月発行", "142件", "¥182M") }}
-  {{ kpi_sm("入金済", "139", "98.4%", 98, "ok") }}
-  {{ kpi_sm("承認待", "2", "¥875K", None, "warn") }}
-  {{ kpi_sm("延滞", "1", "¥410K", None, "bad") }}
+  {{ kpi_sm("今月発行", issued_count|string ~ "件", "¥" ~ issued_m|string ~ "M") }}
+  {{ kpi_sm("入金済", paid_count|string, paid_ratio|string ~ "%", paid_ratio, "ok") }}
+  {{ kpi_sm("承認待", pending_count|string, "¥" ~ pending_k|string ~ "K", None, "warn") }}
+  {{ kpi_sm("延滞", overdue_count|string, "¥" ~ overdue_k|string ~ "K", None, "bad") }}
 </div>
 
 {# ===== Invoice list card ===== #}
@@ -128,29 +144,40 @@
         </thead>
         <tbody>
           {% for inv in invoices %}
+          {# Accept both real DB rows ({invoice_number, company_name, total_amount, status})
+             and the sample fixture rows ({number, customer, amount_yen, status_label, status_kind}). #}
+          {% set inv_no     = inv.number       | default(inv.invoice_number | default("-")) %}
+          {% set inv_cust   = inv.customer     | default(inv.company_name   | default("-")) %}
+          {% set inv_amt    = inv.amount_yen   | default(inv.total_amount   | default(0)) %}
+          {% set inv_due    = inv.due_date     | default("-") %}
+          {% set inv_status = inv.status       | default("") %}
+          {% set inv_label  = inv.status_label | default("") %}
+          {% set inv_kind   = inv.status_kind  | default("") %}
           <tr>
             <td class="mono" style="color:var(--muted);">{{ loop.index }}</td>
-            <td class="mono">{{ inv.invoice_number | default("-") }}</td>
-            <td>{{ inv.company_name | default("-") }}</td>
-            <td class="num"><b>&yen;{{ "{:,}".format(inv.total_amount | default(0)) }}</b></td>
-            <td{% if inv.status == 'overdue' %} style="color:var(--red);"{% endif %}>{{ inv.due_date | default("-") }}</td>
+            <td class="mono">{{ inv_no }}</td>
+            <td>{{ inv_cust }}</td>
+            <td class="num"><b>&yen;{{ "{:,}".format(inv_amt) }}</b></td>
+            <td{% if inv_status == 'overdue' or inv_kind == 'bad' %} style="color:var(--red);"{% endif %}>{{ inv_due }}</td>
             <td>
-              {% if inv.status == 'created' %}
+              {% if inv_label %}
+                {{ chip(inv_label, inv_kind or "neutral") }}
+              {% elif inv_status == 'created' %}
                 {{ chip("作成済", "neutral") }}
-              {% elif inv.status == 'pending_review' %}
+              {% elif inv_status == 'pending_review' %}
                 {{ chip("承認待", "warn") }}
-              {% elif inv.status == 'approved' %}
+              {% elif inv_status == 'approved' %}
                 {{ chip("承認済", "info") }}
-              {% elif inv.status == 'pdf_ready' %}
+              {% elif inv_status == 'pdf_ready' %}
                 {{ chip("PDF生成済", "info") }}
-              {% elif inv.status == 'sent' %}
+              {% elif inv_status == 'sent' %}
                 {{ chip("送付済", "ok") }}
-              {% elif inv.status == 'paid' %}
+              {% elif inv_status == 'paid' %}
                 {{ chip("入金済", "ok") }}
-              {% elif inv.status == 'overdue' %}
+              {% elif inv_status == 'overdue' %}
                 {{ chip("延滞", "bad") }}
               {% else %}
-                {{ chip(inv.status, "neutral") }}
+                {{ chip(inv_status or "-", "neutral") }}
               {% endif %}
             </td>
             <td>
@@ -161,7 +188,11 @@
               {% endif %}
             </td>
             <td>
-              <a href="/invoices/{{ inv.id }}" class="btn-mx" style="padding:4px 10px;font-size:11px;">詳細</a>
+              {% if inv.id is defined %}
+                <a href="/invoices/{{ inv.id }}" class="btn-mx" style="padding:4px 10px;font-size:11px;">詳細</a>
+              {% else %}
+                <button class="btn-mx" style="padding:4px 10px;font-size:11px;">詳細</button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -172,6 +203,8 @@
       <div style="display:flex;align-items:center;padding:10px 14px;font-size:12px;color:var(--muted);">
         {% if meta %}
           全 {{ meta.total_count }}件 · 表示 {{ ((meta.page - 1) * meta.page_size) + 1 }}-{{ [meta.page * meta.page_size, meta.total_count] | min }}
+        {% elif k.issued_month_count %}
+          全 {{ k.issued_month_count }}件 · 表示 1-{{ invoices | length }}
         {% else %}
           全 {{ invoices | length }}件
         {% endif %}
@@ -185,56 +218,16 @@
                     hx-include="#filter-form"
                     hx-indicator="#table-loading">{{ p }}</button>
           {% endfor %}
+        {% elif k.issued_month_count %}
+          {% for p in [1, 2, 3, '…', 29] %}
+            <button class="btn-mx" style="margin-left:3px;padding:4px 10px;{% if p == 1 %}font-weight:700;background:var(--navy);color:#fff;border-color:var(--navy);{% endif %}">{{ p }}</button>
+          {% endfor %}
         {% endif %}
       </div>
 
       {% else %}
-      {# Sample rows when no invoices passed in context (wireframe preview) #}
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>請求番号</th>
-            <th>取引先</th>
-            <th class="num">請求額</th>
-            <th>期日</th>
-            <th>ステータス</th>
-            <th>弥生連携</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% set sample_rows = [
-            {'no': 'INV-202604-0001', 'cust': '山田運送', 'amt': 450000, 'due': '2026/04/30', 'st': '送付済', 'st_cls': 'ok'},
-            {'no': 'INV-202604-0002', 'cust': '佐藤物流', 'amt': 380000, 'due': '2026/04/30', 'st': '承認待', 'st_cls': 'warn'},
-            {'no': 'INV-202604-0003', 'cust': '田中運輸', 'amt': 520000, 'due': '2026/04/30', 'st': '送付済', 'st_cls': 'ok'},
-            {'no': 'INV-202604-0004', 'cust': '鈴木物流', 'amt': 410000, 'due': '2026/04/25', 'st': '延滞',   'st_cls': 'bad'},
-            {'no': 'INV-202604-0005', 'cust': '高橋運送', 'amt': 495000, 'due': '2026/04/30', 'st': '承認待', 'st_cls': 'warn'},
-            {'no': 'INV-202604-0006', 'cust': '中村物流', 'amt': 385000, 'due': '2026/04/30', 'st': '送付済', 'st_cls': 'ok'}
-          ] %}
-          {% for row in sample_rows %}
-          <tr>
-            <td class="mono" style="color:var(--muted);">{{ loop.index }}</td>
-            <td class="mono">{{ row.no }}</td>
-            <td>{{ row.cust }}</td>
-            <td class="num"><b>&yen;{{ "{:,}".format(row.amt) }}</b></td>
-            <td{% if row.st_cls == 'bad' %} style="color:var(--red);"{% endif %}>{{ row.due }}</td>
-            <td>{{ chip(row.st, row.st_cls) }}</td>
-            <td><span class="chip ok">{{ icon("check", 10) }} 同期済</span></td>
-            <td><button class="btn-mx" style="padding:4px 10px;font-size:11px;">詳細</button></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-
-      {# Sample pagination #}
-      <div style="display:flex;align-items:center;padding:10px 14px;font-size:12px;color:var(--muted);">
-        全 142件 · 表示 1-6
-        <div style="flex:1"></div>
-        {% for p in [1, 2, 3, '…', 29] %}
-          <button class="btn-mx" style="margin-left:3px;padding:4px 10px;{% if p == 1 %}font-weight:700;background:var(--navy);color:#fff;border-color:var(--navy);{% endif %}">{{ p }}</button>
-        {% endfor %}
-      </div>
+      {# No data at all — route fallback already kicked in, so this is a last-resort empty state. #}
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;">請求書データがありません。</div>
       {% endif %}
     </div>
   </div>

@@ -8,12 +8,18 @@
 {% block title %}インベントリ管理 - CVLPOS{% endblock %}
 
 {% block content %}
+{# Context (wireframe-backed fixtures from app/services/sample_data/vehicles.py):
+     vehicles : list of dict  (≥20 entries)
+     fleet_kpi: dict           (wireframe-verbatim totals)
+   Templates degrade gracefully when either is missing. #}
+{% set k = fleet_kpi | default({}) %}
+
 {# ===== Page head ===== #}
 <div class="page-head">
   <div>
     <span class="tag">松プラン 強調機能</span>
     <h1>インベントリ管理</h1>
-    <div class="sub">全 142台 を単一ビューで — 松プランならテレマティクス連携で稼働データもリアルタイム</div>
+    <div class="sub">全 {{ k.total_count | default(142) }}台 を単一ビューで — 松プランならテレマティクス連携で稼働データもリアルタイム</div>
   </div>
   <div class="spacer"></div>
   <button type="button" class="btn-mx">
@@ -29,10 +35,10 @@
   "FLEET OVERVIEW",
   "フリート全体ビュー",
   [
-    {"lab": "稼働車両", "big": "142", "unit": "台", "delta": "稼働率 97.9% · +6台 MoM", "delta_dir": "up", "gold": true},
-    {"lab": "平均車齢", "big": "3.2", "unit": "年", "delta": "目標 4年以下", "delta_dir": "up"},
-    {"lab": "平均LTV", "big": "55", "unit": "%", "delta": "閾値 60% まで -5pp", "delta_dir": "up"},
-    {"lab": "フリート簿価合計", "big": "¥6.8", "unit": "億", "delta": "取得価 ¥12.2億 / 償却率 44%", "delta_dir": "up"}
+    {"lab": "稼働車両", "big": (k.total_count | default(142)) | string, "unit": "台", "delta": "稼働率 " ~ (k.utilization_pct | default(97.9)) ~ "% · +" ~ (k.mom_delta_count | default(6)) ~ "台 MoM", "delta_dir": "up", "gold": true},
+    {"lab": "平均車齢", "big": (k.avg_age_years | default(3.2)) | string, "unit": "年", "delta": "目標 4年以下", "delta_dir": "up"},
+    {"lab": "平均LTV", "big": (k.avg_ltv_pct | default(55)) | string, "unit": "%", "delta": "閾値 60% まで -5pp", "delta_dir": "up"},
+    {"lab": "フリート簿価合計", "big": "¥6.8", "unit": "億", "delta": "取得価 ¥12.2億 / 償却率 " ~ (k.depreciation_rate_pct | default(44)) ~ "%", "delta_dir": "up"}
   ]
 ) }}
 
@@ -40,11 +46,11 @@
 <div style="display:flex; gap:8px; margin:16px 0; align-items:center; flex-wrap:wrap">
   <div style="flex:1; min-width:240px">
     {{ tabs([
-      {"id": "all",      "label": "全て (142)"},
-      {"id": "active",   "label": "稼働中 (138)"},
-      {"id": "warn",     "label": "要注意 (3)"},
-      {"id": "overdue",  "label": "延滞 (1)"},
-      {"id": "amortize", "label": "償却中 (0)"}
+      {"id": "all",      "label": "全て (" ~ (k.total_count | default(142)) ~ ")"},
+      {"id": "active",   "label": "稼働中 (" ~ (k.active_count | default(138)) ~ ")"},
+      {"id": "warn",     "label": "要注意 (" ~ (k.warn_count | default(3)) ~ ")"},
+      {"id": "overdue",  "label": "延滞 (" ~ (k.overdue_count | default(1)) ~ ")"},
+      {"id": "amortize", "label": "償却中 (" ~ (k.amortizing_count | default(0)) ~ ")"}
     ], "all") }}
   </div>
   <select class="btn-mx" style="padding:6px 10px">
@@ -59,57 +65,32 @@
   </div>
 </div>
 
-{# ===== Inventory grid (grid-2 of 5 cards) ===== #}
+{# ===== Inventory grid ===== #}
 <div class="grid-2">
-  {{ inv_card(
-    "T-1524",
-    "日野レンジャー 2022 #T-1524",
-    "VIN: HNO-24-...-5122 · Fund 15号",
-    7,
-    "¥3,802,700",
-    "稼働中", "ok",
-    54,
-    "/inventory/T-1524"
-  ) }}
-  {{ inv_card(
-    "T-1523",
-    "いすゞフォワード 2021 #T-1523",
-    "VIN: ISZ-21-...-8812 · Fund 15号",
-    12,
-    "¥2,480,000",
-    "要注意", "warn",
-    62,
-    "/inventory/T-1523"
-  ) }}
-  {{ inv_card(
-    "T-1510",
-    "三菱ふそうSG 2023 #T-1510",
-    "VIN: MFS-23-...-0014 · Fund 14号",
-    5,
-    "¥4,950,000",
-    "稼働中", "ok",
-    48,
-    "/inventory/T-1510"
-  ) }}
-  {{ inv_card(
-    "T-1498",
-    "いすゞエルフ 2020 #T-1498",
-    "VIN: ISZ-20-...-2290 · Fund 14号",
-    18,
-    "¥1,120,000",
-    "延滞", "bad",
-    71,
-    "/inventory/T-1498"
-  ) }}
-  {{ inv_card(
-    "T-1455",
-    "日野プロフィア 2022 #T-1455",
-    "VIN: HNO-22-...-7731 · Fund 13号",
-    9,
-    "¥3,640,000",
-    "稼働中", "ok",
-    52,
-    "/inventory/T-1455"
-  ) }}
+  {% if vehicles %}
+    {% for v in vehicles %}
+      {# fund_id "f15" -> "15号" #}
+      {% set fund_num = (v.fund_id | default("")) | replace("f", "") %}
+      {% set fund_label = fund_num ~ "号" if fund_num else "" %}
+      {{ inv_card(
+        v.id,
+        v.make ~ v.model ~ " #" ~ v.id,
+        "VIN: " ~ v.vin ~ " · Fund " ~ fund_label,
+        v.months_elapsed,
+        "¥" ~ "{:,}".format(v.monthly_revenue_yen),
+        v.status_label,
+        v.status_kind,
+        v.ltv_pct,
+        "/inventory/" ~ v.id
+      ) }}
+    {% endfor %}
+  {% else %}
+    {# Fallback (should not hit — route always injects the fixture). #}
+    {{ inv_card("T-1524", "日野レンジャー 2022 #T-1524", "VIN: HNO-24-...-5122 · Fund 15号", 7, "¥3,802,700", "稼働中", "ok", 54, "/inventory/T-1524") }}
+    {{ inv_card("T-1523", "いすゞフォワード 2021 #T-1523", "VIN: ISZ-21-...-8812 · Fund 15号", 12, "¥2,480,000", "要注意", "warn", 62, "/inventory/T-1523") }}
+    {{ inv_card("T-1510", "三菱ふそうSG 2023 #T-1510", "VIN: MFS-23-...-0014 · Fund 14号", 5, "¥4,950,000", "稼働中", "ok", 48, "/inventory/T-1510") }}
+    {{ inv_card("T-1498", "いすゞエルフ 2020 #T-1498", "VIN: ISZ-20-...-2290 · Fund 14号", 18, "¥1,120,000", "延滞", "bad", 71, "/inventory/T-1498") }}
+    {{ inv_card("T-1455", "日野プロフィア 2022 #T-1455", "VIN: HNO-22-...-7731 · Fund 13号", 9, "¥3,640,000", "稼働中", "ok", 52, "/inventory/T-1455") }}
+  {% endif %}
 </div>
 {% endblock %}

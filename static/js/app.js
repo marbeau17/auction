@@ -190,6 +190,25 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // -- Theme toggle (Phase 5+) --
+  (function initTheme() {
+    var stored = localStorage.getItem('cvl_theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var initial = stored || (prefersDark ? 'dark' : 'light');
+    document.body.setAttribute('data-theme', initial);
+    var btn = document.getElementById('cvl-theme-toggle');
+    if (btn) {
+      btn.setAttribute('aria-pressed', initial === 'dark' ? 'true' : 'false');
+      btn.addEventListener('click', function () {
+        var current = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.body.setAttribute('data-theme', current);
+        localStorage.setItem('cvl_theme', current);
+        btn.setAttribute('aria-pressed', current === 'dark' ? 'true' : 'false');
+        window.dispatchEvent(new CustomEvent('cvl:theme-change', { detail: { theme: current } }));
+      });
+    }
+  })();
+
   // -- Initial chart boot --
   initCharts(document);
 });
