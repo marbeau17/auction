@@ -1,0 +1,19 @@
+{# Simple tab nav (horizontal, underline style).
+   Args:
+     items  : list[{label, id, href?}]  — if href omitted, button with data-tab
+     active : id of the active tab
+   Usage:
+     {% from "partials/_tabs.html" import tabs %}
+     {{ tabs([{"id":"nfav","label":"NFAV推移"},{"id":"irr","label":"IRR"}], "nfav") }}
+#}
+{% macro tabs(items, active) %}
+<div class="tabs-mx" role="tablist">
+  {% for it in items %}
+    {% if it.get("href") %}
+      <a class="tab {% if it.id == active %}on{% endif %}" role="tab" href="{{ it.href }}">{{ it.label }}</a>
+    {% else %}
+      <button type="button" class="tab {% if it.id == active %}on{% endif %}" role="tab" data-tab="{{ it.id }}">{{ it.label }}</button>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}

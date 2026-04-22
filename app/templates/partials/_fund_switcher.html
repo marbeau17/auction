@@ -1,0 +1,22 @@
+{# Standalone fund switcher (already inlined in _topbar, but exposed here
+   for contexts that render their own topbar or need it elsewhere).
+   Args:
+     funds  : list[{id, name, color}]
+     active : id (string)
+   Usage:
+     {% from "partials/_fund_switcher.html" import fund_switcher %}
+     {{ fund_switcher(funds, "15") }}
+#}
+{% from "partials/_icons.html" import icon %}
+{% macro fund_switcher(funds, active) %}
+<div class="fund-switch" role="button" tabindex="0" aria-label="ファンド切替">
+  {% for f in funds %}
+    {% if f.id == active %}
+      <span class="fund-dot" style="background:{{ f.color or 'var(--gold)' }}"></span>
+      <span style="color:var(--muted)">ファンド:</span>
+      <b>{{ f.name }}</b>
+    {% endif %}
+  {% endfor %}
+  <span class="caret">{{ icon("down", 12, "") }}</span>
+</div>
+{% endmacro %}

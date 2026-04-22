@@ -1,0 +1,24 @@
+{# KPI Hero — gradient navy card with 4-column KPI grid.
+   Args:
+     eyebrow : small uppercase label above h2 (e.g. "PORTFOLIO OVERVIEW · 松 PREMIUM")
+     title   : h2 text
+     cells   : list[{lab, big, unit?, delta?, delta_dir?('up'|'down'), gold?}]
+   Usage:
+     {% from "partials/_kpi_hero.html" import kpi_hero %}
+     {{ kpi_hero("PORTFOLIO · 松 PREMIUM", "as of 2026/04/22", cells) }}
+#}
+{% macro kpi_hero(eyebrow, title, cells) %}
+<div class="kpi-hero">
+  {% if eyebrow %}<div class="eyebrow">{{ eyebrow }}</div>{% endif %}
+  {% if title %}<h2>{{ title|safe }}</h2>{% endif %}
+  <div class="kpi-grid">
+    {% for c in cells %}
+      <div class="kpi-cell {% if c.gold %}gold{% endif %}">
+        <div class="lab">{{ c.lab }}</div>
+        <div class="big">{{ c.big|safe }}{% if c.unit %}<span class="unit">{{ c.unit }}</span>{% endif %}</div>
+        {% if c.delta %}<div class="delta {{ c.delta_dir or 'up' }}">{{ c.delta|safe }}</div>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,21 @@
+{# Small KPI card with optional progress bar and status flavour.
+   Args:
+     label   : top small label
+     value   : main number (may contain HTML e.g. unit span)
+     sub     : subtext below
+     bar_pct : 0-100 (omit to hide bar)
+     status  : "ok"|"warn"|"bad"|None (color of bar + card)
+   Usage:
+     {% from "partials/_kpi_sm.html" import kpi_sm %}
+     {{ kpi_sm("NFAV健全性", "106.4<span class='unit'>%</span>", "目標 110%", 83, "ok") }}
+#}
+{% macro kpi_sm(label, value, sub, bar_pct=None, status=None) %}
+<div class="kpi-sm {% if status %}{{ status }}{% endif %}">
+  <div class="lab">{{ label }}</div>
+  <div class="val">{{ value|safe }}</div>
+  {% if sub %}<div class="sub">{{ sub|safe }}</div>{% endif %}
+  {% if bar_pct is not none %}
+    <div class="bar"><span style="width:{{ bar_pct }}%"></span></div>
+  {% endif %}
+</div>
+{% endmacro %}

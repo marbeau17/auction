@@ -1,0 +1,38 @@
+{# Inventory vehicle card (plate mockup + meta + LTV).
+   Args:
+     plate_text : short id/plate text (e.g. "T-1524")
+     title      : "日野レンジャー 2022 #T-1524"
+     sub        : "VIN: HNO-24-...-5122 · Fund 15号"
+     months     : int, lease months elapsed
+     revenue    : formatted string e.g. "¥3,802,700"
+     status     : "稼働中"|"要注意"|"延滞"|"償却中"
+     status_kind: "ok"|"warn"|"bad"|"neutral"
+     ltv        : int 0-100
+     detail_href: link for "詳細 →" button
+   Usage:
+     {% from "partials/_inv_card.html" import inv_card %}
+     {{ inv_card("T-1524", "日野レンジャー 2022 #T-1524", "VIN: HNO-24-...-5122 · Fund 15号", 7, "¥3,802,700", "稼働中", "ok", 54, "/inventory/T-1524") }}
+#}
+{% macro inv_card(plate_text, title, sub, months, revenue, status, status_kind, ltv, detail_href="#") %}
+{% set ltv_class = "" %}
+{% if ltv >= 70 %}{% set ltv_class = "bad" %}
+{% elif ltv >= 60 %}{% set ltv_class = "warn" %}
+{% endif %}
+<div class="inv-card">
+  <div class="plate">{{ plate_text }}</div>
+  <div class="meta">
+    <div class="title">{{ title }}</div>
+    <div class="sub">{{ sub }}</div>
+    <div style="margin-top:6px; font-size:11.5px; color:var(--muted); display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      <span>リース {{ months }}ヶ月目</span>
+      <span>月額 {{ revenue }}</span>
+      <span class="chip {{ status_kind }}">{{ status }}</span>
+    </div>
+  </div>
+  <div class="ltv">
+    <div class="label">LTV</div>
+    <div class="num {{ ltv_class }}">{{ ltv }}%</div>
+    <a href="{{ detail_href }}" class="btn-mx" style="margin-top:6px; padding:4px 10px; font-size:11.5px">詳細 →</a>
+  </div>
+</div>
+{% endmacro %}

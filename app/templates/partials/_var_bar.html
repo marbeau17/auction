@@ -1,0 +1,34 @@
+{# Dashboard variant switcher (fixed bottom-right).
+   Only renders on pages that opt in (Dashboard). Selection persists via
+   localStorage key `cvl_variant`. Client-side JS in static/js/app.js (or a
+   future dashboard.js) reads the selection and re-renders.
+   Usage:
+     {% include "partials/_var_bar.html" %}
+#}
+<div class="var-bar" id="cvl-var-bar" role="radiogroup" aria-label="ダッシュボードのバリアント">
+  <span class="lbl">ダッシュボード案:</span>
+  <button type="button" data-variant="A" role="radio">案 A · 標準KPI+NAV</button>
+  <button type="button" data-variant="B" role="radio">案 B · 巨大AUM</button>
+  <button type="button" data-variant="C" role="radio">案 C · 3チャート並置</button>
+</div>
+<script>
+(function(){
+  var bar = document.getElementById('cvl-var-bar');
+  if(!bar) return;
+  var current = localStorage.getItem('cvl_variant') || 'A';
+  function apply(v){
+    current = v;
+    localStorage.setItem('cvl_variant', v);
+    bar.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.variant === v);
+      b.setAttribute('aria-checked', b.dataset.variant === v ? 'true' : 'false');
+    });
+    document.body.setAttribute('data-dash-variant', v);
+    window.dispatchEvent(new CustomEvent('cvl:variant-change', {detail:{variant:v}}));
+  }
+  bar.querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.dataset.variant); });
+  });
+  apply(current);
+})();
+</script>

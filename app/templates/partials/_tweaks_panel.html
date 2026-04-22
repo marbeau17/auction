@@ -1,0 +1,59 @@
+{# Edit-mode tweaks panel (dev / design-review only).
+   Activated by `window.postMessage({type:'__activate_edit_mode'}, '*')`.
+   Persists selections in localStorage.
+   Usage:
+     {% include "partials/_tweaks_panel.html" %}
+#}
+<aside class="tweaks" id="cvl-tweaks" aria-hidden="true">
+  <h4>デザイン調整</h4>
+
+  <label for="tw-variant">ダッシュボード レイアウト</label>
+  <select id="tw-variant">
+    <option value="A">案 A · 標準KPI+NAV</option>
+    <option value="B">案 B · 巨大AUM</option>
+    <option value="C">案 C · 3チャート並置</option>
+  </select>
+
+  <label for="tw-fund">表示ファンド</label>
+  <select id="tw-fund">
+    <option value="15">カーチスファンド15号</option>
+    <option value="14">カーチスファンド14号</option>
+    <option value="13">カーチスファンド13号</option>
+    <option value="12">カーチスファンド12号</option>
+    <option value="11">カーチスファンド11号</option>
+  </select>
+
+  <div class="note">
+    ※ ワイヤーフレーム用のシミュレーション。実データは本実装時に接続されます。
+  </div>
+</aside>
+<script>
+(function(){
+  var panel = document.getElementById('cvl-tweaks');
+  if(!panel) return;
+  var vSel = panel.querySelector('#tw-variant');
+  var fSel = panel.querySelector('#tw-fund');
+  vSel.value = localStorage.getItem('cvl_variant') || 'A';
+  fSel.value = localStorage.getItem('cvl_fund') || '15';
+  vSel.addEventListener('change', function(){
+    localStorage.setItem('cvl_variant', vSel.value);
+    document.body.setAttribute('data-dash-variant', vSel.value);
+    window.dispatchEvent(new CustomEvent('cvl:variant-change', {detail:{variant:vSel.value}}));
+  });
+  fSel.addEventListener('change', function(){
+    localStorage.setItem('cvl_fund', fSel.value);
+    window.dispatchEvent(new CustomEvent('cvl:fund-change', {detail:{fund:fSel.value}}));
+  });
+  window.addEventListener('message', function(ev){
+    if(!ev.data || typeof ev.data !== 'object') return;
+    if(ev.data.type === '__activate_edit_mode'){
+      panel.classList.add('on');
+      panel.setAttribute('aria-hidden','false');
+    } else if(ev.data.type === '__deactivate_edit_mode'){
+      panel.classList.remove('on');
+      panel.setAttribute('aria-hidden','true');
+    }
+  });
+  try{ window.parent.postMessage({type:'__edit_mode_available'}, '*'); }catch(e){}
+})();
+</script>

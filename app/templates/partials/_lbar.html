@@ -1,0 +1,14 @@
+{# Linear progress bar.
+   Args:
+     pct    : 0-100
+     color  : optional CSS color or var() override
+   Usage:
+     {% from "partials/_lbar.html" import lbar %}
+     {{ lbar(58) }}
+     {{ lbar(71, "var(--red)") }}
+#}
+{% macro lbar(pct, color=None) %}
+<div class="lbar">
+  <span style="width:{{ pct }}%{% if color %}; background:{{ color }}{% endif %}"></span>
+</div>
+{% endmacro %}

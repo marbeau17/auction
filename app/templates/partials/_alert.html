@@ -1,0 +1,23 @@
+{# Alert box with colored dot and optional action link.
+   Args:
+     kind    : "red"|"amber"
+     title   : bold lead text
+     body    : supporting text (HTML-safe)
+     when    : timestamp text (e.g. "3分前")
+     action_text, action_href : optional CTA
+   Usage:
+     {% from "partials/_alert.html" import alert %}
+     {{ alert("red", "LTV 閾値超過", "Fund 14号 / 車両3台が 60% を上回っています", "3分前", "詳細を確認", "/risk") }}
+#}
+{% macro alert(kind, title, body=None, when=None, action_text=None, action_href=None) %}
+<div class="alert-mx {{ kind }}">
+  <span class="dot" aria-hidden="true"></span>
+  <div style="flex:1; min-width:0">
+    <div><b>{{ title }}</b>{% if when %} <span style="color:inherit; opacity:.7; font-size:11px; margin-left:6px">· {{ when }}</span>{% endif %}</div>
+    {% if body %}<div style="margin-top:2px; font-size:12px">{{ body|safe }}</div>{% endif %}
+  </div>
+  {% if action_text and action_href %}
+    <a href="{{ action_href }}" class="btn-mx" style="align-self:center">{{ action_text }}</a>
+  {% endif %}
+</div>
+{% endmacro %}

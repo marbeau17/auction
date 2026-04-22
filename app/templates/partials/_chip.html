@@ -1,0 +1,12 @@
+{# Status chip (pill).
+   Args:
+     label : visible text
+     kind  : "ok"|"warn"|"bad"|"info"|"neutral" (default: "neutral")
+   Usage:
+     {% from "partials/_chip.html" import chip %}
+     {{ chip("承認待", "warn") }}
+     {{ chip("送付済", "ok") }}
+#}
+{% macro chip(label, kind="neutral") %}
+<span class="chip {{ kind }}">{{ label }}</span>
+{% endmacro %}

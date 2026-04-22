@@ -1,0 +1,33 @@
+{# Card with optional header. Use as a block or via `call`.
+   Usage (block form):
+     {% from "partials/_card.html" import card_open, card_close %}
+     {{ card_open("ファンド一覧", "全 5 ファンド") }}
+       <table class="tbl">...</table>
+     {{ card_close() }}
+
+   Usage (simple form):
+     {{ card("タイトル", "サブ", "<p>本文HTML</p>") }}
+#}
+{% macro card_open(title=None, subtitle=None, extra_head_html=None) %}
+<section class="card-mx">
+  {% if title or subtitle or extra_head_html %}
+  <div class="card-h">
+    {% if title %}<h3>{{ title }}</h3>{% endif %}
+    {% if subtitle %}<span class="sub">{{ subtitle }}</span>{% endif %}
+    <div class="spacer"></div>
+    {% if extra_head_html %}{{ extra_head_html|safe }}{% endif %}
+  </div>
+  {% endif %}
+  <div class="card-b">
+{% endmacro %}
+
+{% macro card_close() %}
+  </div>
+</section>
+{% endmacro %}
+
+{% macro card(title, subtitle, body_html) %}
+{{ card_open(title, subtitle) }}
+{{ body_html|safe }}
+{{ card_close() }}
+{% endmacro %}
