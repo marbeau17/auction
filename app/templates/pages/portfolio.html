@@ -1,19 +1,192 @@
 {% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_kpi_hero.html" import kpi_hero %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+
 {% block title %}ポートフォリオサマリー - CVLPOS{% endblock %}
 
 {% block content %}
+{# ===== Page head ===== #}
 <div class="page-head">
   <div>
     <span class="tag">投資家ビュー</span>
     <h1>ポートフォリオサマリー</h1>
-    <div class="sub">あなたが出資する全ファンドの合算ビュー(LP / 投資家ロール)</div>
+    <div class="sub">あなたが出資する全ファンドの合算ビュー（LP / 投資家ロール）</div>
   </div>
+  <div class="spacer"></div>
+  <button type="button" class="btn">{{ icon("dl", 14) }}月次レポート</button>
 </div>
 
-<div class="card-mx">
-  <div class="card-h"><h3>Coming soon — Phase 3</h3><span class="sub">担当エージェント実装待ち</span></div>
-  <div class="card-b">
-    <div class="wire" style="height:260px">PORTFOLIO — LTV 分布 + 加重利回り推移(Phase 3 で実装)</div>
-  </div>
+{# ===== KPI Hero (variant A equivalent) ===== #}
+{% set portfolio_kpi_cells = [
+  {"lab": "総運用資産額（AUM）", "big": "¥12.2", "unit": "億", "delta": "▲ +2.1% MoM", "delta_dir": "up", "gold": True},
+  {"lab": "加重平均利回り（年率）", "big": "7.68", "unit": "%", "delta": "▲ +0.3pp MoM", "delta_dir": "up"},
+  {"lab": "NFAV（加重平均）", "big": "106.4", "unit": "%", "delta": "▲ 目標 110% まで +3.6pp", "delta_dir": "up"},
+  {"lab": "稼働車両台数", "big": "142", "unit": "台", "delta": "▲ +6台 MoM", "delta_dir": "up"}
+] %}
+{{ kpi_hero("LP ビュー · 安田 修", "as of 2026/04/22 14:30 JST", portfolio_kpi_cells) }}
+
+{# ===== LTV 分布 + 加重利回り推移 ===== #}
+<div class="grid-2" style="margin-top:16px">
+  <section class="card-mx">
+    <div class="card-h">
+      <h3>LTV 分布</h3>
+      <span class="sub">全車両 142台</span>
+    </div>
+    <div class="card-b" style="height:260px">
+      <canvas id="pf-ltv-chart"></canvas>
+    </div>
+  </section>
+
+  <section class="card-mx">
+    <div class="card-h">
+      <h3>加重利回り推移</h3>
+      <span class="sub">過去12ヶ月</span>
+    </div>
+    <div class="card-b" style="height:260px">
+      <canvas id="pf-wy-chart"></canvas>
+    </div>
+  </section>
 </div>
+
+{# ===== Bottom: 5 invested funds ===== #}
+{% set invested_funds = [
+  {"id": "f15", "name": "カーチスファンド15号", "aum": "¥3.2億", "yield": "8.1%", "nfav": "104.2%", "ltv": "58%", "vehicles": 28, "status_label": "運用中", "status_kind": "ok"},
+  {"id": "f14", "name": "カーチスファンド14号", "aum": "¥2.8億", "yield": "7.6%", "nfav": "106.8%", "ltv": "62%", "vehicles": 24, "status_label": "運用中", "status_kind": "ok"},
+  {"id": "f13", "name": "カーチスファンド13号", "aum": "¥2.3億", "yield": "7.2%", "nfav": "109.1%", "ltv": "54%", "vehicles": 22, "status_label": "運用中", "status_kind": "ok"},
+  {"id": "f12", "name": "カーチスファンド12号", "aum": "¥1.6億", "yield": "6.8%", "nfav": "108.5%", "ltv": "51%", "vehicles": 18, "status_label": "償還準備", "status_kind": "warn"},
+  {"id": "f11", "name": "カーチスファンド11号", "aum": "¥1.3億", "yield": "6.5%", "nfav": "110.4%", "ltv": "47%", "vehicles": 16, "status_label": "運用中", "status_kind": "ok"}
+] %}
+
+{{ card_open("出資ファンド一覧", "全 5 ファンド（LP 出資分）") }}
+<table class="tbl">
+  <thead>
+    <tr>
+      <th>ファンド名</th>
+      <th class="num">AUM</th>
+      <th class="num">利回り</th>
+      <th class="num">NFAV</th>
+      <th class="num">LTV</th>
+      <th class="num">車両</th>
+      <th>ステータス</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in invested_funds %}
+    <tr>
+      <td>{{ f.name }}</td>
+      <td class="num">{{ f.aum }}</td>
+      <td class="num">{{ f.yield }}</td>
+      <td class="num">{{ f.nfav }}</td>
+      <td class="num">{{ f.ltv }}</td>
+      <td class="num">{{ f.vehicles }}</td>
+      <td>{{ chip(f.status_label, f.status_kind) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{{ card_close() }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // Design tokens
+  var NAVY = '#0E2747';
+  var GOLD = '#C9A24A';
+
+  function initPortfolioCharts() {
+    if (typeof Chart === 'undefined') {
+      setTimeout(initPortfolioCharts, 150);
+      return;
+    }
+
+    // ---- LTV 分布 (horizontal bar) ----
+    var ltvCanvas = document.getElementById('pf-ltv-chart');
+    if (ltvCanvas) {
+      new Chart(ltvCanvas, {
+        type: 'bar',
+        data: {
+          labels: ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%', '100%+'],
+          datasets: [{
+            data: [28, 44, 39, 27, 4, 0],
+            backgroundColor: ['#3E8E5A', '#3E8E5A', '#3E8E5A', '#C48A2A', '#B5443A', '#7A1F1A'],
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: function (ctx) { return ctx.parsed.x + '台'; } }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(14,39,71,.06)' },
+              ticks: { font: { size: 10 }, color: '#6E6A5C' }
+            },
+            y: {
+              grid: { display: false },
+              ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#52503F' }
+            }
+          }
+        }
+      });
+    }
+
+    // ---- 加重利回り推移 (line) ----
+    var wyCanvas = document.getElementById('pf-wy-chart');
+    if (wyCanvas) {
+      new Chart(wyCanvas, {
+        type: 'line',
+        data: {
+          labels: ['2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10',
+                   '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04'],
+          datasets: [{
+            data: [6.8, 7.0, 7.1, 7.2, 7.3, 7.3, 7.4, 7.5, 7.5, 7.6, 7.6, 7.68],
+            borderColor: GOLD,
+            backgroundColor: 'rgba(201,162,74,.15)',
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2.5,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              suggestedMin: 6,
+              suggestedMax: 8.5,
+              grid: { color: 'rgba(14,39,71,.06)' },
+              ticks: {
+                callback: function (v) { return v + '%'; },
+                font: { size: 10 },
+                color: '#6E6A5C'
+              }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 10 }, color: '#6E6A5C' }
+            }
+          }
+        }
+      });
+    }
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initPortfolioCharts();
+  } else {
+    window.addEventListener('DOMContentLoaded', initPortfolioCharts);
+  }
+})();
+</script>
 {% endblock %}

@@ -1,299 +1,274 @@
 /**
- * CVLPOS Dashboard Charts
- * Fetches KPI data and renders Chart.js charts with navy/gold theme.
- * Auto-refreshes every 5 minutes.
+ * CVLPOS Dashboard Charts — 松プラン integrated view
+ *
+ * Renders the 4 chart types from docs/CVLPOS_松プラン_ワイヤーフレーム.html:
+ *   - NAVChart          line     (物理的価値 vs 累積回収 vs NFAV)
+ *   - LTVBar            bar      (LTV 分布)
+ *   - FundMixDonut      doughnut (ファンド別 AUM)
+ *   - MonthlyIncomeChart bar(stacked) (月次 CF)
+ *
+ * Behaviour:
+ *   - Reads body[data-dash-variant] (A | B | C) and only renders canvases that
+ *     are present in the DOM (variant-dependent).
+ *   - Exposes `window.CVLDashboard.reload()` for the 更新 button.
+ *   - Auto-refreshes every 5 minutes.
+ *   - Chart data uses inline fixtures that match the wireframe verbatim.
+ *     The /api/v1/dashboard/kpi/json wiring is Phase 4.
  */
 (function () {
   'use strict';
 
-  // 松プラン design tokens (see static/css/style.css :root)
+  // ---- Design tokens (mirror :root in style.css) ----
   var NAVY = '#0E2747';
   var GOLD = '#C9A24A';
-  var GOLD_LIGHT = 'rgba(201, 162, 74, 0.25)';
-  var API_URL = '/api/v1/dashboard/kpi/json';
-  var REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  var GOLD_2 = '#C48A2A';
+  var GOLD_LIGHT = 'rgba(201, 162, 74, 0.08)';
+  var GREEN = '#3E8E5A';
+  var AMBER = '#C48A2A';
+  var RED = '#B5443A';
+  var SLATE = '#7E9DBF';
+  var TEXT_MUTED = '#6E6A5C';
+  var GRID = 'rgba(14,39,71,.06)';
 
-  // Chart instances for destroy-on-refresh
+  var FONT_JP = 'Noto Sans JP';
+  var REFRESH_INTERVAL = 5 * 60 * 1000; // 5 min
+
+  // ---- Inline fixtures (spec-bearing values — see wireframe lines 243-266, 494-562) ----
+  var FUNDS = [
+    { id: 'f15', name: 'カーチスファンド15号', aum: 320, color: '#C9A24A' },
+    { id: 'f14', name: 'カーチスファンド14号', aum: 280, color: '#7E9DBF' },
+    { id: 'f13', name: 'カーチスファンド13号', aum: 230, color: '#3E8E5A' },
+    { id: 'f12', name: 'カーチスファンド12号', aum: 160, color: '#B5443A' },
+    { id: 'f11', name: 'カーチスファンド11号', aum: 130, color: '#6E6A5C' }
+  ];
+
+  var NAV_MONTHS = [];
+  for (var _i = 0; _i < 37; _i++) NAV_MONTHS.push(_i);
+
+  // ---- Chart registry ----
   var charts = {};
-
-  // ---- Helpers ----
-
-  function fmt(n) {
-    if (n == null || isNaN(n)) return '--';
-    return Number(n).toLocaleString('ja-JP');
-  }
-
-  function fmtYen(n) {
-    if (n == null || isNaN(n)) return '--';
-    if (n >= 100000000) return (n / 100000000).toFixed(1) + '\u5104';
-    if (n >= 10000) return fmt(Math.round(n / 10000)) + '\u4E07';
-    return fmt(n);
-  }
-
-  function invoiceStatusBadge(status) {
-    var map = {
-      paid: '<span class="badge badge--success">\u5165\u91D1\u6E08</span>',
-      pending: '<span class="badge badge--warning">\u672A\u5165\u91D1</span>',
-      overdue: '<span class="badge badge--danger">\u5EF6\u6EDE</span>',
-      cancelled: '<span class="badge">\u30AD\u30E3\u30F3\u30BB\u30EB</span>'
-    };
-    return map[status] || '<span class="badge">' + (status || '-') + '</span>';
-  }
-
-  function showLoading(canvasId) {
-    var el = document.getElementById(canvasId);
-    if (el && el.parentElement) {
-      el.parentElement.style.opacity = '0.5';
-    }
-  }
-
-  function hideLoading(canvasId) {
-    var el = document.getElementById(canvasId);
-    if (el && el.parentElement) {
-      el.parentElement.style.opacity = '1';
-    }
-  }
 
   function destroyChart(key) {
     if (charts[key]) {
-      charts[key].destroy();
+      try { charts[key].destroy(); } catch (e) { /* ignore */ }
       charts[key] = null;
     }
   }
 
-  // ---- Chart Renderers ----
+  function canvasAvailable(id) {
+    var el = document.getElementById(id);
+    if (!el || typeof Chart === 'undefined') return null;
+    // Only render if visible (variant-dependent)
+    if (el.offsetParent === null) return null;
+    return el;
+  }
 
-  function renderMonthlyIncomeChart(trend) {
-    var canvasId = 'monthly-income-chart';
-    var ctx = document.getElementById(canvasId);
-    if (!ctx || typeof Chart === 'undefined') return;
+  // ---- Chart builders ----
 
-    destroyChart(canvasId);
+  function buildNavChartConfig() {
+    var physical = NAV_MONTHS.map(function (m) { return 100 - m * 1.95; });
+    var cashRecovered = NAV_MONTHS.map(function (m) { return Math.min(100, m * 2.22); });
+    var nfav = NAV_MONTHS.map(function (m) {
+      return Math.max(60, (100 - m * 1.95) + Math.min(100, m * 2.22) - 100 + 100 + m * 0.18);
+    });
 
-    var labels = trend.map(function (t) { return t.month; });
-    var amounts = trend.map(function (t) { return t.amount; });
+    return {
+      type: 'line',
+      data: {
+        labels: NAV_MONTHS.map(function (m) { return 'M' + String(m).padStart(2, '0'); }),
+        datasets: [
+          {
+            label: '物理的車両価値',
+            data: physical,
+            borderColor: SLATE,
+            backgroundColor: 'rgba(126,157,191,0.1)',
+            fill: true, tension: 0.25, borderWidth: 2, pointRadius: 0
+          },
+          {
+            label: '累積キャッシュ回収',
+            data: cashRecovered,
+            borderColor: GOLD,
+            backgroundColor: 'rgba(201,162,74,0.08)',
+            fill: false, tension: 0.25, borderWidth: 2, pointRadius: 0
+          },
+          {
+            label: 'Net Fund Asset Value',
+            data: nfav,
+            borderColor: NAVY,
+            backgroundColor: 'rgba(14,39,71,0.12)',
+            fill: true, tension: 0.25, borderWidth: 2.5, pointRadius: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { font: { family: FONT_JP, size: 11 }, color: TEXT_MUTED, usePointStyle: true, pointStyle: 'rectRounded' }
+          },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          y: {
+            min: 0, max: 120,
+            grid: { color: GRID },
+            ticks: { callback: function (v) { return v + '%'; }, font: { size: 10 }, color: TEXT_MUTED }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { autoSkip: true, maxTicksLimit: 10, font: { size: 10 }, color: TEXT_MUTED }
+          }
+        }
+      }
+    };
+  }
 
-    charts[canvasId] = new Chart(ctx.getContext('2d'), {
+  function buildLtvBarConfig() {
+    return {
       type: 'bar',
       data: {
-        labels: labels,
+        labels: ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%', '100%+'],
         datasets: [{
-          label: '\u30EA\u30FC\u30B9\u53CE\u5165 (\u5186)',
-          data: amounts,
-          backgroundColor: NAVY,
-          hoverBackgroundColor: GOLD,
+          data: [22, 44, 54, 18, 3, 1],
+          backgroundColor: [GREEN, GREEN, GREEN, AMBER, RED, '#7A1F1A'],
           borderRadius: 4
         }]
       },
       options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function (ctx) { return '\u00A5' + Number(ctx.raw).toLocaleString('ja-JP'); }
-            }
-          }
+          tooltip: { callbacks: { label: function (ct) { return ct.parsed.x + '台'; } } }
         },
         scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: function (v) {
-                if (v >= 10000) return (v / 10000) + '\u4E07';
-                return v;
-              }
-            },
-            grid: { color: 'rgba(0,0,0,0.06)' }
-          },
-          x: {
-            grid: { display: false }
-          }
+          x: { grid: { color: GRID }, ticks: { font: { size: 10 }, color: TEXT_MUTED } },
+          y: { grid: { display: false }, ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#52503F' } }
         }
       }
-    });
-    hideLoading(canvasId);
+    };
   }
 
-  function renderInvoiceStatusChart(breakdown) {
-    var canvasId = 'invoice-status-chart';
-    var ctx = document.getElementById(canvasId);
-    if (!ctx || typeof Chart === 'undefined') return;
-
-    destroyChart(canvasId);
-
-    var statusLabels = ['\u5165\u91D1\u6E08', '\u672A\u5165\u91D1', '\u5EF6\u6EDE', '\u30AD\u30E3\u30F3\u30BB\u30EB'];
-    var statusKeys = ['paid', 'pending', 'overdue', 'cancelled'];
-    var statusValues = statusKeys.map(function (k) { return breakdown[k] || 0; });
-    var statusColors = [GOLD, NAVY, '#dc3545', '#94a3b8'];
-
-    charts[canvasId] = new Chart(ctx.getContext('2d'), {
+  function buildFundMixDonutConfig() {
+    return {
       type: 'doughnut',
       data: {
-        labels: statusLabels,
+        labels: FUNDS.map(function (f) { return f.name; }),
         datasets: [{
-          data: statusValues,
-          backgroundColor: statusColors,
-          borderWidth: 0
+          data: FUNDS.map(function (f) { return f.aum; }),
+          backgroundColor: FUNDS.map(function (f) { return f.color; }),
+          borderWidth: 3,
+          borderColor: '#fff'
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        cutout: '60%',
+        cutout: '70%',
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { boxWidth: 12, padding: 12, font: { size: 12 } }
+            labels: { font: { size: 10, family: FONT_JP }, color: '#52503F', boxWidth: 10, padding: 8 }
           }
-        }
+        },
+        responsive: true,
+        maintainAspectRatio: false
       }
-    });
-    hideLoading(canvasId);
+    };
   }
 
-  function renderNavTrendChart(navTrend) {
-    var canvasId = 'nav-trend-chart';
-    var ctx = document.getElementById(canvasId);
-    if (!ctx || typeof Chart === 'undefined') return;
-    if (!navTrend || navTrend.length === 0) {
-      // Hide the card if no data
-      var card = ctx.closest('.card');
-      if (card) card.style.display = 'none';
-      return;
-    }
-
-    destroyChart(canvasId);
-
-    // Show the card if data is present
-    var card = ctx.closest('.card');
-    if (card) card.style.display = '';
-
-    var labels = navTrend.map(function (t) { return t.month || t.date; });
-    var values = navTrend.map(function (t) { return t.nav || t.amount; });
-
-    charts[canvasId] = new Chart(ctx.getContext('2d'), {
-      type: 'line',
+  function buildMonthlyIncomeConfig() {
+    return {
+      type: 'bar',
       data: {
-        labels: labels,
-        datasets: [{
-          label: 'NAV',
-          data: values,
-          borderColor: NAVY,
-          backgroundColor: GOLD_LIGHT,
-          fill: true,
-          tension: 0.3,
-          pointBackgroundColor: GOLD,
-          pointBorderColor: NAVY,
-          pointRadius: 4
-        }]
+        labels: ['11月', '12月', '1月', '2月', '3月', '4月'],
+        datasets: [
+          { label: 'リース料収入', data: [152, 162, 168, 175, 178, 182], backgroundColor: NAVY, borderRadius: 3, stack: 'a' },
+          { label: 'メンテ・保険', data: [12, 13, 13, 14, 14, 15], backgroundColor: GOLD, borderRadius: 3, stack: 'a' }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function (ctx) { return '\u00A5' + Number(ctx.raw).toLocaleString('ja-JP'); }
-            }
+          legend: {
+            position: 'bottom',
+            labels: { font: { size: 11, family: FONT_JP }, color: '#52503F', usePointStyle: true, pointStyle: 'rectRounded' }
           }
         },
         scales: {
           y: {
-            ticks: {
-              callback: function (v) {
-                if (v >= 10000) return (v / 10000) + '\u4E07';
-                return v;
-              }
-            },
-            grid: { color: 'rgba(0,0,0,0.06)' }
+            stacked: true,
+            grid: { color: GRID },
+            ticks: { callback: function (v) { return '¥' + v + 'M'; }, font: { size: 10 }, color: TEXT_MUTED }
           },
-          x: {
-            grid: { display: false }
-          }
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 }, color: TEXT_MUTED } }
         }
       }
-    });
-    hideLoading(canvasId);
-  }
-
-  // ---- KPI population ----
-
-  function populateKPIs(d) {
-    var setTxt = function (id, val) {
-      var el = document.getElementById(id);
-      if (el) el.textContent = val;
     };
-
-    setTxt('kpi-vehicles-leased', fmt(d.total_vehicles_leased));
-    setTxt('kpi-total-investment', fmtYen(d.total_investment_amount));
-    setTxt('kpi-monthly-billing', fmtYen(d.monthly_billing_amount));
-    setTxt('kpi-collection-rate', d.collection_rate != null ? d.collection_rate.toFixed(1) : '--');
-    setTxt('kpi-overdue-count', fmt(d.overdue_count));
-    if (d.average_yield_rate != null) {
-      setTxt('kpi-avg-yield', d.average_yield_rate.toFixed(1) + '%');
-    }
-    setTxt('kpi-profit-conversion', fmt(d.profit_conversion_funds));
-
-    // Overdue highlight
-    if (d.overdue_count > 0) {
-      var el = document.getElementById('kpi-overdue-count');
-      if (el) el.style.color = 'var(--danger, #dc3545)';
-    }
-
-    // Recent invoices table
-    var invoices = d.recent_invoices || [];
-    var tbody = document.getElementById('recent-invoices-body');
-    if (tbody) {
-      if (invoices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">\u8ACB\u6C42\u30C7\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093\u3002</td></tr>';
-      } else {
-        tbody.innerHTML = invoices.map(function (inv) {
-          return '<tr>'
-            + '<td>' + (inv.invoice_number || '-') + '</td>'
-            + '<td>' + (inv.customer_name || '-') + '</td>'
-            + '<td class="text-right">&yen;' + fmt(inv.amount) + '</td>'
-            + '<td>' + (inv.due_date || '-') + '</td>'
-            + '<td>' + invoiceStatusBadge(inv.status) + '</td>'
-            + '</tr>';
-        }).join('');
-      }
-    }
   }
 
-  // ---- Main fetch & render ----
+  // ---- Render helpers ----
 
-  function loadDashboard() {
-    showLoading('monthly-income-chart');
-    showLoading('invoice-status-chart');
-    showLoading('nav-trend-chart');
-
-    fetch(API_URL)
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        populateKPIs(d);
-        renderMonthlyIncomeChart(d.monthly_income_trend || []);
-        renderInvoiceStatusChart(d.invoice_status_breakdown || {});
-        renderNavTrendChart(d.nav_trend || []);
-      })
-      .catch(function (err) {
-        console.warn('Dashboard KPI fetch error:', err);
-        hideLoading('monthly-income-chart');
-        hideLoading('invoice-status-chart');
-        hideLoading('nav-trend-chart');
-      });
+  function renderCanvas(canvasId, configFn) {
+    var el = canvasAvailable(canvasId);
+    if (!el) return;
+    destroyChart(canvasId);
+    charts[canvasId] = new Chart(el.getContext('2d'), configFn());
   }
 
-  // Initial load
+  // Map of canvas id -> builder fn
+  var CHART_MAP = {
+    'chart-nav-A': buildNavChartConfig,
+    'chart-nav-B': buildNavChartConfig,
+    'chart-nav-C': buildNavChartConfig,
+    'chart-fundmix-A': buildFundMixDonutConfig,
+    'chart-fundmix-B': buildFundMixDonutConfig,
+    'chart-income-B': buildMonthlyIncomeConfig,
+    'chart-income-C': buildMonthlyIncomeConfig,
+    'chart-ltv-C': buildLtvBarConfig
+  };
+
+  function renderAll() {
+    Object.keys(CHART_MAP).forEach(function (id) {
+      renderCanvas(id, CHART_MAP[id]);
+    });
+  }
+
+  function destroyAll() {
+    Object.keys(charts).forEach(destroyChart);
+  }
+
+  function renderVariant(/* variant */) {
+    // Variant swap is driven by CSS (display:none). We re-run renderAll so
+    // newly visible canvases get a chart instance and hidden ones are cleared.
+    destroyAll();
+    // Defer so CSS display update settles before we measure offsetParent.
+    setTimeout(renderAll, 0);
+  }
+
+  // ---- Init + public API ----
+
+  function init() {
+    renderAll();
+  }
+
+  window.CVLDashboard = {
+    reload: renderVariant,
+    renderVariant: renderVariant,
+    destroyAll: destroyAll
+  };
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadDashboard);
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    loadDashboard();
+    init();
   }
 
-  // Auto-refresh
-  setInterval(loadDashboard, REFRESH_INTERVAL);
+  // Re-render when variant changes (event dispatched by _var_bar / _tweaks_panel)
+  window.addEventListener('cvl:variant-change', function () { renderVariant(); });
+
+  // Auto-refresh every 5 minutes (keeps parity with Phase 1 behaviour)
+  setInterval(renderVariant, REFRESH_INTERVAL);
 
 })();

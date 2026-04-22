@@ -242,9 +242,11 @@
 }
 </style>
 
-<div class="fa-page-header">
-    <h2>運送会社 財務状況評価・AI診断</h2>
-    <p>リースバック耐性の評価と適正リース価格の算出</p>
+<div class="page-head">
+    <div>
+        <h1>運送会社 財務状況評価・AI診断</h1>
+        <div class="sub">リースバック耐性の評価と適正リース価格の算出</div>
+    </div>
 </div>
 
 <form id="financial-form"
@@ -444,8 +446,8 @@
     <hr style="margin: var(--space-8) 0">
 
     <div class="actions-row">
-        <button type="reset" class="btn btn--outline">リセット</button>
-        <button type="submit" class="btn btn--primary btn--lg">
+        <button type="reset" class="btn-mx">リセット</button>
+        <button type="submit" class="btn-mx primary">
             AI財務診断を実行
             <span id="analyze-spinner" class="htmx-indicator spinner"></span>
         </button>

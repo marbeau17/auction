@@ -1,361 +1,613 @@
 {% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_kpi_hero.html" import kpi_hero %}
+{% from "partials/_kpi_sm.html" import kpi_sm %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+{% from "partials/_alert.html" import alert %}
+{% from "partials/_tabs.html" import tabs %}
+{% from "partials/_lbar.html" import lbar %}
 
-{% block title %}ダッシュボード - CVLPOS{% endblock %}
-{% block page_title %}ダッシュボード{% endblock %}
+{% block title %}ポートフォリオ・コックピット - CVLPOS{% endblock %}
+{% block page_title %}統合ダッシュボード{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* ===== Dashboard — 松プラン page-scoped layout ===== */
+  .dash-range {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .dash-range button {
+    border: 0;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .dash-range button.on {
+    background: var(--navy);
+    color: #fff;
+  }
+  /* Variant-dependent visibility.
+     Default (no attribute) = Variant A. _var_bar.html sets body[data-dash-variant]
+     on load, so the attribute is always present after first JS tick. */
+  .dash-variant-B, .dash-variant-C, .hero-B, .hero-C { display: none; }
+  body[data-dash-variant="A"] .dash-variant-A,
+  body[data-dash-variant="A"] .hero-A { display: block; }
+  body[data-dash-variant="A"] .dash-variant-B,
+  body[data-dash-variant="A"] .dash-variant-C,
+  body[data-dash-variant="A"] .hero-B,
+  body[data-dash-variant="A"] .hero-C { display: none; }
+
+  body[data-dash-variant="B"] .dash-variant-A,
+  body[data-dash-variant="B"] .hero-A,
+  body[data-dash-variant="B"] .dash-variant-C,
+  body[data-dash-variant="B"] .hero-C { display: none; }
+  body[data-dash-variant="B"] .dash-variant-B { display: block; }
+  body[data-dash-variant="B"] .hero-B { display: block; }
+
+  body[data-dash-variant="C"] .dash-variant-A,
+  body[data-dash-variant="C"] .hero-A,
+  body[data-dash-variant="C"] .dash-variant-B,
+  body[data-dash-variant="C"] .hero-B { display: none; }
+  body[data-dash-variant="C"] .dash-variant-C { display: block; }
+  body[data-dash-variant="C"] .hero-C { display: grid; }
+
+  /* Hero Variant B — 巨大AUM */
+  .hero-B {
+    background: linear-gradient(135deg, var(--navy) 0%, #143258 100%);
+    color: #fff;
+    border-radius: 14px;
+    padding: 28px 26px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-B .eyebrow {
+    font-size: 10.5px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.55);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .hero-B-grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 24px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .hero-B .aum-label { font-size: 12px; color: rgba(255,255,255,.55); }
+  .hero-B .aum-value {
+    font-size: 72px;
+    font-weight: 900;
+    letter-spacing: -.03em;
+    line-height: 1;
+    color: var(--gold-2, #C9A24A);
+  }
+  .hero-B .aum-value .unit {
+    font-size: 28px;
+    font-weight: 600;
+    color: rgba(255,255,255,.7);
+    margin-left: 4px;
+  }
+  .hero-B .aum-delta { color: #8FE0A0; font-size: 13px; margin-top: 8px; }
+  .hero-B-mini {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .hero-B-mini > div {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .hero-B-mini .l { font-size: 11px; color: rgba(255,255,255,.55); letter-spacing: .04em; }
+  .hero-B-mini .v { font-size: 26px; font-weight: 800; color: #fff; margin-top: 3px; }
+  .hero-B-mini .d { font-size: 11px; margin-top: 3px; }
+
+  /* Hero Variant C — split strip */
+  .hero-C {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .hero-C .cell {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .hero-C .cell.bold {
+    background: linear-gradient(180deg, var(--navy), #143258);
+    color: #fff;
+  }
+  .hero-C .l {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .1em;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .hero-C .cell.bold .l { color: rgba(255,255,255,.55); }
+  .hero-C .v {
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--navy);
+    letter-spacing: -.02em;
+    line-height: 1;
+    margin-top: 8px;
+    font-feature-settings: "tnum";
+  }
+  .hero-C .cell.bold .v { color: var(--gold-2, #C9A24A); }
+  .hero-C .v .unit {
+    font-size: 16px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-left: 3px;
+  }
+  .hero-C .cell.bold .v .unit { color: rgba(255,255,255,.7); }
+  .hero-C .d { font-size: 12px; margin-top: 6px; font-weight: 600; }
+
+  /* Variant C 3-chart layout */
+  .triple-chart {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 18px;
+  }
+  .triple-chart > div { height: 260px; }
+
+  /* Chart heights */
+  .chart-holder { position: relative; width: 100%; height: 100%; }
+
+  /* Fund swatch */
+  .fund-swatch {
+    width: 8px;
+    height: 28px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  @media (max-width: 1024px) {
+    .hero-B-grid { grid-template-columns: 1fr; }
+    .hero-C { grid-template-columns: repeat(2, 1fr); }
+    .triple-chart { grid-template-columns: 1fr; }
+    .triple-chart > div { height: 220px; }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 {% include "partials/_error_banner.html" %}
-<div class="page-header">
-    <h2 class="page-header__title">ダッシュボード</h2>
-    <p class="page-header__description">リースバック査定の概況と最新データ</p>
+
+{# ===== Page head ===== #}
+<div class="page-head" role="banner">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="tag">松プラン</span>
+      <span class="mono" style="font-size:11px;color:var(--muted);">SCREEN-01 · 統合ダッシュボード</span>
+    </div>
+    <h1>ポートフォリオ・コックピット</h1>
+    <div class="sub">5つのファンド・142台を横断した、松プラン限定のリアルタイム統合ビュー</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="dash-range" role="tablist" aria-label="表示期間">
+    <button type="button" role="tab" data-range="日次" aria-selected="false">日次</button>
+    <button type="button" role="tab" data-range="週次" aria-selected="false">週次</button>
+    <button type="button" role="tab" data-range="月次" class="on" aria-selected="true">月次</button>
+    <button type="button" role="tab" data-range="四半期" aria-selected="false">四半期</button>
+  </div>
+  <button type="button" class="btn-mx" id="dash-refresh-btn" aria-label="データを更新">
+    {{ icon("refresh", 14) }} 更新
+  </button>
+  <button type="button" class="btn-mx gold" id="dash-pdf-btn" aria-label="PDFレポートを生成">
+    {{ icon("dl", 14) }} PDFレポート
+  </button>
 </div>
 
-{# ===== KPI Cards - Row 1 (4 cards) ===== #}
-<section class="kpi-grid kpi-grid--4col" aria-label="主要指標" id="kpi-section-1">
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--primary" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="17" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="17" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">リース車両数</span>
-            <span class="kpi-card__value" id="kpi-vehicles-leased">--</span>
-            <span class="kpi-card__sub">台</span>
-        </div>
-    </div>
+{# ===== KPI Hero — Variant A (default) ===== #}
+<div class="hero-A">
+  {{ kpi_hero(
+    "PORTFOLIO OVERVIEW · 松 PREMIUM",
+    'ポートフォリオ・コックピット <span style="font-size:12px;color:rgba(255,255,255,.55);font-weight:400;margin-left:10px;">as of 2026/04/22 14:30 JST</span>',
+    [
+      {"lab": "総運用資産額（AUM）", "big": "¥12.2", "unit": "億", "delta": "▲ +2.1% MoM", "delta_dir": "up", "gold": True},
+      {"lab": "加重平均利回り（年率）", "big": "7.68", "unit": "%", "delta": "▲ +0.3pp MoM", "delta_dir": "up"},
+      {"lab": "NFAV（加重平均）", "big": "106.4", "unit": "%", "delta": "▲ 目標 110% まで +3.6pp", "delta_dir": "up"},
+      {"lab": "稼働車両台数", "big": "142", "unit": "台", "delta": "▲ +6台 MoM", "delta_dir": "up"}
+    ]
+  ) }}
+</div>
 
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--success" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">総投資額</span>
-            <span class="kpi-card__value" id="kpi-total-investment">--</span>
-            <span class="kpi-card__sub">円</span>
-        </div>
+{# ===== KPI Hero — Variant B (巨大AUM) ===== #}
+<section class="hero-B" aria-label="ポートフォリオ概要（巨大AUM）">
+  <div class="eyebrow">LIVE PORTFOLIO · 松 PREMIUM</div>
+  <div class="hero-B-grid">
+    <div>
+      <div class="aum-label">総運用資産額（AUM）</div>
+      <div class="aum-value">¥12.2<span class="unit">億</span></div>
+      <div class="aum-delta">▲ +¥25.3M MoM ・前年比 +18.4%</div>
     </div>
-
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--primary" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">今月請求額</span>
-            <span class="kpi-card__value" id="kpi-monthly-billing">--</span>
-            <span class="kpi-card__sub">円</span>
-        </div>
+    <div class="hero-B-mini">
+      <div>
+        <div class="l">加重利回り</div>
+        <div class="v">7.68%</div>
+        <div class="d" style="color:#8FE0A0;">+0.3pp</div>
+      </div>
+      <div>
+        <div class="l">NFAV</div>
+        <div class="v">106.4%</div>
+        <div class="d" style="color:#8FE0A0;">+1.1pp</div>
+      </div>
+      <div>
+        <div class="l">ファンド数</div>
+        <div class="v">5</div>
+        <div class="d" style="color:rgba(255,255,255,.6);">うち1件償還準備</div>
+      </div>
+      <div>
+        <div class="l">稼働車両</div>
+        <div class="v">142台</div>
+        <div class="d" style="color:#8FE0A0;">+6台</div>
+      </div>
     </div>
-
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--success" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">回収率</span>
-            <span class="kpi-card__value" id="kpi-collection-rate">--</span>
-            <span class="kpi-card__sub">%</span>
-        </div>
-    </div>
+  </div>
 </section>
 
-{# ===== KPI Cards - Row 2 (3 cards) ===== #}
-<section class="kpi-grid" aria-label="追加指標" id="kpi-section-2">
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--danger" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">延滞請求</span>
-            <span class="kpi-card__value" id="kpi-overdue-count">--</span>
-            <span class="kpi-card__sub">件</span>
-        </div>
-    </div>
-
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--success" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M23 6l-9.5 9.5-5-5L1 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 6h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">平均利回り</span>
-            <span class="kpi-card__value" id="kpi-avg-yield">{{ "%.1f" | format(kpi.avg_yield | default(0)) }}%</span>
-        </div>
-    </div>
-
-    <div class="kpi-card">
-        <div class="kpi-card__icon kpi-card__icon--warning" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="kpi-card__body">
-            <span class="kpi-card__label">利益転換ファンド</span>
-            <span class="kpi-card__value" id="kpi-profit-conversion">--</span>
-            <span class="kpi-card__sub">件</span>
-        </div>
-    </div>
+{# ===== KPI Hero — Variant C (split strip) ===== #}
+<section class="hero-C" aria-label="ポートフォリオ概要（サマリーストリップ）">
+  <div class="cell bold">
+    <div class="l">AUM</div>
+    <div class="v">¥12.2<span class="unit">億</span></div>
+    <div class="d" style="color:#3E8E5A;">▲ +2.1% MoM</div>
+  </div>
+  <div class="cell">
+    <div class="l">加重利回り</div>
+    <div class="v">7.68<span class="unit">%</span></div>
+    <div class="d" style="color:#3E8E5A;">▲ +0.3pp</div>
+  </div>
+  <div class="cell">
+    <div class="l">NFAV</div>
+    <div class="v">106.4<span class="unit">%</span></div>
+    <div class="d" style="color:#C48A2A;">▲ 目標 +3.6pp</div>
+  </div>
+  <div class="cell">
+    <div class="l">稼働車両</div>
+    <div class="v">142<span class="unit">台</span></div>
+    <div class="d" style="color:#3E8E5A;">▲ +6 MoM</div>
+  </div>
 </section>
 
-{# ===== Charts Section ===== #}
-<section class="dashboard-charts" aria-label="チャート">
-    <div class="card" style="flex:1;min-width:0;">
-        <div class="card__header">
-            <h3 class="card__title">月次リース収入推移</h3>
+{# ===== Secondary KPI row ===== #}
+<div class="kpi-row" style="margin-top:14px;" aria-label="健全性指標">
+  {{ kpi_sm(
+    "NFAV健全性（全ファンド平均）",
+    "106.4<span style='font-size:13px;color:var(--muted);font-weight:500;'>%</span>",
+    "目標 110% / 最低保証 60%",
+    83,
+    "ok"
+  ) }}
+  {{ kpi_sm(
+    "LTV 60%超 車両",
+    "4<span style='font-size:13px;color:var(--muted);font-weight:500;'> / 142台</span>",
+    "要注意 2.8%",
+    12,
+    "warn"
+  ) }}
+  {{ kpi_sm(
+    "延滞 30日超",
+    "1<span style='font-size:13px;color:var(--muted);font-weight:500;'> 件</span>",
+    "¥410,000 / 全体 0.7%",
+    7,
+    "bad"
+  ) }}
+  {{ kpi_sm(
+    "弥生API 仕訳連携",
+    "100<span style='font-size:13px;color:var(--muted);font-weight:500;'>%</span>",
+    "4月分 826件 すべて正常",
+    100,
+    "ok"
+  ) }}
+</div>
+
+{# ===== Main content grid — Variant A ===== #}
+<div class="dash-variant-A" style="margin-top:16px;">
+  <div class="grid-2">
+    <section class="card-mx" aria-label="NAV 推移">
+      <div class="card-h">
+        <h3>NAV 推移 — 加重平均</h3>
+        <span class="sub">物理的価値 vs 累積回収 vs NFAV</span>
+        <div class="spacer"></div>
+        <div class="tabs-mx" role="tablist" aria-label="ファンド切替">
+          <button type="button" class="tab on" role="tab" data-fund="all" aria-selected="true">全ファンド</button>
+          <button type="button" class="tab" role="tab" data-fund="15" aria-selected="false">15号</button>
+          <button type="button" class="tab" role="tab" data-fund="14" aria-selected="false">14号</button>
+          <button type="button" class="tab" role="tab" data-fund="13" aria-selected="false">13号</button>
         </div>
-        <div class="card__body">
-            <canvas id="monthly-income-chart" height="260"></canvas>
-        </div>
+      </div>
+      <div class="card-b" style="height:300px;">
+        <div class="chart-holder"><canvas id="chart-nav-A" aria-label="NAV 推移チャート"></canvas></div>
+      </div>
+    </section>
+    <section class="card-mx" aria-label="AUM構成">
+      <div class="card-h">
+        <h3>AUM構成</h3>
+        <span class="sub">ファンド別</span>
+      </div>
+      <div class="card-b" style="height:300px;display:flex;align-items:center;justify-content:center;">
+        <div class="chart-holder"><canvas id="chart-fundmix-A" aria-label="AUM構成ドーナツ"></canvas></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+{# ===== Main content grid — Variant B ===== #}
+<div class="dash-variant-B" style="margin-top:16px;">
+  <div class="grid-3">
+    <section class="card-mx" style="grid-column:span 2;" aria-label="月次キャッシュフロー">
+      <div class="card-h">
+        <h3>月次キャッシュフロー</h3>
+        <span class="sub">リース料 + メンテ/保険</span>
+      </div>
+      <div class="card-b" style="height:260px;">
+        <div class="chart-holder"><canvas id="chart-income-B" aria-label="月次キャッシュフローチャート"></canvas></div>
+      </div>
+    </section>
+    <section class="card-mx" aria-label="AUM構成">
+      <div class="card-h"><h3>AUM構成</h3></div>
+      <div class="card-b" style="height:260px;display:flex;align-items:center;justify-content:center;">
+        <div class="chart-holder"><canvas id="chart-fundmix-B" aria-label="AUM構成ドーナツ"></canvas></div>
+      </div>
+    </section>
+    <section class="card-mx" style="grid-column:span 3;" aria-label="NAV推移">
+      <div class="card-h">
+        <h3>NAV 推移 — 加重平均</h3>
+        <span class="sub">松プランのみ閲覧可: 全ファンド横断ビュー</span>
+      </div>
+      <div class="card-b" style="height:280px;">
+        <div class="chart-holder"><canvas id="chart-nav-B" aria-label="NAV推移チャート"></canvas></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+{# ===== Main content grid — Variant C ===== #}
+<div class="dash-variant-C" style="margin-top:16px;">
+  <section class="card-mx" aria-label="松プラン限定 3ビュー">
+    <div class="card-h">
+      <h3>NAV 推移 × LTV × 収益</h3>
+      <span class="sub">松プラン限定の3ビュー同時表示</span>
     </div>
-    <div class="card" style="flex:0 0 340px;min-width:280px;">
-        <div class="card__header">
-            <h3 class="card__title">請求状況</h3>
-        </div>
-        <div class="card__body" style="display:flex;align-items:center;justify-content:center;">
-            <canvas id="invoice-status-chart" width="280" height="280"></canvas>
-        </div>
+    <div class="card-b">
+      <div class="triple-chart">
+        <div><div class="chart-holder"><canvas id="chart-nav-C" aria-label="NAV推移チャート"></canvas></div></div>
+        <div><div class="chart-holder"><canvas id="chart-ltv-C" aria-label="LTVヒストグラム"></canvas></div></div>
+        <div><div class="chart-holder"><canvas id="chart-income-C" aria-label="月次収益チャート"></canvas></div></div>
+      </div>
     </div>
-</section>
+  </section>
+</div>
 
-{# ===== NAV Trend Section ===== #}
-<section class="dashboard-charts" aria-label="NAV推移" style="display:block;">
-    <div class="card" style="display:none;">
-        <div class="card__header">
-            <h3 class="card__title">NAV推移</h3>
-        </div>
-        <div class="card__body">
-            <canvas id="nav-trend-chart" height="260"></canvas>
-        </div>
+{# ===== Bottom row — Funds table + Alerts ===== #}
+<div class="grid-2" style="margin-top:16px;">
+  <section class="card-mx" aria-label="ファンド一覧">
+    <div class="card-h">
+      <h3>ファンド一覧</h3>
+      <span class="sub">全 5 ファンド</span>
+      <div class="spacer"></div>
+      <a href="/funds" class="btn-mx" style="font-size:11px;padding:4px 10px;">すべて表示</a>
     </div>
-</section>
-
-{# ===== Quick Actions ===== #}
-<section class="actions-row" aria-label="クイックアクション">
-    <a href="/simulation/new" class="btn btn--primary btn--lg">
-        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        新規プライシング
-    </a>
-    <a href="/invoices/generate" class="btn btn--outline btn--lg">
-        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M6 6h6M6 9h6M6 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        請求書発行
-    </a>
-    <a href="/invoices?status=overdue" class="btn btn--outline btn--lg btn--danger-outline">
-        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path d="M9 1.5v9M9 13.5v1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.5"/>
-        </svg>
-        延滞一覧
-    </a>
-    <a href="/market-data" class="btn btn--outline btn--lg">
-        <svg class="icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path d="M2 15V6l3.5 2.5 3.5-5 3.5 3.5L16 4v11H2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-        </svg>
-        相場データ確認
-    </a>
-</section>
-
-{# ===== Recent Activity - Tabbed ===== #}
-<section class="card" aria-label="最近のアクティビティ">
-    <div class="card__header">
-        <div class="tab-nav" role="tablist">
-            <button class="tab-nav__btn tab-nav__btn--active" role="tab" aria-selected="true" aria-controls="tab-simulations" data-tab="tab-simulations" onclick="switchTab(this)">シミュレーション</button>
-            <button class="tab-nav__btn" role="tab" aria-selected="false" aria-controls="tab-invoices" data-tab="tab-invoices" onclick="switchTab(this)">請求書</button>
-        </div>
-        <a href="/simulations" class="card__header-link" id="tab-view-all-link">すべて表示</a>
+    <div class="card-b" style="padding:0;">
+      <table class="tbl" aria-label="ファンド概況テーブル">
+        <thead>
+          <tr>
+            <th>ファンド</th>
+            <th class="num">AUM</th>
+            <th class="num">利回り</th>
+            <th class="num">NFAV</th>
+            <th class="num">LTV</th>
+            <th>状況</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="fund-swatch" style="background:#C9A24A;" aria-hidden="true"></span>
+                <div>
+                  <div style="font-weight:700;color:var(--navy);">カーチスファンド15号</div>
+                  <div style="font-size:11px;color:var(--muted);">28台 / 36ヶ月</div>
+                </div>
+              </div>
+            </td>
+            <td class="num"><b>¥320M</b></td>
+            <td class="num">8.1%</td>
+            <td class="num" style="color:var(--green);font-weight:700;">104.2%</td>
+            <td class="num">58%</td>
+            <td>{{ chip("運用中", "ok") }}</td>
+          </tr>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="fund-swatch" style="background:#7E9DBF;" aria-hidden="true"></span>
+                <div>
+                  <div style="font-weight:700;color:var(--navy);">カーチスファンド14号</div>
+                  <div style="font-size:11px;color:var(--muted);">24台 / 36ヶ月</div>
+                </div>
+              </div>
+            </td>
+            <td class="num"><b>¥280M</b></td>
+            <td class="num">7.6%</td>
+            <td class="num" style="color:var(--green);font-weight:700;">106.8%</td>
+            <td class="num" style="color:var(--red);">62%</td>
+            <td>{{ chip("運用中", "ok") }}</td>
+          </tr>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="fund-swatch" style="background:#3E8E5A;" aria-hidden="true"></span>
+                <div>
+                  <div style="font-weight:700;color:var(--navy);">カーチスファンド13号</div>
+                  <div style="font-size:11px;color:var(--muted);">22台 / 36ヶ月</div>
+                </div>
+              </div>
+            </td>
+            <td class="num"><b>¥230M</b></td>
+            <td class="num">7.2%</td>
+            <td class="num" style="color:var(--green);font-weight:700;">109.1%</td>
+            <td class="num">54%</td>
+            <td>{{ chip("運用中", "ok") }}</td>
+          </tr>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="fund-swatch" style="background:#B5443A;" aria-hidden="true"></span>
+                <div>
+                  <div style="font-weight:700;color:var(--navy);">カーチスファンド12号</div>
+                  <div style="font-size:11px;color:var(--muted);">18台 / 36ヶ月</div>
+                </div>
+              </div>
+            </td>
+            <td class="num"><b>¥160M</b></td>
+            <td class="num">6.8%</td>
+            <td class="num" style="color:var(--green);font-weight:700;">108.5%</td>
+            <td class="num">51%</td>
+            <td>{{ chip("償還準備", "warn") }}</td>
+          </tr>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="fund-swatch" style="background:#6E6A5C;" aria-hidden="true"></span>
+                <div>
+                  <div style="font-weight:700;color:var(--navy);">カーチスファンド11号</div>
+                  <div style="font-size:11px;color:var(--muted);">16台 / 36ヶ月</div>
+                </div>
+              </div>
+            </td>
+            <td class="num"><b>¥130M</b></td>
+            <td class="num">6.5%</td>
+            <td class="num" style="color:var(--green);font-weight:700;">110.4%</td>
+            <td class="num">47%</td>
+            <td>{{ chip("運用中", "ok") }}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <div class="card__body card__body--flush">
-        {# Tab: Simulations #}
-        <div id="tab-simulations" role="tabpanel" class="tab-panel tab-panel--active">
-            {% if recent_simulations %}
-            <div class="table-responsive">
-                <table class="data-table data-table--hover">
-                    <thead>
-                        <tr>
-                            <th>タイトル</th>
-                            <th>車種 / 年式</th>
-                            <th class="text-right">買取価格</th>
-                            <th class="text-right">月額リース</th>
-                            <th class="text-right">利回り</th>
-                            <th>ステータス</th>
-                            <th>実行日</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for sim in recent_simulations %}
-                        <tr class="data-table__row--clickable" onclick="window.location='/simulation/{{ sim.id }}/result'" style="cursor:pointer;">
-                            <td>
-                                <a href="/simulation/{{ sim.id }}/result" class="text-bold">{{ sim.title | default("無題") }}</a>
-                            </td>
-                            <td>
-                                <span>{{ sim.target_model_name | default("-") }}</span>
-                                {% if sim.target_model_year %}
-                                <br><small class="text-muted">{{ sim.target_model_year }}年式</small>
-                                {% endif %}
-                            </td>
-                            <td class="text-right">
-                                {% if sim.purchase_price_yen is not none %}
-                                    &yen;{{ "{:,}".format(sim.purchase_price_yen) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td class="text-right">
-                                {% if sim.lease_monthly_yen is not none %}
-                                    &yen;{{ "{:,}".format(sim.lease_monthly_yen) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td class="text-right">
-                                {% if sim.expected_yield_rate is not none %}
-                                    {{ "%.1f" | format(sim.expected_yield_rate) }}%
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if sim.status == 'completed' or sim.status == '完了' %}
-                                    <span class="badge badge--success">完了</span>
-                                {% elif sim.status == 'approved' or sim.status == '承認済' %}
-                                    <span class="badge badge--success">承認済</span>
-                                {% elif sim.status == 'running' or sim.status == '実行中' %}
-                                    <span class="badge badge--primary">実行中</span>
-                                {% elif sim.status == 'failed' or sim.status == 'エラー' %}
-                                    <span class="badge badge--danger">エラー</span>
-                                {% elif sim.status == 'draft' or sim.status == '下書き' %}
-                                    <span class="badge badge--warning">下書き</span>
-                                {% else %}
-                                    <span class="badge">{{ sim.status | default("-") }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if sim.created_at %}
-                                    {{ sim.created_at[:10] if sim.created_at is string else sim.created_at.strftime('%Y-%m-%d') }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="empty-state">シミュレーション履歴がありません。新規シミュレーションを実行してください。</p>
-            {% endif %}
-        </div>
+  </section>
 
-        {# Tab: Invoices #}
-        <div id="tab-invoices" role="tabpanel" class="tab-panel" style="display:none;">
-            <div class="table-responsive">
-                <table class="data-table data-table--hover" id="recent-invoices-table">
-                    <thead>
-                        <tr>
-                            <th>請求番号</th>
-                            <th>顧客</th>
-                            <th class="text-right">金額</th>
-                            <th>期日</th>
-                            <th>ステータス</th>
-                        </tr>
-                    </thead>
-                    <tbody id="recent-invoices-body">
-                        <tr><td colspan="5" class="text-center text-muted">読み込み中...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+  <section class="card-mx" aria-label="リアルタイムアラート">
+    <div class="card-h">
+      <h3>リアルタイムアラート</h3>
+      <span class="sub">直近24時間</span>
+      <div class="spacer"></div>
+      {{ chip("3", "bad") }}
     </div>
-</section>
+    <div class="card-b">
+      {{ alert(
+        "red",
+        "LTV 閾値超過",
+        "Fund 14号 / 車両3台が LTV 60% を上回っています",
+        "3分前",
+        "詳細を確認",
+        "/risk"
+      ) }}
+      {{ alert(
+        "amber",
+        "延滞 60日経過",
+        "㈱東西運輸 請求書 INV-202604-0023（¥410,000）",
+        "1時間前",
+        "督促履歴",
+        "/invoices?status=overdue"
+      ) }}
+      {{ alert(
+        "amber",
+        "スクレイピングJOB 失敗",
+        "AI-NET セッション切れ（Retry 3/3）",
+        "本日 14:02",
+        "JOB再実行",
+        "/scrape"
+      ) }}
+      <div class="note-mx" style="margin-top:10px;">
+        松プランなら、アラート→該当ファンド→該当車両まで3クリックで到達できます
+      </div>
+    </div>
+  </section>
+</div>
 
-<style>
-    .kpi-grid--4col {
-        grid-template-columns: repeat(4, 1fr);
-    }
-    .dashboard-charts {
-        display: flex;
-        gap: var(--space-4, 1rem);
-        margin-bottom: var(--space-6, 1.5rem);
-    }
-    .tab-nav {
-        display: flex;
-        gap: 0;
-    }
-    .tab-nav__btn {
-        background: none;
-        border: none;
-        border-bottom: 2px solid transparent;
-        padding: 0.5rem 1rem;
-        cursor: pointer;
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: var(--text-muted, #6c757d);
-        transition: color 0.2s, border-color 0.2s;
-    }
-    .tab-nav__btn:hover {
-        color: var(--primary, #2563eb);
-    }
-    .tab-nav__btn--active {
-        color: var(--primary, #2563eb);
-        border-bottom-color: var(--primary, #2563eb);
-    }
-    .btn--danger-outline {
-        color: var(--danger, #dc3545);
-        border-color: var(--danger, #dc3545);
-    }
-    .btn--danger-outline:hover {
-        background: var(--danger, #dc3545);
-        color: #fff;
-    }
-    @media (max-width: 1024px) {
-        .kpi-grid--4col {
-            grid-template-columns: repeat(2, 1fr);
-        }
-        .dashboard-charts {
-            flex-direction: column;
-        }
-        .dashboard-charts .card {
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
-        }
-    }
-    @media (max-width: 640px) {
-        .kpi-grid--4col {
-            grid-template-columns: 1fr;
-        }
-    }
-</style>
+{# ===== Fixed panels ===== #}
+{% include "partials/_var_bar.html" %}
+{% include "partials/_tweaks_panel.html" %}
+{% endblock %}
 
+{% block scripts %}
 <script src="/static/js/dashboard_charts.js"></script>
 <script>
-// Tab switching
-function switchTab(btn) {
-    var tabId = btn.getAttribute('data-tab');
-    // Update tab buttons
-    var allBtns = btn.parentElement.querySelectorAll('.tab-nav__btn');
-    allBtns.forEach(function(b) {
-        b.classList.remove('tab-nav__btn--active');
+// ---- Time-range button toggle ----
+(function(){
+  var group = document.querySelector('.dash-range');
+  if(!group) return;
+  group.querySelectorAll('button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      group.querySelectorAll('button').forEach(function(b){
+        b.classList.remove('on');
         b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('on');
+      btn.setAttribute('aria-selected', 'true');
+      window.dispatchEvent(new CustomEvent('cvl:range-change', {detail:{range: btn.dataset.range}}));
     });
-    btn.classList.add('tab-nav__btn--active');
-    btn.setAttribute('aria-selected', 'true');
+  });
+})();
 
-    // Update tab panels
-    var panels = btn.closest('.card').querySelectorAll('.tab-panel');
-    panels.forEach(function(p) {
-        p.style.display = 'none';
-        p.classList.remove('tab-panel--active');
+// ---- NAV tab toggle (Variant A) ----
+(function(){
+  var tabGroup = document.querySelector('.dash-variant-A .tabs-mx');
+  if(!tabGroup) return;
+  tabGroup.querySelectorAll('.tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      tabGroup.querySelectorAll('.tab').forEach(function(t){
+        t.classList.remove('on');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('on');
+      tab.setAttribute('aria-selected', 'true');
+      window.dispatchEvent(new CustomEvent('cvl:fund-tab-change', {detail:{fund: tab.dataset.fund}}));
     });
-    var target = document.getElementById(tabId);
-    if (target) {
-        target.style.display = 'block';
-        target.classList.add('tab-panel--active');
-    }
+  });
+})();
 
-    // Update "View all" link
-    var viewAllLink = document.getElementById('tab-view-all-link');
-    if (viewAllLink) {
-        viewAllLink.href = tabId === 'tab-invoices' ? '/invoices' : '/simulations';
-    }
-}
+// ---- Refresh + PDF buttons ----
+(function(){
+  var rb = document.getElementById('dash-refresh-btn');
+  if(rb){
+    rb.addEventListener('click', function(){
+      if(window.CVLDashboard && typeof window.CVLDashboard.reload === 'function'){
+        window.CVLDashboard.reload();
+      }
+    });
+  }
+  var pb = document.getElementById('dash-pdf-btn');
+  if(pb){
+    pb.addEventListener('click', function(){
+      window.location.href = '/api/v1/dashboard/report.pdf';
+    });
+  }
+})();
+
+// ---- Variant re-render bridge ----
+window.addEventListener('cvl:variant-change', function(e){
+  if(window.CVLDashboard && typeof window.CVLDashboard.renderVariant === 'function'){
+    window.CVLDashboard.renderVariant(e.detail.variant);
+  }
+});
 </script>
 {% endblock %}

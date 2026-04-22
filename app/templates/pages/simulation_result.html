@@ -12,17 +12,26 @@
 {% set _monthly = simulation.lease_monthly_yen or _rsj.monthly_lease_fee or _rsj.monthly_lease or 0 %}
 {% set _total = simulation.total_lease_revenue_yen or _rsj.total_lease_fee or (_monthly * (simulation.lease_term_months or 0)) %}
 {% set _yield = simulation.expected_yield_rate or _rsj.effective_yield_rate or _rsj.actual_yield_rate or 0 %}
-<div class="page-header">
-    <h2 class="page-header__title">{{ simulation.title or "シミュレーション結果" }}</h2>
-    <p class="page-header__description">
-        ID: {{ simulation.id[:8] }}... |
-        {{ simulation.created_at[:10] if simulation.created_at else "" }} |
-        ステータス: <span class="badge badge--{% if simulation.status == 'completed' %}success{% elif simulation.status == 'approved' %}success{% elif simulation.status == 'draft' %}warning{% else %}neutral{% endif %}">{{ simulation.status }}</span>
-        {% if simulation.assessment %}
-        | 評価:
-        <span class="badge badge--{% if simulation.assessment == 'A' or simulation.assessment == 'excellent' or simulation.assessment == '推奨' %}success{% elif simulation.assessment == 'B' or simulation.assessment == 'good' %}info{% elif simulation.assessment == 'C' or simulation.assessment == 'fair' or simulation.assessment == '要検討' %}warning{% else %}danger{% endif %}">{{ simulation.assessment }}</span>
-        {% endif %}
-    </p>
+<div class="page-head">
+    <div>
+        <h1>{{ simulation.title or "シミュレーション結果" }}</h1>
+        <div class="sub">
+            ID: {{ simulation.id[:8] }}... |
+            {{ simulation.created_at[:10] if simulation.created_at else "" }} |
+            ステータス:
+            {% if simulation.status == 'completed' %}<span class="chip ok">完了</span>
+            {% elif simulation.status == 'approved' %}<span class="chip ok">承認済</span>
+            {% elif simulation.status == 'draft' %}<span class="chip warn">下書き</span>
+            {% else %}<span class="chip neutral">{{ simulation.status }}</span>{% endif %}
+            {% if simulation.assessment %}
+            | 評価:
+            {% if simulation.assessment == 'A' or simulation.assessment == 'excellent' or simulation.assessment == '推奨' %}<span class="chip ok">{{ simulation.assessment }}</span>
+            {% elif simulation.assessment == 'B' or simulation.assessment == 'good' %}<span class="chip info">{{ simulation.assessment }}</span>
+            {% elif simulation.assessment == 'C' or simulation.assessment == 'fair' or simulation.assessment == '要検討' %}<span class="chip warn">{{ simulation.assessment }}</span>
+            {% else %}<span class="chip bad">{{ simulation.assessment }}</span>{% endif %}
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 {# ===== Summary Cards ===== #}
@@ -248,9 +257,9 @@
 {% if simulation.lease_term_months %}{% set _ = _prefill.update({'lease_term_months': simulation.lease_term_months}) %}{% endif %}
 {% set _ = _prefill.update({'prefill_from': simulation.id}) %}
 <div class="actions-row" style="margin-top: 24px;">
-    <a href="/simulation/{{ simulation.id }}/contracts" class="btn btn--outline btn--lg">📋 契約書作成</a>
-    <a href="/simulation/new?{{ _prefill | urlencode }}" class="btn btn--outline">条件変更して再計算</a>
-    <a href="/dashboard" class="btn btn--primary">ダッシュボードへ</a>
+    <a href="/simulation/{{ simulation.id }}/contracts" class="btn-mx">📋 契約書作成</a>
+    <a href="/simulation/new?{{ _prefill | urlencode }}" class="btn-mx">条件変更して再計算</a>
+    <a href="/dashboard" class="btn-mx primary">ダッシュボードへ</a>
 </div>
 
 {% else %}
@@ -258,7 +267,7 @@
     <div class="card__body">
         <div class="empty-state">
             <p>シミュレーション結果が見つかりません（ID: {{ simulation_id }}）</p>
-            <a href="/dashboard" class="btn btn--primary" style="margin-top: 16px;">ダッシュボードへ戻る</a>
+            <a href="/dashboard" class="btn-mx primary" style="margin-top: 16px;">ダッシュボードへ戻る</a>
         </div>
     </div>
 </div>

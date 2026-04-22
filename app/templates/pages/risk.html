@@ -1,4 +1,10 @@
 {% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_kpi_sm.html" import kpi_sm %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+{% from "partials/_alert.html" import alert %}
+
 {% block title %}リスクモニタリング - CVLPOS{% endblock %}
 
 {% block content %}
@@ -10,10 +16,85 @@
   </div>
 </div>
 
-<div class="card-mx">
-  <div class="card-h"><h3>Coming soon — Phase 3</h3><span class="sub">松限定・バックエンドAPI要追加</span></div>
-  <div class="card-b">
-    <div class="wire" style="height:280px">RISK — アラート表 + KPI4(Phase 3 で実装)</div>
+<div class="kpi-row">
+  {{ kpi_sm("High risk 車両", "4", "LTV 60%超", 15, "bad") }}
+  {{ kpi_sm("延滞案件", "1", "30日超", 10, "warn") }}
+  {{ kpi_sm("NFAV 要警戒", "0", "閾値 60%", 0, "warn") }}
+  {{ kpi_sm("システムヘルス", "99.2%", "直近7日", 99, "ok") }}
+</div>
+
+<div style="margin-top:16px"></div>
+{{ card_open("アラート詳細", "直近の検知") }}
+  <div style="padding:0; margin:-16px">
+    <table class="tbl" aria-label="アクティブアラート一覧">
+      <thead>
+        <tr>
+          <th>レベル</th>
+          <th>種別</th>
+          <th>対象</th>
+          <th>検知時刻</th>
+          <th class="num">しきい値</th>
+          <th class="num">実測</th>
+          <th style="width:140px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ chip("CRITICAL", "bad") }}</td>
+          <td>LTV 超過</td>
+          <td>Fund14号 / T-1498</td>
+          <td>本日 13:42</td>
+          <td class="num">60%</td>
+          <td class="num" style="color:var(--red); font-weight:700;">71%</td>
+          <td><a href="/inventory/T-1498" class="btn-mx gold" style="font-size:11px; padding:4px 10px;">対処</a></td>
+        </tr>
+        <tr>
+          <td>{{ chip("WARN", "warn") }}</td>
+          <td>延滞60日</td>
+          <td>㈱東西運輸</td>
+          <td>本日 10:05</td>
+          <td class="num">30日</td>
+          <td class="num" style="color:var(--amber); font-weight:700;">63日</td>
+          <td><a href="#" class="btn-mx" style="font-size:11px; padding:4px 10px;">督促</a></td>
+        </tr>
+        <tr>
+          <td>{{ chip("WARN", "warn") }}</td>
+          <td>JOB失敗</td>
+          <td>AI-NET scrape</td>
+          <td>本日 14:02</td>
+          <td class="num">3 retry</td>
+          <td class="num" style="color:var(--amber); font-weight:700;">3/3</td>
+          <td><a href="/scrape" class="btn-mx" style="font-size:11px; padding:4px 10px;">再実行</a></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
+{{ card_close() }}
+
+<div style="margin-top:16px; display:flex; flex-direction:column; gap:10px">
+  {{ alert(
+    "red",
+    "LTV 閾値超過",
+    "Fund14号 / T-1498 が LTV 71% に達し、60% 閾値を超過しました。早急に担保再評価または繰上返済の検討を。",
+    "3分前",
+    "詳細を確認",
+    "/inventory/T-1498"
+  ) }}
+  {{ alert(
+    "amber",
+    "延滞 60日 超過",
+    "㈱東西運輸 のリース料が 63日 延滞中です。督促 2 段階目への引き上げを推奨します。",
+    "本日 10:05",
+    "督促を開始",
+    "#"
+  ) }}
+  {{ alert(
+    "amber",
+    "スクレイピングJOB失敗",
+    "AI-NET scrape が 3/3 リトライに失敗しました。ソース側のレイアウト変更の可能性があります。",
+    "本日 14:02",
+    "ジョブを再実行",
+    "/scrape"
+  ) }}
 </div>
 {% endblock %}

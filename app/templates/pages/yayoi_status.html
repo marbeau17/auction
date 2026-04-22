@@ -2,8 +2,13 @@
 {% block title %}弥生連携ステータス - CVLPOS{% endblock %}
 {% block content %}
 <div class="container">
-    <h1>弥生連携</h1>
-    <p>弥生会計とのデータ連携状況を確認・管理します。<span style="font-size:0.8em; background:#d69e2e; color:#fff; padding:2px 8px; border-radius:8px; margin-left:8px;">松プラン</span></p>
+    <div class="page-head">
+        <div>
+            <span class="tag">松プラン</span>
+            <h1>弥生連携</h1>
+            <div class="sub">弥生会計とのデータ連携状況を確認・管理します。</div>
+        </div>
+    </div>
 
     <!-- Toast -->
     <div id="toast" role="status" aria-live="polite"
@@ -23,7 +28,7 @@
             </div>
         </div>
         <div style="margin-top: 16px;">
-            <button class="btn btn-primary" id="btn-connect" onclick="connectYayoi()">接続する</button>
+            <button class="btn-mx primary" id="btn-connect" onclick="connectYayoi()">接続する</button>
         </div>
     </div>
 
@@ -34,7 +39,7 @@
         <div style="display:flex; gap:12px; align-items:center; margin-top:12px;">
             <label for="sync-fund-id" style="font-size:0.9em;">Fund ID:</label>
             <input type="text" id="sync-fund-id" placeholder="fund UUID" style="flex:1; max-width:320px; padding:6px 10px; border:1px solid #cbd5e0; border-radius:6px;">
-            <button class="btn btn-primary" id="btn-sync" onclick="runMonthlySync()">月次同期を実行</button>
+            <button class="btn-mx primary" id="btn-sync" onclick="runMonthlySync()">月次同期を実行</button>
             <span id="sync-spinner" style="display:none;">同期中...</span>
         </div>
     </div>
@@ -86,7 +91,7 @@
                 </label>
             </div>
             <div style="margin-top:16px;">
-                <button type="submit" class="btn btn-primary">設定を保存</button>
+                <button type="submit" class="btn-mx primary">設定を保存</button>
             </div>
         </form>
     </div>

@@ -9,9 +9,11 @@
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; }
 </style>
 
-<div class="page-header">
-    <h2>リースバックシミュレーション</h2>
-    <p>車両情報とリース条件を入力して最適な買取価格を算出します</p>
+<div class="page-head">
+    <div>
+        <h1>リースバックシミュレーション</h1>
+        <div class="sub">車両情報とリース条件を入力して最適な買取価格を算出します</div>
+    </div>
 </div>
 
 {% if prefill and prefill.prefill_from %}
@@ -176,8 +178,8 @@
 <hr style="margin: 32px 0">
 
 <div class="actions-row">
-    <button type="reset" class="btn btn--outline">リセット</button>
-    <button type="submit" class="btn btn--primary btn--lg">
+    <button type="reset" class="btn-mx">リセット</button>
+    <button type="submit" class="btn-mx primary">
         シミュレーション実行
         <span id="calc-spinner" class="htmx-indicator spinner"></span>
     </button>

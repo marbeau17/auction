@@ -1,15 +1,186 @@
 {% extends "base.html" %}
-{% block title %}契約書管理 - CVLPOS{% endblock %}
-{% block page_title %}契約書管理{% endblock %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_card.html" import card_open, card_close %}
+
+{% block title %}契約書自動生成 - CVLPOS{% endblock %}
+{% block page_title %}契約書自動生成{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Contract mapper — matsu wireframe specifics */
+  .contract-list label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+    border-bottom: 1px solid #F3F1E8;
+  }
+  .contract-list label:last-child { border-bottom: 0; }
+  .contract-list input[type="checkbox"] { accent-color: var(--navy); }
+
+  .param-tbl { border: 0; width: 100%; }
+  .param-tbl th {
+    width: 200px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    border: 0;
+    text-align: left;
+    padding: 8px 10px;
+  }
+  .param-tbl td {
+    border: 0;
+    font-weight: 700;
+    color: var(--navy);
+    padding: 8px 10px;
+  }
+  .param-tbl tr:hover td { background: transparent; }
+
+  .contract-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<div id="mapper-content"
-     hx-get="/api/v1/contracts/mapper/{{ simulation_id }}"
-     hx-trigger="load"
-     hx-swap="innerHTML">
-    <div class="loading-placeholder">
-        <span class="spinner"></span>
-        <span>契約情報を読み込み中...</span>
-    </div>
+{# Defaults fall back to wireframe values when simulation context is missing #}
+{% set fund_name = (simulation.fund_name if simulation and simulation.fund_name else "カーチスファンド15号") %}
+{% set invest_total = (simulation.invest_total_display if simulation and simulation.invest_total_display else "¥400,000,000") %}
+{% set dividend_rate = (simulation.dividend_rate_display if simulation and simulation.dividend_rate_display else "8.0%") %}
+{% set am_fee_rate = (simulation.am_fee_rate_display if simulation and simulation.am_fee_rate_display else "1.91%") %}
+{% set pm_fee_rate = (simulation.pm_fee_rate_display if simulation and simulation.pm_fee_rate_display else "1.5%") %}
+{% set lease_period = (simulation.lease_period_display if simulation and simulation.lease_period_display else "4ヶ月") %}
+{% set lease_monthly = (simulation.lease_monthly_display if simulation and simulation.lease_monthly_display else "¥3,802,700") %}
+
+{% set CONTRACT_TYPES = [
+  "匿名組合契約書",
+  "私募取扱業務委託契約書",
+  "解約払戻事務委託契約書",
+  "AM契約書",
+  "会計事務委託契約書",
+  "会計事務委託契約書（税理士）",
+  "マスターリース契約書",
+  "サブリース契約書",
+  "車両売買契約書",
+] %}
+
+{% set CONTRACT_PARAMS = [
+  ("ファンド名", fund_name),
+  ("投資総額", invest_total),
+  ("配当率", dividend_rate),
+  ("AM報酬率", am_fee_rate),
+  ("私募取扱業務委託料率", pm_fee_rate),
+  ("リース期間", lease_period),
+  ("月額リース料", lease_monthly),
+] %}
+
+<div class="page-head">
+  <div>
+    <h1>契約書自動生成
+      <span style="font-size:13px;color:var(--muted);font-weight:500;margin-left:8px">9種類完全対応</span>
+    </h1>
+    <div class="sub">ファンドパラメータを流し込んで ZIP 一括ダウンロード</div>
+  </div>
+  <div class="spacer"></div>
+  <button type="button"
+          class="btn-mx gold"
+          id="contract-zip-download"
+          hx-get="/api/v1/contracts/bulk-zip/{{ simulation_id }}"
+          hx-trigger="click"
+          hx-swap="none">
+    {{ icon("dl", 14) }}
+    ZIP 一括ダウンロード
+  </button>
 </div>
+
+<div class="grid-2">
+  {# ---- Left: contract checklist -------------------------------------- #}
+  {{ card_open("生成する契約書", "9 種類") }}
+    <div class="contract-list">
+      {% for t in CONTRACT_TYPES %}
+      <label>
+        <input type="checkbox" name="contract_types" value="{{ t }}" checked>
+        <span>{{ t }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  {{ card_close() }}
+
+  {# ---- Right: parameter preview -------------------------------------- #}
+  {{ card_open("契約パラメータ", "自動流し込み") }}
+    <table class="tbl param-tbl">
+      <tbody>
+        {% for key, value in CONTRACT_PARAMS %}
+        <tr>
+          <th>{{ key }}</th>
+          <td>{{ value }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="contract-actions">
+      <button type="button"
+              class="btn-mx"
+              id="contract-preview-btn"
+              hx-get="/api/v1/contracts/preview/{{ simulation_id }}"
+              hx-trigger="click"
+              hx-target="#contract-preview-modal"
+              hx-swap="innerHTML">
+        プレビュー
+      </button>
+      <button type="button"
+              class="btn-mx primary"
+              id="contract-bulk-generate-btn"
+              hx-post="/api/v1/contracts/generate-all/{{ simulation_id }}"
+              hx-trigger="click"
+              hx-swap="none">
+        9種まとめて生成 →
+      </button>
+    </div>
+  {{ card_close() }}
+</div>
+
+{# Mount point for preview modal content returned by HTMX #}
+<div id="contract-preview-modal"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Keep ZIP download button in sync with checkbox state.
+  // Selected types are sent as a comma-separated query param for the bulk endpoint.
+  (function () {
+    const zipBtn = document.getElementById('contract-zip-download');
+    const genBtn = document.getElementById('contract-bulk-generate-btn');
+    if (!zipBtn && !genBtn) return;
+
+    function selectedTypes() {
+      return Array.from(
+        document.querySelectorAll('.contract-list input[type="checkbox"]:checked')
+      ).map(el => el.value);
+    }
+
+    function refreshParams() {
+      const types = selectedTypes();
+      const qs = types.length ? '?types=' + encodeURIComponent(types.join(',')) : '';
+      if (zipBtn) {
+        const base = zipBtn.getAttribute('hx-get').split('?')[0];
+        zipBtn.setAttribute('hx-get', base + qs);
+      }
+      if (genBtn) {
+        const base = genBtn.getAttribute('hx-post').split('?')[0];
+        genBtn.setAttribute('hx-post', base + qs);
+      }
+    }
+
+    document.querySelectorAll('.contract-list input[type="checkbox"]')
+      .forEach(cb => cb.addEventListener('change', refreshParams));
+    refreshParams();
+  })();
+</script>
 {% endblock %}

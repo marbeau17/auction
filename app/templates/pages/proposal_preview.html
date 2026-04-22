@@ -1,91 +1,90 @@
 {% extends "base.html" %}
-{% block title %}提案書プレビュー - CVLPOS{% endblock %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% block title %}提案書PDF自動生成 - CVLPOS{% endblock %}
+
 {% block content %}
-<div class="container">
-    {% include "partials/_error_banner.html" %}
-    <div class="page-header">
-        <h1>提案書プレビュー</h1>
-        <div class="page-actions">
-            <a href="/api/v1/proposals/generate?simulation_id={{ simulation_id }}"
-               class="btn btn-primary" download>
-                📥 PDF ダウンロード
-            </a>
-            <a href="/api/v1/proposals/export-design?simulation_id={{ simulation_id }}"
-               class="btn btn-secondary" download>
-                📊 設計書エクスポート (Excel)
-            </a>
-            <button onclick="window.print()" class="btn btn-outline">
-                🖨️ 印刷
-            </button>
-            <a href="/simulation/{{ simulation_id }}" class="btn btn-outline">
-                ← シミュレーションに戻る
-            </a>
-        </div>
-    </div>
+{% include "partials/_error_banner.html" %}
 
-    <!-- Simulation Summary -->
-    <div class="summary-bar">
-        <div class="summary-item">
-            <span class="label">車両:</span>
-            <span class="value">{{ simulation.input_data.maker }} {{ simulation.input_data.model }}</span>
-        </div>
-        <div class="summary-item">
-            <span class="label">リース期間:</span>
-            <span class="value">{{ simulation.input_data.lease_term_months }}ヶ月</span>
-        </div>
-        <div class="summary-item">
-            <span class="label">作成日:</span>
-            <span class="value">{{ simulation.created_at[:10] }}</span>
-        </div>
-    </div>
+{# ---- derive display values from simulation context ---- #}
+{% set maker = simulation.input_data.maker if simulation and simulation.input_data else "日野" %}
+{% set model = simulation.input_data.model if simulation and simulation.input_data else "レンジャー 2022" %}
+{% set lease_term = simulation.input_data.lease_term_months if simulation and simulation.input_data else 36 %}
+{% set company_name = simulation.input_data.company_name if simulation and simulation.input_data and simulation.input_data.company_name else "㈱山田運送" %}
+{% set purchase_price = simulation.input_data.purchase_price if simulation and simulation.input_data and simulation.input_data.purchase_price else 3200000 %}
+{% set scenario = simulation.input_data.scenario if simulation and simulation.input_data and simulation.input_data.scenario else "Base (推奨)" %}
 
-    <!-- Preview Frame -->
-    <div class="preview-frame">
-        <iframe src="/api/v1/proposals/preview/{{ simulation_id }}"
-                style="width: 100%; height: 800px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        </iframe>
-    </div>
+<div class="page-head">
+  <div>
+    <h1>提案書PDF自動生成</h1>
+    <div class="sub">運送会社向けの提案書を、プライシング結果から1クリックで生成</div>
+  </div>
+  <div class="spacer"></div>
+  <a href="/api/v1/proposals/generate?simulation_id={{ simulation_id }}"
+     class="btn-mx gold" download
+     style="display:inline-flex;align-items:center;gap:6px">
+    {{ icon("dl", 14) }}PDF 出力
+  </a>
 </div>
 
+<div class="grid-2">
+  {# ---------- Left: input parameters ---------- #}
+  {{ card_open("入力パラメータ") }}
+    {% set rows = [
+      ('運送会社', company_name),
+      ('車両', maker ~ ' ' ~ model),
+      ('買取価格', '¥' ~ '{:,}'.format(purchase_price)),
+      ('リース期間', lease_term ~ 'ヶ月'),
+      ('シナリオ', scenario),
+    ] %}
+    {% for label, value in rows %}
+    <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid #F3F1E8;font-size:13px">
+      <div style="color:var(--muted)">{{ label }}</div>
+      <div style="font-weight:600;color:var(--navy)">{{ value }}</div>
+    </div>
+    {% endfor %}
+  {{ card_close() }}
+
+  {# ---------- Right: 8-page preview wire ---------- #}
+  {{ card_open("プレビュー", "A4 × 8ページ") }}
+    {% set pages = ['表紙','サマリー','買取根拠','NAV曲線','シナリオ','試算表','契約概要','付録'] %}
+    <div class="grid-4">
+      {% for p in pages %}
+      <div class="wire" style="height:88px;padding:8px;font-size:10px">P.{{ loop.index }} {{ p }}</div>
+      {% endfor %}
+    </div>
+  {{ card_close() }}
+</div>
+
+{# ---------- Bottom actions ---------- #}
+{{ card_open("ダウンロード / 出力") }}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <a href="/api/v1/proposals/generate?simulation_id={{ simulation_id }}"
+       class="btn-mx primary" download
+       style="display:inline-flex;align-items:center;gap:6px">
+      {{ icon("dl", 14) }}PDF ダウンロード
+    </a>
+    <a href="/api/v1/proposals/export-design?simulation_id={{ simulation_id }}"
+       class="btn-mx" download
+       style="display:inline-flex;align-items:center;gap:6px">
+      {{ icon("dl", 14) }}Excel エクスポート
+    </a>
+    <button onclick="window.print()" class="btn-mx" type="button">印刷</button>
+    <div class="spacer" style="flex:1"></div>
+    <a href="/simulation/{{ simulation_id }}" class="btn-mx">← シミュレーションに戻る</a>
+  </div>
+{{ card_close() }}
+
+{# ---------- Live iframe preview (kept below the wire for reference) ---------- #}
+{{ card_open("ライブプレビュー", "実データで生成された提案書") }}
+  <iframe src="/api/v1/proposals/preview/{{ simulation_id }}"
+          style="width:100%;height:800px;border:1px solid #F3F1E8;border-radius:6px;background:#fff"
+          title="提案書プレビュー"></iframe>
+{{ card_close() }}
+
 <style>
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-.page-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.summary-bar {
-    display: flex;
-    gap: 30px;
-    background: #f7fafc;
-    padding: 12px 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-}
-.summary-item .label {
-    color: #718096;
-    font-size: 0.9em;
-}
-.summary-item .value {
-    font-weight: bold;
-    margin-left: 5px;
-}
-.preview-frame {
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
 @media print {
-    .page-header, .summary-bar { display: none; }
-    .preview-frame iframe { border: none; height: auto; }
+  .page-head, .btn-mx { display: none; }
 }
 </style>
 {% endblock %}

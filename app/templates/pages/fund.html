@@ -1,19 +1,197 @@
 {% extends "base.html" %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+{% from "partials/_tabs.html" import tabs %}
+{% from "partials/_lbar.html" import lbar %}
+
 {% block title %}ファンドパフォーマンス - CVLPOS{% endblock %}
 
 {% block content %}
+{# ===== Page head ===== #}
 <div class="page-head">
   <div>
     <span class="tag">NFAV・LTV</span>
     <h1>ファンドパフォーマンス <span style="color:var(--muted); font-weight:500; font-size:18px">/ カーチスファンド15号</span></h1>
     <div class="sub">設定 2024-01 · 36ヶ月 · 28台 · AUM ¥3.2億</div>
   </div>
+  <div class="spacer"></div>
+  {{ tabs([
+    {"id": "nfav", "label": "NFAV推移"},
+    {"id": "crossover", "label": "クロスオーバー"},
+    {"id": "yield", "label": "利回り比較"},
+    {"id": "cashflow", "label": "キャッシュフロー"}
+  ], "nfav") }}
 </div>
 
-<div class="card-mx">
-  <div class="card-h"><h3>Coming soon — Phase 3</h3><span class="sub">financial_analysis.html のロジック流用予定</span></div>
-  <div class="card-b">
-    <div class="wire" style="height:360px">NFAV推移 / クロスオーバー / IRR(Phase 3 で実装)</div>
+{# ===== Card 1 — Net Fund Asset Value ===== #}
+{% set nfav_head %}
+  <span class="chip ok">NFAV 104.2%</span>
+  <span class="chip info" style="margin-left:4px">目標 110%</span>
+{% endset %}
+{{ card_open("Net Fund Asset Value", "物理的車両価値 + 累積キャッシュ回収 = NFAV", nfav_head) }}
+  <div style="height:360px; position:relative">
+    <canvas id="fund-nfav-chart"></canvas>
   </div>
+{{ card_close() }}
+
+{# ===== Grid-3 — Crossover / 実績vs計画 / IRR ===== #}
+<div class="grid-3" style="margin-top:16px">
+
+  {# Card A — クロスオーバー #}
+  {{ card_open("クロスオーバー") }}
+    <div style="font-size:13px; color:var(--muted)">累積キャッシュ回収 &gt; 物理的車両価値 となる月</div>
+    <div style="font-size:38px; font-weight:900; color:var(--navy); margin-top:4px; letter-spacing:-.02em">M24</div>
+    <div style="font-size:12px; color:var(--green)">予定どおり（Base想定 M24）</div>
+    <div style="margin-top:12px">{{ lbar(58) }}</div>
+    <div style="font-size:11px; color:var(--muted); margin-top:4px">21/36ヶ月 経過</div>
+  {{ card_close() }}
+
+  {# Card B — 実績 vs 計画利回り #}
+  {{ card_open("実績 vs 計画利回り") }}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+      <div>
+        <div style="font-size:11px; color:var(--muted)">計画</div>
+        <div style="font-size:28px; font-weight:800; color:var(--navy)">7.5<span style="font-size:14px; font-weight:500">%</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--muted)">実績</div>
+        <div style="font-size:28px; font-weight:800; color:var(--gold)">8.1<span style="font-size:14px; font-weight:500">%</span></div>
+      </div>
+    </div>
+    <div style="margin-top:10px">{{ chip("▲ 計画比 +0.6pp", "ok") }}</div>
+  {{ card_close() }}
+
+  {# Card C — IRR（ファンド） #}
+  {{ card_open("IRR（ファンド）") }}
+    <div style="font-size:38px; font-weight:900; color:var(--navy); letter-spacing:-.02em">12.4<span style="font-size:16px; color:var(--muted); font-weight:500">%</span></div>
+    <div style="font-size:12px; color:var(--muted)">Base: 11.8% / Bull: 14.1% / Bear: 9.3%</div>
+    <div style="display:flex; gap:3px; margin-top:12px">
+      <div style="flex:1; height:8px; background:#3E8E5A; border-radius:2px" title="Bull 14.1%"></div>
+      <div style="flex:1; height:8px; background:#C48A2A; border-radius:2px" title="Base 11.8%"></div>
+      <div style="flex:.6; height:8px; background:#B5443A; border-radius:2px" title="Bear 9.3%"></div>
+    </div>
+  {{ card_close() }}
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var el = document.getElementById('fund-nfav-chart');
+  if (!el || typeof Chart === 'undefined') return;
+
+  var NAVY  = '#0E2747';
+  var GOLD  = '#C9A24A';
+  var BLUE  = '#7E9DBF';
+
+  // 36-month sample series (in 百万円, displayed as ¥xM)
+  var labels = [];
+  for (var i = 1; i <= 36; i++) { labels.push('M' + i); }
+
+  // 物理的車両価値: 320M → 130M (roughly linear depreciation)
+  var vehicleValue = [];
+  for (var i = 0; i < 36; i++) {
+    vehicleValue.push(Math.round(320 - (320 - 130) * (i / 35)));
+  }
+
+  // 累積キャッシュ回収: 0 → 220M (roughly linear accumulation)
+  var cashRecovery = [];
+  for (var i = 0; i < 36; i++) {
+    cashRecovery.push(Math.round(220 * (i / 35)));
+  }
+
+  // NFAV: starts ~320, dips, then recovers to ~350
+  var nfav = [];
+  for (var i = 0; i < 36; i++) {
+    var t = i / 35;
+    // Parabolic dip: min around M12-15, recovers by M36
+    var dip = -40 * Math.sin(Math.PI * t);
+    var trend = 320 + (350 - 320) * t;
+    nfav.push(Math.round(trend + dip));
+  }
+
+  new Chart(el, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: '物理的車両価値',
+          data: vehicleValue,
+          borderColor: BLUE,
+          backgroundColor: BLUE,
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 0,
+          pointHoverRadius: 4
+        },
+        {
+          label: '累積キャッシュ回収',
+          data: cashRecovery,
+          borderColor: GOLD,
+          backgroundColor: GOLD,
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 0,
+          pointHoverRadius: 4
+        },
+        {
+          label: 'NFAV',
+          data: nfav,
+          borderColor: NAVY,
+          backgroundColor: NAVY,
+          borderWidth: 2.5,
+          tension: 0.25,
+          pointRadius: 0,
+          pointHoverRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { family: "'Noto Sans JP', sans-serif", size: 11 },
+            usePointStyle: true,
+            pointStyle: 'line',
+            padding: 16
+          }
+        },
+        tooltip: {
+          titleFont: { family: "'Noto Sans JP', sans-serif", size: 11 },
+          bodyFont:  { family: "'Noto Sans JP', sans-serif", size: 11 },
+          callbacks: {
+            label: function(ctx){
+              return ctx.dataset.label + ': ¥' + ctx.parsed.y + 'M';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            font: { family: "'Noto Sans JP', sans-serif", size: 10 },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 12
+          },
+          grid: { display: false }
+        },
+        y: {
+          ticks: {
+            font: { family: "'Noto Sans JP', sans-serif", size: 10 },
+            callback: function(v){ return '¥' + v + 'M'; }
+          },
+          grid: { color: 'rgba(14,39,71,0.06)' }
+        }
+      }
+    }
+  });
+})();
+</script>
 {% endblock %}

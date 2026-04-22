@@ -1,19 +1,119 @@
 {% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_kpi_sm.html" import kpi_sm %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+
 {% block title %}自動価格収集 - CVLPOS{% endblock %}
 
 {% block content %}
+{# ===== Page head ===== #}
 <div class="page-head">
   <div>
     <span class="tag">松プラン限定 NEW</span>
     <h1>自動価格収集</h1>
     <div class="sub">AI-NET / トラックキングダム / USS / TAA / JU を横断スクレイピング + API連携</div>
   </div>
+  <div class="spacer"></div>
+  <button class="btn-mx primary" type="button">{{ icon("play", 12) }}全JOB 実行</button>
 </div>
 
-<div class="card-mx">
-  <div class="card-h"><h3>Coming soon — Phase 3</h3><span class="sub">松限定・バックエンドCRONワーカー要設計</span></div>
-  <div class="card-b">
-    <div class="wire" style="height:320px">SCRAPE — ジョブ一覧 + 正規化パイプライン(Phase 3 で実装)</div>
-  </div>
+{# ===== KPI row ===== #}
+<div class="kpi-row" style="margin-bottom:16px">
+  {{ kpi_sm("本日取得件数", "8,394", "5サイト合計", 100, "ok") }}
+  {{ kpi_sm("失敗JOB", "1", "AI-NET", 15, "warn") }}
+  {{ kpi_sm("成功率（7日）", "97.4%", None, 97, "ok") }}
+  {{ kpi_sm("プロキシ健全", "8/8", "全ノード稼働中", 100, "ok") }}
 </div>
+
+{# ===== Job table ===== #}
+{{ card_open("スクレイピングJOB一覧", "定期実行スケジュール") }}
+  <div style="padding:0; margin:-16px">
+    <table class="tbl" aria-label="スクレイピングJOB一覧">
+      <thead>
+        <tr>
+          <th>サイト / API</th>
+          <th>最終実行</th>
+          <th class="num">取得レコード</th>
+          <th>ステータス</th>
+          <th>次回実行</th>
+          <th style="width:160px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>AI-NET</b></td>
+          <td class="mono" style="font-size:12px">2026/04/22 14:02</td>
+          <td class="num">1,248</td>
+          <td>{{ chip("失敗", "bad") }}</td>
+          <td class="mono" style="font-size:12px">17:00</td>
+          <td>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px">ログ</button>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px; margin-left:4px">再実行</button>
+          </td>
+        </tr>
+        <tr>
+          <td><b>トラックキングダム</b></td>
+          <td class="mono" style="font-size:12px">2026/04/22 12:30</td>
+          <td class="num">842</td>
+          <td>{{ chip("成功", "ok") }}</td>
+          <td class="mono" style="font-size:12px">18:30</td>
+          <td>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px">ログ</button>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px; margin-left:4px">再実行</button>
+          </td>
+        </tr>
+        <tr>
+          <td><b>USS API</b></td>
+          <td class="mono" style="font-size:12px">2026/04/22 13:15</td>
+          <td class="num">3,520</td>
+          <td>{{ chip("成功", "ok") }}</td>
+          <td class="mono" style="font-size:12px">19:15</td>
+          <td>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px">ログ</button>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px; margin-left:4px">再実行</button>
+          </td>
+        </tr>
+        <tr>
+          <td><b>TAA API</b></td>
+          <td class="mono" style="font-size:12px">2026/04/22 11:00</td>
+          <td class="num">2,180</td>
+          <td>{{ chip("成功", "ok") }}</td>
+          <td class="mono" style="font-size:12px">17:00</td>
+          <td>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px">ログ</button>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px; margin-left:4px">再実行</button>
+          </td>
+        </tr>
+        <tr>
+          <td><b>JU連携</b></td>
+          <td class="mono" style="font-size:12px">2026/04/22 09:40</td>
+          <td class="num">604</td>
+          <td>{{ chip("成功", "ok") }}</td>
+          <td class="mono" style="font-size:12px">21:40</td>
+          <td>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px">ログ</button>
+            <button class="btn-mx" type="button" style="padding:4px 10px; font-size:11px; margin-left:4px">再実行</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+{{ card_close() }}
+
+{# ===== Data pipeline ===== #}
+<div style="margin-top:16px"></div>
+{{ card_open("データ正規化パイプライン", "取得 → クレンジング → 重複排除 → 価格推定モデル投入") }}
+  <div style="display:flex; align-items:center; gap:0">
+    <div style="flex:1; background:var(--navy); color:#fff; padding:14px 18px; border-radius:8px; font-size:12px; font-weight:600; text-align:center">取得 8,394</div>
+    <div style="width:24px; text-align:center; color:var(--muted)">→</div>
+    <div style="flex:1; background:var(--navy); color:#fff; padding:14px 18px; border-radius:8px; font-size:12px; font-weight:600; text-align:center">クレンジング 8,201</div>
+    <div style="width:24px; text-align:center; color:var(--muted)">→</div>
+    <div style="flex:1; background:var(--navy); color:#fff; padding:14px 18px; border-radius:8px; font-size:12px; font-weight:600; text-align:center">重複排除 7,988</div>
+    <div style="width:24px; text-align:center; color:var(--muted)">→</div>
+    <div style="flex:1; background:var(--navy); color:#fff; padding:14px 18px; border-radius:8px; font-size:12px; font-weight:600; text-align:center">正規化 7,988</div>
+    <div style="width:24px; text-align:center; color:var(--muted)">→</div>
+    <div style="flex:1; background:var(--gold); color:var(--navy); padding:14px 18px; border-radius:8px; font-size:12px; font-weight:700; text-align:center">B2B推定モデル投入</div>
+  </div>
+{{ card_close() }}
 {% endblock %}

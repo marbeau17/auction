@@ -4,9 +4,11 @@
 {% block page_title %}相場データ{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h2 class="page-header__title">相場データ</h2>
-    <p class="page-header__description">商用車の市場価格データを検索・分析 / 全{{ total_count | default(0) }}件</p>
+<div class="page-head">
+    <div>
+        <h1>相場データ</h1>
+        <div class="sub">商用車の市場価格データを検索・分析 / 全{{ total_count | default(0) }}件</div>
+    </div>
 </div>
 
 {# ===== Filter Bar ===== #}
@@ -127,7 +129,7 @@
 
         <div class="filter-form__actions">
             <button type="reset"
-                    class="btn btn--text btn--sm"
+                    class="btn-mx"
                     hx-get="/market-data/table"
                     hx-target="#data-table"
                     hx-indicator="#table-loading">

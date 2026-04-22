@@ -4,13 +4,15 @@
 
 {% block content %}
 {% include "partials/_error_banner.html" %}
-<div class="page-header">
-    <h2>シミュレーション履歴</h2>
-    <p>全{{ total_count }}件のシミュレーション結果</p>
+<div class="page-head">
+    <div>
+        <h1>シミュレーション履歴</h1>
+        <div class="sub">全{{ total_count }}件のシミュレーション結果</div>
+    </div>
 </div>
 
 <div class="actions-row" style="margin-bottom:24px">
-    <a href="/simulation/new" class="btn btn--primary">+ 新規シミュレーション</a>
+    <a href="/simulation/new" class="btn-mx primary">+ 新規シミュレーション</a>
 </div>
 
 <div class="card">
@@ -38,10 +40,10 @@
                         <td style="text-align:right">¥{{ "{:,}".format(s.lease_monthly_yen or 0) }}</td>
                         <td style="text-align:right">{{ "%.1f"|format((s.expected_yield_rate or 0) * 100) }}%</td>
                         <td>
-                            {% if s.status == 'completed' %}<span class="badge badge--success">完了</span>
-                            {% elif s.status == 'approved' %}<span class="badge badge--success">承認済</span>
-                            {% elif s.status == 'draft' %}<span class="badge badge--warning">下書き</span>
-                            {% else %}<span class="badge">{{ s.status }}</span>{% endif %}
+                            {% if s.status == 'completed' %}<span class="chip ok">完了</span>
+                            {% elif s.status == 'approved' %}<span class="chip ok">承認済</span>
+                            {% elif s.status == 'draft' %}<span class="chip warn">下書き</span>
+                            {% else %}<span class="chip neutral">{{ s.status }}</span>{% endif %}
                         </td>
                         <td>{{ s.created_at[:10] if s.created_at else "-" }}</td>
                     </tr>
@@ -52,7 +54,7 @@
         {% else %}
         <div class="empty-state">
             <p>シミュレーション履歴がありません</p>
-            <a href="/simulation/new" class="btn btn--primary" style="margin-top:16px">新規シミュレーション</a>
+            <a href="/simulation/new" class="btn-mx primary" style="margin-top:16px">新規シミュレーション</a>
         </div>
         {% endif %}
     </div>

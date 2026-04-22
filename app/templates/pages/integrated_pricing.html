@@ -1,319 +1,403 @@
 {% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_card.html" import card_open, card_close %}
+{% from "partials/_chip.html" import chip %}
+
 {% block title %}統合プライシング - CVLPOS{% endblock %}
 {% block page_title %}統合プライシング{% endblock %}
 
-{% block content %}
+{% block head_extra %}
 <style>
-/* Steps Indicator */
-.steps-indicator {
-  display: flex;
-  gap: 0;
-  margin-bottom: var(--space-8);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--border);
-}
-.steps-indicator .step {
-  flex: 1;
-  padding: var(--space-3) var(--space-4);
-  text-align: center;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-white);
-  border-right: 1px solid var(--border);
-  position: relative;
-}
-.steps-indicator .step:last-child { border-right: none; }
-.steps-indicator .step.active {
-  background: var(--primary);
-  color: #fff;
-}
-.steps-indicator .step .step-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--border);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  margin-right: var(--space-2);
-}
-.steps-indicator .step.active .step-num {
-  background: rgba(255,255,255,0.3);
-  color: #fff;
-}
-
-/* Form section fieldset */
-.pricing-fieldset {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-6);
-  margin-bottom: var(--space-6);
-  background: var(--bg-white);
-  box-shadow: var(--shadow-sm);
-}
-.pricing-fieldset legend {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--text);
-  padding: 0 var(--space-2);
-}
-
-/* Pricing master loader */
-.master-loader {
-  display: flex;
-  align-items: end;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  background: var(--primary-light);
-  border-radius: var(--radius);
-  margin-bottom: var(--space-4);
-}
-.master-loader .form-group { flex: 1; margin-bottom: 0; }
-.master-loader .btn { white-space: nowrap; }
-
-/* Subtitle */
-.page-subtitle {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  margin-top: -var(--space-2);
-  margin-bottom: var(--space-6);
-}
+  /* Page-local tweaks (layout + form) */
+  .pricing-step-num {
+    font-size: 30px;
+    font-weight: 900;
+    letter-spacing: -.02em;
+    color: var(--navy);
+  }
+  .pricing-step-num.gold { color: var(--gold-3, var(--gold)); }
+  .pricing-step-sub {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .pricing-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 960px) {
+    .pricing-form-grid { grid-template-columns: 1fr; }
+  }
+  .pricing-fieldset {
+    border: 1px solid var(--border, #E6E3D5);
+    border-radius: 10px;
+    padding: 16px;
+    background: #fff;
+  }
+  .pricing-fieldset + .pricing-fieldset { margin-top: 12px; }
+  .pricing-fieldset legend {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--navy);
+    padding: 0 6px;
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .form-group { margin-bottom: 12px; }
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--navy);
+    margin-bottom: 4px;
+  }
+  .form-label--required::after {
+    content: " *";
+    color: #C0392B;
+  }
+  .form-input, .form-select {
+    width: 100%;
+    padding: 7px 10px;
+    font-size: 13px;
+    border: 1px solid var(--border, #E6E3D5);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--navy);
+  }
+  .form-input:focus, .form-select:focus {
+    outline: none;
+    border-color: var(--gold-3, var(--gold));
+  }
+  .form-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .master-loader {
+    padding: 12px;
+    background: #FAF8EC;
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .actions-row {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 18px;
+  }
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(0,0,0,0.1);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-left: 6px;
+  }
+  .spinner.htmx-indicator { display: none; }
+  .spinner.htmx-indicator.htmx-request,
+  .htmx-request .spinner.htmx-indicator { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
+{% endblock %}
 
-<div class="page-header">
-    <h2>統合プライシング・エンジン</h2>
-    <p>買取価格・残価・リース料の3ステップ連動算出</p>
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>統合プライシング・エンジン</h1>
+    <div class="sub">買取 → 残価 → リース料 を Bull/Base/Bear の3シナリオで</div>
+  </div>
 </div>
 
-<form id="pricing-form"
-      hx-post="/api/v1/pricing/calculate"
-      hx-target="#pricing-result"
-      hx-swap="innerHTML"
-      hx-indicator="#calc-spinner">
-
-    <!-- Step Indicator -->
-    <div class="steps-indicator">
-        <div class="step active">
-            <span class="step-num">1</span>買取価格
-        </div>
-        <div class="step">
-            <span class="step-num">2</span>残価算出
-        </div>
-        <div class="step">
-            <span class="step-num">3</span>リース料
-        </div>
+<!-- 3ステップ サマリーカード -->
+<div class="grid-3">
+  <section class="card-mx">
+    <div class="card-h"><h3>STEP 1 — 買取価格</h3></div>
+    <div class="card-b">
+      <div class="pricing-step-num">¥3,200,000</div>
+      <div class="pricing-step-sub">日野レンジャー 2022 / USS・CAA連携</div>
     </div>
-
-    <div class="form-grid">
-        <!-- Left Column: Vehicle + Lease -->
-        <div>
-            <!-- Vehicle Info Section -->
-            <fieldset class="pricing-fieldset">
-                <legend>車両情報</legend>
-
-                <!-- Maker dropdown -->
-                <div class="form-group">
-                    <label class="form-label form-label--required">メーカー</label>
-                    <select name="maker" id="pricing-maker" class="form-select" required
-                            hx-get="/api/v1/masters/models-by-maker"
-                            hx-target="#pricing-model-select"
-                            hx-swap="innerHTML"
-                            hx-trigger="change"
-                            hx-include="[name='maker']">
-                        <option value="">選択してください</option>
-                        {% for m in makers %}
-                        <option value="{{ m.name }}">{{ m.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Model dropdown -->
-                <div class="form-group">
-                    <label class="form-label form-label--required">車種</label>
-                    <select id="pricing-model-select" name="model" class="form-select" required>
-                        <option value="">メーカーを先に選択してください</option>
-                    </select>
-                </div>
-
-                <!-- Year + Mileage row -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label form-label--required">初年度登録</label>
-                        <select name="registration_year_month" class="form-select" required>
-                            <option value="">選択</option>
-                            {% for y in range(2026, 2009, -1) %}
-                            <option value="{{ y }}">{{ y }}年</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label form-label--required">走行距離 (km)</label>
-                        <input type="number" name="mileage_km" class="form-input"
-                               placeholder="例: 85000" required min="0">
-                    </div>
-                </div>
-
-                <!-- Class + Body type row -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label form-label--required">車両クラス</label>
-                        <select name="vehicle_class" class="form-select" required>
-                            <option value="">選択</option>
-                            <option value="小型">小型</option>
-                            <option value="中型">中型</option>
-                            <option value="大型">大型</option>
-                            <option value="トレーラーヘッド">トレーラーヘッド</option>
-                            <option value="トレーラーシャーシ">トレーラーシャーシ</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label form-label--required">ボディタイプ</label>
-                        <select name="body_type" class="form-select" required>
-                            <option value="">選択</option>
-                            <option value="平ボディ">平ボディ</option>
-                            <option value="バン">バン</option>
-                            <option value="ウイング">ウイング</option>
-                            <option value="冷凍・冷蔵">冷凍・冷蔵</option>
-                            <option value="ダンプ">ダンプ</option>
-                            <option value="クレーン">クレーン</option>
-                            <option value="パワーゲート">パワーゲート</option>
-                            <option value="ミキサー">ミキサー</option>
-                            <option value="タンク">タンク</option>
-                            <option value="塵芥車">塵芥車</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Payload + Body option row -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">積載量 (t)</label>
-                        <input type="number" name="payload_ton" class="form-input"
-                               step="0.1" min="0" placeholder="例: 2.0">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">ボディオプション価値 (円)</label>
-                        <input type="number" name="body_option_value" class="form-input"
-                               min="0" value="0" placeholder="例: 500000">
-                    </div>
-                </div>
-            </fieldset>
-
-            <!-- Lease Terms Section -->
-            <fieldset class="pricing-fieldset">
-                <legend>リース条件</legend>
-                <div class="form-group">
-                    <label class="form-label form-label--required">リース期間</label>
-                    <select name="lease_term_months" class="form-select" required>
-                        <option value="">選択してください</option>
-                        <option value="12">12ヶ月 (1年)</option>
-                        <option value="24">24ヶ月 (2年)</option>
-                        <option value="36" selected>36ヶ月 (3年)</option>
-                        <option value="48">48ヶ月 (4年)</option>
-                        <option value="60">60ヶ月 (5年)</option>
-                        <option value="72">72ヶ月 (6年)</option>
-                        <option value="84">84ヶ月 (7年)</option>
-                    </select>
-                </div>
-            </fieldset>
-        </div>
-
-        <!-- Right Column: Pricing Parameters -->
-        <div>
-            <fieldset class="pricing-fieldset">
-                <legend>プライシングパラメータ</legend>
-
-                <!-- Pricing master loader -->
-                <div class="master-loader">
-                    <div class="form-group">
-                        <label class="form-label">プライシングマスタから読込</label>
-                        <select name="pricing_master_id" id="pricing-master-select" class="form-select"
-                                hx-get="/api/v1/pricing/master-params"
-                                hx-target="#pricing-params-area"
-                                hx-swap="innerHTML"
-                                hx-trigger="change"
-                                hx-include="[name='pricing_master_id']">
-                            <option value="">デフォルト設定を使用</option>
-                            {% for pm in pricing_masters %}
-                            <option value="{{ pm.id }}">{{ pm.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-
-                <div id="pricing-params-area">
-                    <!-- Investor yield -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">投資家利回り (年率)</label>
-                            <input type="number" name="investor_yield_rate" class="form-input"
-                                   step="0.001" min="0" max="1" value="0.08" placeholder="0.08">
-                            <small class="form-hint">例: 0.08 = 8%</small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">AM報酬率 (年率)</label>
-                            <input type="number" name="am_fee_rate" class="form-input"
-                                   step="0.001" min="0" max="1" value="0.02" placeholder="0.02">
-                            <small class="form-hint">例: 0.02 = 2%</small>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">私募取扱報酬率 (一括)</label>
-                            <input type="number" name="placement_fee_rate" class="form-input"
-                                   step="0.001" min="0" max="1" value="0.03" placeholder="0.03">
-                            <small class="form-hint">例: 0.03 = 3%</small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">会計事務委託月額 (円)</label>
-                            <input type="number" name="accounting_fee_monthly" class="form-input"
-                                   min="0" value="50000" placeholder="50000">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">オペレーターマージン率</label>
-                            <input type="number" name="operator_margin_rate" class="form-input"
-                                   step="0.001" min="0" max="1" value="0.02" placeholder="0.02">
-                            <small class="form-hint">例: 0.02 = 2%</small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">安全マージン率</label>
-                            <input type="number" name="safety_margin_rate" class="form-input"
-                                   step="0.001" min="0" max="0.5" value="0.05" placeholder="0.05">
-                            <small class="form-hint">例: 0.05 = 5%</small>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">減価償却方法</label>
-                        <select name="depreciation_method" class="form-select">
-                            <option value="declining_200">定率法（200%）</option>
-                            <option value="straight_line">定額法</option>
-                        </select>
-                    </div>
-                </div>
-            </fieldset>
-        </div>
+  </section>
+  <section class="card-mx">
+    <div class="card-h"><h3>STEP 2 — 残価算出</h3></div>
+    <div class="card-b">
+      <div class="pricing-step-num">¥480,000</div>
+      <div class="pricing-step-sub">M36時点 Base / Bull ¥560K / Bear ¥400K</div>
     </div>
+  </section>
+  <section class="card-mx">
+    <div class="card-h"><h3>STEP 3 — 月額リース料</h3></div>
+    <div class="card-b">
+      <div class="pricing-step-num gold">¥92,500/月</div>
+      <div class="pricing-step-sub">IRR 12.4% · 粗利 18% · 36ヶ月</div>
+    </div>
+  </section>
+</div>
 
-    <hr style="margin: var(--space-8) 0">
+<!-- Bull / Base / Bear シナリオ比較 -->
+<div style="margin-top:16px">
+{{ card_open("シナリオ比較", "残価・リース料・IRR の3シナリオ比較") }}
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>シナリオ</th>
+        <th class="num">残価 (M36)</th>
+        <th class="num">リース料 / 月</th>
+        <th class="num">ファンドIRR</th>
+        <th class="num">運送会社負担</th>
+        <th>推奨</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b style="color:var(--green, #2E6C47)">Bull</b> / 強気</td>
+        <td class="num">¥560,000</td>
+        <td class="num">¥88,300</td>
+        <td class="num">14.1%</td>
+        <td class="num">低</td>
+        <td>{{ chip("予備", "neutral") }}</td>
+      </tr>
+      <tr style="background:#FEF6D6">
+        <td><b style="color:var(--gold-3, var(--gold))">Base</b> / 中立</td>
+        <td class="num"><b>¥480,000</b></td>
+        <td class="num"><b>¥92,500</b></td>
+        <td class="num"><b>12.4%</b></td>
+        <td class="num">中</td>
+        <td>{{ chip("推奨 ✓", "ok") }}</td>
+      </tr>
+      <tr>
+        <td><b style="color:var(--red, #B03A2E)">Bear</b> / 弱気</td>
+        <td class="num">¥400,000</td>
+        <td class="num">¥96,800</td>
+        <td class="num">9.3%</td>
+        <td class="num">高</td>
+        <td>{{ chip("下限", "neutral") }}</td>
+      </tr>
+    </tbody>
+  </table>
+{{ card_close() }}
+</div>
+
+<!-- 入力フォーム -->
+<div style="margin-top:16px">
+{{ card_open("プライシング入力", "車両条件・リース条件・パラメータを指定して再計算") }}
+  <form id="pricing-form"
+        hx-post="/api/v1/pricing/calculate"
+        hx-target="#pricing-result"
+        hx-swap="innerHTML"
+        hx-indicator="#calc-spinner">
+
+    <div class="pricing-form-grid">
+      <!-- 左: 車両 + リース条件 -->
+      <div>
+        <fieldset class="pricing-fieldset">
+          <legend>車両情報</legend>
+
+          <div class="form-group">
+            <label class="form-label form-label--required">メーカー</label>
+            <select name="maker" id="pricing-maker" class="form-select" required
+                    hx-get="/api/v1/masters/models-by-maker"
+                    hx-target="#pricing-model-select"
+                    hx-swap="innerHTML"
+                    hx-trigger="change"
+                    hx-include="[name='maker']">
+              <option value="">選択してください</option>
+              {% for m in makers or [] %}
+              <option value="{{ m.name }}">{{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label form-label--required">車種</label>
+            <select id="pricing-model-select" name="model" class="form-select" required>
+              <option value="">メーカーを先に選択してください</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label form-label--required">初年度登録</label>
+              <select name="registration_year_month" class="form-select" required>
+                <option value="">選択</option>
+                {% for y in range(2026, 2009, -1) %}
+                <option value="{{ y }}">{{ y }}年</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label form-label--required">走行距離 (km)</label>
+              <input type="number" name="mileage_km" class="form-input"
+                     placeholder="例: 85000" required min="0">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label form-label--required">車両クラス</label>
+              <select name="vehicle_class" class="form-select" required>
+                <option value="">選択</option>
+                <option value="小型">小型</option>
+                <option value="中型">中型</option>
+                <option value="大型">大型</option>
+                <option value="トレーラーヘッド">トレーラーヘッド</option>
+                <option value="トレーラーシャーシ">トレーラーシャーシ</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label form-label--required">ボディタイプ</label>
+              <select name="body_type" class="form-select" required>
+                <option value="">選択</option>
+                <option value="平ボディ">平ボディ</option>
+                <option value="バン">バン</option>
+                <option value="ウイング">ウイング</option>
+                <option value="冷凍・冷蔵">冷凍・冷蔵</option>
+                <option value="ダンプ">ダンプ</option>
+                <option value="クレーン">クレーン</option>
+                <option value="パワーゲート">パワーゲート</option>
+                <option value="ミキサー">ミキサー</option>
+                <option value="タンク">タンク</option>
+                <option value="塵芥車">塵芥車</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">積載量 (t)</label>
+              <input type="number" name="payload_ton" class="form-input"
+                     step="0.1" min="0" placeholder="例: 2.0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">ボディオプション価値 (円)</label>
+              <input type="number" name="body_option_value" class="form-input"
+                     min="0" value="0" placeholder="例: 500000">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="pricing-fieldset">
+          <legend>リース条件</legend>
+          <div class="form-group">
+            <label class="form-label form-label--required">リース期間</label>
+            <select name="lease_term_months" class="form-select" required>
+              <option value="">選択してください</option>
+              <option value="12">12ヶ月 (1年)</option>
+              <option value="24">24ヶ月 (2年)</option>
+              <option value="36" selected>36ヶ月 (3年)</option>
+              <option value="48">48ヶ月 (4年)</option>
+              <option value="60">60ヶ月 (5年)</option>
+              <option value="72">72ヶ月 (6年)</option>
+              <option value="84">84ヶ月 (7年)</option>
+            </select>
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- 右: プライシングパラメータ -->
+      <div>
+        <fieldset class="pricing-fieldset">
+          <legend>プライシングパラメータ</legend>
+
+          <div class="master-loader">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">プライシングマスタから読込</label>
+              <select name="pricing_master_id" id="pricing-master-select" class="form-select"
+                      hx-get="/api/v1/pricing/master-params"
+                      hx-target="#pricing-params-area"
+                      hx-swap="innerHTML"
+                      hx-trigger="change"
+                      hx-include="[name='pricing_master_id']">
+                <option value="">デフォルト設定を使用</option>
+                {% for pm in pricing_masters or [] %}
+                <option value="{{ pm.id }}">{{ pm.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div id="pricing-params-area">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">投資家利回り (年率)</label>
+                <input type="number" name="investor_yield_rate" class="form-input"
+                       step="0.001" min="0" max="1" value="0.08" placeholder="0.08">
+                <small class="form-hint">例: 0.08 = 8%</small>
+              </div>
+              <div class="form-group">
+                <label class="form-label">AM報酬率 (年率)</label>
+                <input type="number" name="am_fee_rate" class="form-input"
+                       step="0.001" min="0" max="1" value="0.02" placeholder="0.02">
+                <small class="form-hint">例: 0.02 = 2%</small>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">私募取扱報酬率 (一括)</label>
+                <input type="number" name="placement_fee_rate" class="form-input"
+                       step="0.001" min="0" max="1" value="0.03" placeholder="0.03">
+                <small class="form-hint">例: 0.03 = 3%</small>
+              </div>
+              <div class="form-group">
+                <label class="form-label">会計事務委託月額 (円)</label>
+                <input type="number" name="accounting_fee_monthly" class="form-input"
+                       min="0" value="50000" placeholder="50000">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">オペレーターマージン率</label>
+                <input type="number" name="operator_margin_rate" class="form-input"
+                       step="0.001" min="0" max="1" value="0.02" placeholder="0.02">
+                <small class="form-hint">例: 0.02 = 2%</small>
+              </div>
+              <div class="form-group">
+                <label class="form-label">安全マージン率</label>
+                <input type="number" name="safety_margin_rate" class="form-input"
+                       step="0.001" min="0" max="0.5" value="0.05" placeholder="0.05">
+                <small class="form-hint">例: 0.05 = 5%</small>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">減価償却方法</label>
+              <select name="depreciation_method" class="form-select">
+                <option value="declining_200">定率法（200%）</option>
+                <option value="straight_line">定額法</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+    </div>
 
     <div class="actions-row">
-        <button type="reset" class="btn btn--outline">リセット</button>
-        <button type="submit" class="btn btn--primary btn--lg">
-            3ステップ価格算出を実行
-            <span id="calc-spinner" class="htmx-indicator spinner"></span>
-        </button>
+      <button type="reset" class="btn-mx">リセット</button>
+      <button type="submit" class="btn-mx primary">
+        3ステップ価格算出を実行
+        <span id="calc-spinner" class="htmx-indicator spinner"></span>
+      </button>
+      <button type="button" class="btn-mx gold"
+              onclick="document.getElementById('pricing-form').requestSubmit()">
+        {{ icon("play", 14) }} Base推奨を採用
+      </button>
     </div>
-</form>
+  </form>
+{{ card_close() }}
+</div>
 
-<!-- Results Area -->
-<div id="pricing-result" style="margin-top: var(--space-8);"></div>
+<!-- 算出結果エリア -->
+<div id="pricing-result" style="margin-top:16px"></div>
+{% endblock %}
+
+{% block scripts %}
+{# No page-specific JS yet — HTMX handles all interactions. #}
 {% endblock %}

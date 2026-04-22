@@ -1,19 +1,115 @@
 {% extends "base.html" %}
+{% from "partials/_icons.html" import icon %}
+{% from "partials/_kpi_hero.html" import kpi_hero %}
+{% from "partials/_inv_card.html" import inv_card %}
+{% from "partials/_tabs.html" import tabs %}
+{% from "partials/_chip.html" import chip %}
+
 {% block title %}インベントリ管理 - CVLPOS{% endblock %}
 
 {% block content %}
+{# ===== Page head ===== #}
 <div class="page-head">
   <div>
     <span class="tag">松プラン 強調機能</span>
     <h1>インベントリ管理</h1>
     <div class="sub">全 142台 を単一ビューで — 松プランならテレマティクス連携で稼働データもリアルタイム</div>
   </div>
+  <div class="spacer"></div>
+  <button type="button" class="btn-mx">
+    {{ icon("dl", 14) }} CSV出力
+  </button>
+  <button type="button" class="btn-mx primary">
+    {{ icon("plus", 14) }} 新規車両登録
+  </button>
 </div>
 
-<div class="card-mx">
-  <div class="card-h"><h3>Coming soon — Phase 3</h3><span class="sub">142台のカードグリッド</span></div>
-  <div class="card-b">
-    <div class="wire" style="height:400px">INVENTORY — フリートKPI + 車両カードグリッド(Phase 3 で実装)</div>
+{# ===== KPI Hero — Fleet overview ===== #}
+{{ kpi_hero(
+  "FLEET OVERVIEW",
+  "フリート全体ビュー",
+  [
+    {"lab": "稼働車両", "big": "142", "unit": "台", "delta": "稼働率 97.9% · +6台 MoM", "delta_dir": "up", "gold": true},
+    {"lab": "平均車齢", "big": "3.2", "unit": "年", "delta": "目標 4年以下", "delta_dir": "up"},
+    {"lab": "平均LTV", "big": "55", "unit": "%", "delta": "閾値 60% まで -5pp", "delta_dir": "up"},
+    {"lab": "フリート簿価合計", "big": "¥6.8", "unit": "億", "delta": "取得価 ¥12.2億 / 償却率 44%", "delta_dir": "up"}
+  ]
+) }}
+
+{# ===== Filter row ===== #}
+<div style="display:flex; gap:8px; margin:16px 0; align-items:center; flex-wrap:wrap">
+  <div style="flex:1; min-width:240px">
+    {{ tabs([
+      {"id": "all",      "label": "全て (142)"},
+      {"id": "active",   "label": "稼働中 (138)"},
+      {"id": "warn",     "label": "要注意 (3)"},
+      {"id": "overdue",  "label": "延滞 (1)"},
+      {"id": "amortize", "label": "償却中 (0)"}
+    ], "all") }}
   </div>
+  <select class="btn-mx" style="padding:6px 10px">
+    <option>ファンド：全て</option>
+  </select>
+  <select class="btn-mx" style="padding:6px 10px">
+    <option>車種：全て</option>
+  </select>
+  <div class="search" style="max-width:240px; display:flex; align-items:center; gap:6px">
+    {{ icon("search", 14) }}
+    <input type="search" placeholder="車両ID / VIN" />
+  </div>
+</div>
+
+{# ===== Inventory grid (grid-2 of 5 cards) ===== #}
+<div class="grid-2">
+  {{ inv_card(
+    "T-1524",
+    "日野レンジャー 2022 #T-1524",
+    "VIN: HNO-24-...-5122 · Fund 15号",
+    7,
+    "¥3,802,700",
+    "稼働中", "ok",
+    54,
+    "/inventory/T-1524"
+  ) }}
+  {{ inv_card(
+    "T-1523",
+    "いすゞフォワード 2021 #T-1523",
+    "VIN: ISZ-21-...-8812 · Fund 15号",
+    12,
+    "¥2,480,000",
+    "要注意", "warn",
+    62,
+    "/inventory/T-1523"
+  ) }}
+  {{ inv_card(
+    "T-1510",
+    "三菱ふそうSG 2023 #T-1510",
+    "VIN: MFS-23-...-0014 · Fund 14号",
+    5,
+    "¥4,950,000",
+    "稼働中", "ok",
+    48,
+    "/inventory/T-1510"
+  ) }}
+  {{ inv_card(
+    "T-1498",
+    "いすゞエルフ 2020 #T-1498",
+    "VIN: ISZ-20-...-2290 · Fund 14号",
+    18,
+    "¥1,120,000",
+    "延滞", "bad",
+    71,
+    "/inventory/T-1498"
+  ) }}
+  {{ inv_card(
+    "T-1455",
+    "日野プロフィア 2022 #T-1455",
+    "VIN: HNO-22-...-7731 · Fund 13号",
+    9,
+    "¥3,640,000",
+    "稼働中", "ok",
+    52,
+    "/inventory/T-1455"
+  ) }}
 </div>
 {% endblock %}

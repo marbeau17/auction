@@ -7,20 +7,20 @@
 {% include "partials/_error_banner.html" %}
 {% if vehicle %}
 {# ===== Vehicle Info Header ===== #}
-<div class="page-header page-header--with-back">
-    <a href="/market-data" class="page-header__back">
-        <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15 10H5m0 0l5 5m-5-5l5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        相場データ一覧
-    </a>
-    <div class="page-header__content">
-        <h2 class="page-header__title">{{ vehicle.maker | default("--") }} {{ vehicle.model_name | default("") }}</h2>
-        <div class="page-header__tags">
-            <span class="tag">{{ vehicle.model_year | default("--") }}年式</span>
+<div class="page-head">
+    <div>
+        <a href="/market-data" class="page-header__back" style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:4px">
+            <svg class="icon" width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15 10H5m0 0l5 5m-5-5l5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            相場データ一覧
+        </a>
+        <h1>{{ vehicle.maker | default("--") }} {{ vehicle.model_name | default("") }}</h1>
+        <div class="sub">
+            <span class="chip neutral">{{ vehicle.model_year | default("--") }}年式</span>
             {% if vehicle.body_type %}
-            <span class="tag">{{ vehicle.body_type }}</span>
+            <span class="chip neutral">{{ vehicle.body_type }}</span>
             {% endif %}
             {% if vehicle.tonnage %}
-            <span class="tag">{{ vehicle.tonnage }}t</span>
+            <span class="chip neutral">{{ vehicle.tonnage }}t</span>
             {% endif %}
         </div>
     </div>
@@ -125,7 +125,7 @@
                             --
                             {% endif %}
                         </td>
-                        <td><a href="/market-data/{{ sv.id }}" class="btn btn--text btn--sm">詳細</a></td>
+                        <td><a href="/market-data/{{ sv.id }}" class="btn-mx">詳細</a></td>
                     </tr>
                     {% endfor %}
                     {% else %}
@@ -142,24 +142,27 @@
 {# ===== Action: Simulate with this vehicle ===== #}
 <div class="form-actions">
     <a href="/simulation/new?maker={{ vehicle.maker | default('') | urlencode }}&model={{ vehicle.model_name | default('') | urlencode }}&body_type={{ vehicle.body_type | default('') | urlencode }}&year={{ vehicle.model_year | default('') | urlencode }}&price={{ vehicle.price_yen | default('') | urlencode }}"
-       class="btn btn--primary btn--lg">
+       class="btn-mx primary">
         この車種でシミュレーション
     </a>
 </div>
 
 {% else %}
 {# ===== Vehicle Not Found ===== #}
-<div class="page-header page-header--with-back">
-    <a href="/market-data" class="page-header__back">
-        <svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15 10H5m0 0l5 5m-5-5l5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        相場データ一覧
-    </a>
+<div class="page-head">
+    <div>
+        <a href="/market-data" class="page-header__back" style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:4px">
+            <svg class="icon" width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15 10H5m0 0l5 5m-5-5l5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            相場データ一覧
+        </a>
+        <h1>車両が見つかりません</h1>
+    </div>
 </div>
 <section class="card" aria-label="エラー">
     <div class="card__body">
         <p class="text-center text-muted" style="padding: 3rem 1rem;">車両が見つかりません</p>
         <div class="form-actions">
-            <a href="/market-data" class="btn btn--secondary">一覧に戻る</a>
+            <a href="/market-data" class="btn-mx">一覧に戻る</a>
         </div>
     </div>
 </section>

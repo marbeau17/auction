@@ -2,8 +2,12 @@
 {% block title %}相場データインポート - CVLPOS{% endblock %}
 {% block content %}
 <div class="container">
-    <h1>相場データインポート</h1>
-    <p>オークション相場情報をCSVまたはExcelファイルからインポートします。</p>
+    <div class="page-head">
+        <div>
+            <h1>相場データインポート</h1>
+            <div class="sub">オークション相場情報をCSVまたはExcelファイルからインポートします。</div>
+        </div>
+    </div>
 
     <!-- Upload Form -->
     <div class="upload-zone" id="drop-zone">
@@ -16,12 +20,12 @@
             <p>ファイルをドラッグ＆ドロップ、または</p>
             <input type="file" name="file" id="file-input"
                    accept=".csv,.xlsx,.xls" required>
-            <label for="file-input" class="btn btn-outline">ファイルを選択</label>
+            <label for="file-input" class="btn-mx">ファイルを選択</label>
             <div class="form-group" style="margin-top: 15px;">
                 <label>データソース名</label>
                 <input type="text" name="source_name" value="manual_import" placeholder="例: AI-NET 2026年3月">
             </div>
-            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+            <button type="submit" class="btn-mx primary" style="margin-top: 10px;">
                 インポート実行
             </button>
             <div id="upload-spinner" class="htmx-indicator">アップロード中...</div>
@@ -34,7 +38,7 @@
     <!-- Required Format -->
     <div class="format-guide">
         <h3>データフォーマット</h3>
-        <p><a href="/api/v1/market-prices/import/template" class="btn btn-sm btn-outline">CSVテンプレートをダウンロード</a></p>
+        <p><a href="/api/v1/market-prices/import/template" class="btn-mx">CSVテンプレートをダウンロード</a></p>
         <table class="format-table">
             <thead>
                 <tr>
