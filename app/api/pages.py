@@ -55,6 +55,10 @@ NAV_CONFIG = {
             "items": [
                 {"id": "inventory", "label": "インベントリ管理", "href": "/inventory", "icon": "inv"},
                 {"id": "integrated_pricing", "label": "統合プライシング", "href": "/integrated-pricing", "icon": "price"},
+                # 個別シミュレーション — drill-down from Price for single-vehicle scenarios.
+                # Kept per 2026-04-22 decision (spec §9.3): operators need per-vehicle
+                # depth that the aggregated Price / Portfolio views don't expose.
+                {"id": "simulation", "label": "個別シミュレーション", "href": "/simulation/new", "icon": "fund"},
                 {"id": "contracts", "label": "契約書自動生成", "href": "/simulation", "icon": "contract"},
                 {"id": "invoices", "label": "請求書管理・弥生連携", "href": "/invoices", "icon": "invoice"},
             ],
@@ -114,9 +118,11 @@ def _render(request: Request, template: str, context: dict | None = None):
     ctx["active_page"] = active_page
     ctx.setdefault("nav_config", NAV_CONFIG)
     ctx.setdefault("current_page_title", _resolve_page_title(active_page))
-    # Phase 4 will inject the real user.plan via auth dep. For now, default to
-    # "matsu" so tier-gated items render (spec §5).
-    ctx.setdefault("current_plan", "matsu")
+    # current_plan comes from the authenticated user when present; otherwise
+    # fall back to "matsu" so unauthenticated/login pages still render the
+    # full 松プラン sidebar for design continuity.
+    user = ctx.get("user") or {}
+    ctx.setdefault("current_plan", user.get("plan") or "matsu")
     return templates.TemplateResponse(request, template, ctx)
 
 
@@ -143,10 +149,22 @@ async def _get_optional_user(request: Request) -> dict[str, Any] | None:
         if not user_id:
             return None
         user_meta = payload.get("user_metadata", {})
+        role = user_meta.get("role", payload.get("role", "authenticated"))
+        # Plan tier for 松プラン UI gating (docs/uiux_migration_spec.md §5).
+        # Source priority: JWT user_metadata.plan > heuristic by role.
+        # The heuristic keeps existing admins on matsu so operator pages stay
+        # accessible until a DB lookup / Supabase Auth hook populates the
+        # claim for all users.
+        plan = user_meta.get("plan") or payload.get("plan")
+        if not plan:
+            plan = "matsu" if role == "admin" else "take"
         return {
             "id": user_id,
             "email": payload.get("email"),
-            "role": user_meta.get("role", payload.get("role", "authenticated")),
+            "role": role,
+            "plan": plan,
+            "display_name": user_meta.get("full_name") or user_meta.get("display_name"),
+            "stakeholder_role": user_meta.get("stakeholder_role"),
         }
     except Exception as exc:
         logger.debug("user_auth_token_invalid", error=str(exc))
@@ -967,36 +985,48 @@ async def lease_contract_import_page(request: Request):
 # will build out. Until then, each stub renders a "Coming soon" placeholder
 # using the new base shell so the navigation works without 404s.
 
-_PHASE3_STUBS = [
-    ("/portfolio", "portfolio.html", "portfolio"),
-    ("/fund", "fund.html", "fund"),
-    ("/risk", "risk.html", "risk"),
-    ("/inventory", "inventory.html", "inventory"),
-    ("/scrape", "scrape.html", "scrape"),
-    ("/esg", "esg.html", "esg"),
+# Phase 3 routes. `required_plan=None` means any authenticated user;
+# `required_plan="matsu"` restricts to 松限定 features (Risk/Scrape/ESG).
+# Per spec §5, Inventory is 松強調 (enhanced for matsu) but accessible to all.
+_PHASE3_ROUTES = [
+    ("/portfolio", "portfolio.html", "portfolio", None),
+    ("/fund", "fund.html", "fund", None),
+    ("/risk", "risk.html", "risk", "matsu"),
+    ("/inventory", "inventory.html", "inventory", None),
+    ("/scrape", "scrape.html", "scrape", "matsu"),
+    ("/esg", "esg.html", "esg", "matsu"),
 ]
 
 
-def _make_stub_route(path: str, template: str, active_page: str):
+def _make_page_route(path: str, template: str, active_page: str, required_plan: str | None):
     async def _handler(request: Request):
         user = await _get_optional_user(request)
         redirect = _require_auth(user, request)
         if redirect:
             return redirect
-        return _render(
-            request,
-            f"pages/{template}",
-            {"user": user, "active_page": active_page},
-        )
+        if required_plan:
+            from app.middleware.plan_gate import ensure_plan_or_redirect
+
+            gate = ensure_plan_or_redirect(request, user, required_plan)
+            if gate:
+                return gate
+        ctx = {"user": user, "active_page": active_page}
+        # For ESG, attach computed metrics so the template doesn't have to
+        # hardcode them. See app.services.esg_service.
+        if active_page == "esg":
+            from app.services.esg_service import compute_esg_snapshot
+
+            ctx["esg"] = compute_esg_snapshot()
+        return _render(request, f"pages/{template}", ctx)
 
     _handler.__name__ = f"{active_page}_page"
     return _handler
 
 
-for _path, _tpl, _page in _PHASE3_STUBS:
+for _path, _tpl, _page, _plan in _PHASE3_ROUTES:
     router.add_api_route(
         _path,
-        _make_stub_route(_path, _tpl, _page),
+        _make_page_route(_path, _tpl, _page, _plan),
         methods=["GET"],
         response_class=HTMLResponse,
         name=f"{_page}_page",

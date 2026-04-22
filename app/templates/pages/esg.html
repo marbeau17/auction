@@ -5,6 +5,10 @@
 {% block title %}ESGレポート - CVLPOS{% endblock %}
 
 {% block content %}
+{% set e = esg.environment if esg else {"co2_yoy_pct": -18.0, "low_emission_ratio_pct": 8, "ev_hv_count": 12, "idling_reduction_pct": -22} %}
+{% set s = esg.social       if esg else {"serious_accidents": 0, "driver_training_rate_pct": 100, "partner_companies": 18, "safety_equipment_rate_pct": 95} %}
+{% set g = esg.governance   if esg else {"grade": "A+", "score": 100.0, "audit_passed": true, "yayoi_reconciliation_pct": 100, "rbac_coverage_pct": 100} %}
+
 <div class="page-head">
   <div>
     <span class="tag">松プラン限定 NEW</span>
@@ -12,50 +16,61 @@
     <div class="sub">投資家向け ESG開示 — 環境・社会・ガバナンス</div>
   </div>
   <div class="spacer"></div>
-  <button class="btn gold">{{ icon('dl', 14) }}PDF自動生成</button>
+  <button class="btn-mx gold">{{ icon('dl', 14) }}PDF自動生成</button>
 </div>
 
 <div class="grid-3">
-  <div class="card card-mx">
-    <div class="card-h"><h3>E · 環境</h3></div>
+  {# ===== E · 環境 ===== #}
+  <div class="card-mx">
+    <div class="card-h"><h3>E · 環境</h3><span class="sub">前年比</span></div>
     <div class="card-b">
-      <div style="font-size:44px; font-weight:800; color:var(--green); line-height:1; margin-bottom:6px">-18%</div>
+      <div style="font-size:44px; font-weight:800; color:var(--green); line-height:1; margin-bottom:6px">
+        {{ '{:+.0f}'.format(e.co2_yoy_pct) }}%
+      </div>
       <div style="font-size:12px; color:var(--muted)">CO₂ 排出量（前年比）</div>
-      <div style="margin-top:14px; font-size:12px; line-height:1.6">
-        • 低排出車両比率 <b>64%</b><br>
-        • EV/HV 導入 <b>12台</b><br>
-        • アイドリング低減 <b>-22%</b>
+      <div style="margin-top:14px; font-size:12px; line-height:1.7">
+        • 低排出車両比率 <b>{{ e.low_emission_ratio_pct }}%</b><br>
+        • EV/HV 導入 <b>{{ e.ev_hv_count }}台</b><br>
+        • アイドリング低減 <b>{{ '{:+d}'.format(e.idling_reduction_pct) }}%</b>
       </div>
     </div>
   </div>
-  <div class="card card-mx">
-    <div class="card-h"><h3>S · 社会</h3></div>
+
+  {# ===== S · 社会 ===== #}
+  <div class="card-mx">
+    <div class="card-h"><h3>S · 社会</h3><span class="sub">直近12ヶ月</span></div>
     <div class="card-b">
-      <div style="font-size:44px; font-weight:800; color:var(--navy); line-height:1; margin-bottom:6px">0件</div>
+      <div style="font-size:44px; font-weight:800; color:var(--navy); line-height:1; margin-bottom:6px">
+        {{ s.serious_accidents }}件
+      </div>
       <div style="font-size:12px; color:var(--muted)">重大事故</div>
-      <div style="margin-top:14px; font-size:12px; line-height:1.6">
-        • ドライバー研修受講率 <b>100%</b><br>
-        • 地場運送会社支援 <b>18社</b><br>
-        • 安全装備搭載率 <b>95%</b>
+      <div style="margin-top:14px; font-size:12px; line-height:1.7">
+        • ドライバー研修受講率 <b>{{ s.driver_training_rate_pct }}%</b><br>
+        • 地場運送会社支援 <b>{{ s.partner_companies }}社</b><br>
+        • 安全装備搭載率 <b>{{ s.safety_equipment_rate_pct }}%</b>
       </div>
     </div>
   </div>
-  <div class="card card-mx">
-    <div class="card-h"><h3>G · ガバナンス</h3></div>
+
+  {# ===== G · ガバナンス ===== #}
+  <div class="card-mx">
+    <div class="card-h"><h3>G · ガバナンス</h3><span class="sub">スコア {{ g.score }}</span></div>
     <div class="card-b">
-      <div style="font-size:44px; font-weight:800; color:var(--gold); line-height:1; margin-bottom:6px">A+</div>
+      <div style="font-size:44px; font-weight:800; color:var(--gold); line-height:1; margin-bottom:6px">
+        {{ g.grade }}
+      </div>
       <div style="font-size:12px; color:var(--muted)">内部統制評価</div>
-      <div style="margin-top:14px; font-size:12px; line-height:1.6">
-        • 監査法人レビュー <b>済</b><br>
-        • 弥生API会計突合 <b>100%</b><br>
-        • RBAC（8ロール） <b>実装済</b>
+      <div style="margin-top:14px; font-size:12px; line-height:1.7">
+        • 監査法人レビュー <b>{% if g.audit_passed %}済{% else %}未完{% endif %}</b><br>
+        • 弥生API会計突合 <b>{{ g.yayoi_reconciliation_pct }}%</b><br>
+        • RBAC（8ロール） <b>{{ g.rbac_coverage_pct }}% 実装</b>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card" style="margin-top:16px">
-  <div class="card-h"><h3>テンプレート</h3></div>
+<div class="card-mx" style="margin-top:16px">
+  <div class="card-h"><h3>テンプレート</h3><span class="sub">定型フォーマットからワンクリック生成</span></div>
   <div class="card-b">
     <div class="grid-4">
       <div class="wire" style="height:140px; padding:14px">
@@ -72,5 +87,9 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="note-mx" style="margin-top:16px; max-width:560px">
+  ※ 数値は app/services/esg_service.py の計算式で算出。実フリート/事故/RBACデータ連携は Phase 5。
 </div>
 {% endblock %}
