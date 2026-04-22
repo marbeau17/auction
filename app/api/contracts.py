@@ -5,14 +5,13 @@ import io
 import zipfile
 from typing import Any
 from datetime import datetime
-from urllib.parse import quote
-
 import structlog
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
 from app.config import get_settings
 from app.core.contract_generator import ContractGenerator
+from app.core.http import content_disposition
 from app.db.repositories.stakeholder_repo import (
     StakeholderRepository,
     ROLE_TYPE_LABELS,
@@ -177,22 +176,6 @@ async def save_stakeholder(
         ''')
     except Exception as e:
         return HTMLResponse(f'<div class="alert alert--error">保存エラー: {str(e)[:100]}</div>')
-
-
-def _content_disposition(filename: str) -> str:
-    """Header value safe for non-ASCII filenames.
-
-    Starlette encodes response headers as latin-1, so we emit both an
-    ASCII fallback (``filename=``) and an RFC 5987 UTF-8-encoded
-    ``filename*`` so Japanese contract names don't crash the response.
-    """
-    encoded = quote(filename, safe="")
-    ascii_fallback = (
-        filename.encode("ascii", errors="replace").decode("ascii").replace("?", "_")
-    )
-    if not ascii_fallback.strip("_"):
-        ascii_fallback = "download"
-    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
 
 
 def _parse_types_param(types: str | None) -> set[str] | None:
@@ -368,7 +351,7 @@ async def generate_contracts(
         zip_buffer,
         media_type="application/zip",
         headers={
-            "Content-Disposition": _content_disposition(
+            "Content-Disposition": content_disposition(
                 f"contracts_{simulation_id[:8]}.zip"
             )
         },
@@ -396,7 +379,7 @@ async def bulk_zip_contracts(
         zip_buffer,
         media_type="application/zip",
         headers={
-            "Content-Disposition": _content_disposition(
+            "Content-Disposition": content_disposition(
                 f"contracts_{simulation_id[:8]}.zip"
             )
         },

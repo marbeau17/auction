@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import io
-from urllib.parse import quote
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
+from app.core.http import content_disposition
+from app.core.proposal_generator import ProposalGenerator
 from app.dependencies import get_current_user, get_supabase_client
 from app.middleware.rbac import require_permission
-from app.core.proposal_generator import ProposalGenerator
 from app.models.pricing import IntegratedPricingInput, IntegratedPricingResult
 
 logger = structlog.get_logger()
@@ -49,22 +49,6 @@ def _load_simulation(supabase, simulation_id: UUID) -> dict:
     if not result.data:
         raise HTTPException(status_code=404, detail="Simulation not found")
     return result.data
-
-
-def _content_disposition(filename: str) -> str:
-    """Header value safe for non-ASCII filenames.
-
-    Starlette encodes response headers as latin-1, so we emit both an
-    ASCII fallback (``filename=``) and an RFC 5987 UTF-8-encoded
-    ``filename*`` so Japanese maker/model names don't crash the response.
-    """
-    encoded = quote(filename, safe="")
-    ascii_fallback = (
-        filename.encode("ascii", errors="replace").decode("ascii").replace("?", "_")
-    )
-    if not ascii_fallback.strip("_"):
-        ascii_fallback = "download"
-    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +103,7 @@ async def generate_proposal(
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type=media,
-        headers={"Content-Disposition": _content_disposition(filename)},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 
@@ -309,5 +293,5 @@ async def export_design_document(
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": _content_disposition(filename)},
+        headers={"Content-Disposition": content_disposition(filename)},
     )

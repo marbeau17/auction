@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import StreamingResponse
 from supabase import Client
 
+from app.core.http import content_disposition
 from app.dependencies import get_current_user, get_supabase_client, require_role
 from app.models.common import SuccessResponse
 
@@ -181,6 +182,8 @@ async def download_lease_contract_template() -> StreamingResponse:
         iter([content]),
         media_type="text/csv; charset=utf-8-sig",
         headers={
-            "Content-Disposition": 'attachment; filename="lease_contract_import_template.csv"',
+            "Content-Disposition": content_disposition(
+                "lease_contract_import_template.csv"
+            ),
         },
     )
