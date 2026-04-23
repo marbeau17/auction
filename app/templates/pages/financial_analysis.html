@@ -249,6 +249,69 @@
     </div>
 </div>
 
+{# ======================================================================
+   AI診断（決算書PDFアップロード）— piggyback onto the existing page.
+   Panel is shown only when finance_llm_enabled; otherwise an info banner
+   informs operators that the feature is disabled at the admin level.
+   Manual-input form below remains functional in either case.
+   ====================================================================== #}
+{% if not finance_llm_enabled %}
+<div class="fa-fieldset" style="background: #fef3c7; border-color: #f59e0b; padding: var(--space-3) var(--space-4); margin-bottom: var(--space-6);" role="status">
+    <div style="display: flex; align-items: center; gap: var(--space-3);">
+        <span aria-hidden="true" style="font-size: var(--text-xl);">&#x2139;</span>
+        <span style="font-size: var(--text-sm); color: #92400e;">
+            AI診断機能は管理者によって無効化されています。手入力フォームは引き続きご利用いただけます。
+        </span>
+    </div>
+</div>
+{% else %}
+<fieldset class="fa-fieldset" style="border-color: #3b82f6;">
+    <legend style="color: #3b82f6;">
+        <span class="legend-icon" aria-hidden="true">&#x1F4C4;</span>決算書PDFから自動診断
+    </legend>
+    <p style="font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-4);">
+        決算書 (PDF) をアップロードすると、AIが財務データを自動抽出し、同じルールエンジンで診断を行います。
+        抽出結果は下部で確認でき、不足項目はそのまま手入力フォームに引き継げます。
+    </p>
+
+    <form id="ai-assessment-form"
+          hx-post="/api/v1/financial/assess-document"
+          hx-target="#ai-assessment-result"
+          hx-swap="innerHTML"
+          hx-encoding="multipart/form-data"
+          hx-indicator="#ai-spinner">
+        <div class="fa-form-row">
+            <div class="form-group">
+                <label class="form-label form-label--required">会社名</label>
+                <input type="text" name="company_name" class="form-input"
+                       placeholder="例: 東京運送株式会社" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label form-label--required">決算書PDF</label>
+                <input type="file" name="file" class="form-input"
+                       accept="application/pdf" required>
+                <small class="form-hint">最大10MB。テキスト/画像どちらのPDFも対応。</small>
+            </div>
+        </div>
+        <div class="form-group" style="margin-top: var(--space-2);">
+            <label style="display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer;">
+                <input type="checkbox" name="narrative" value="true">
+                <span style="font-size: var(--text-sm);">AI解説を生成（約 $0.0006 / 件）</span>
+            </label>
+        </div>
+
+        <div class="actions-row" style="margin-top: var(--space-4);">
+            <button type="submit" class="btn-mx primary">
+                AI診断を実行
+                <span id="ai-spinner" class="htmx-indicator spinner"></span>
+            </button>
+        </div>
+    </form>
+</fieldset>
+
+<div id="ai-assessment-result" style="margin-bottom: var(--space-6);"></div>
+{% endif %}
+
 <form id="financial-form"
       hx-post="/api/v1/financial/analyze"
       hx-target="#diagnosis-result"
@@ -457,6 +520,72 @@
 <!-- Results Area -->
 <div id="diagnosis-result" style="margin-top: var(--space-8);"></div>
 
+{# ======================================================================
+   AI診断履歴 (history list) — clicks re-render into #ai-assessment-result.
+   Only shown when the feature flag is on; otherwise list is empty.
+   ====================================================================== #}
+{% if finance_llm_enabled %}
+<fieldset class="fa-fieldset" style="margin-top: var(--space-8);">
+    <legend><span class="legend-icon" aria-hidden="true">&#x1F4DA;</span>AI診断履歴</legend>
+    {% if finance_assessments and finance_assessments|length > 0 %}
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: var(--text-sm);">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border); text-align: left;">
+                    <th style="padding: var(--space-2) var(--space-3); color: var(--text-muted); font-weight: 600;">日時</th>
+                    <th style="padding: var(--space-2) var(--space-3); color: var(--text-muted); font-weight: 600;">会社名</th>
+                    <th style="padding: var(--space-2) var(--space-3); color: var(--text-muted); font-weight: 600;">スコア</th>
+                    <th style="padding: var(--space-2) var(--space-3); color: var(--text-muted); font-weight: 600;">解説</th>
+                    <th style="padding: var(--space-2) var(--space-3); color: var(--text-muted); font-weight: 600;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in finance_assessments %}
+                {% set _d = row.get('diagnosis') or {} %}
+                {% set _ei = row.get('extracted_input') or {} %}
+                {% set _g = _d.get('score', '?') %}
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding: var(--space-2) var(--space-3); color: var(--text); font-variant-numeric: tabular-nums;">
+                        {{ (row.get('created_at') or '')[:10] }}
+                    </td>
+                    <td style="padding: var(--space-2) var(--space-3); color: var(--text);">
+                        {{ _ei.get('company_name', '—') }}
+                    </td>
+                    <td style="padding: var(--space-2) var(--space-3);">
+                        <span class="risk-badge {{ {'A':'risk-badge--recommended','B':'risk-badge--recommended','C':'risk-badge--caution','D':'risk-badge--not-recommended'}.get(_g, 'risk-badge--caution') }}" style="font-size: var(--text-xs);">
+                            {{ _g }}
+                        </span>
+                    </td>
+                    <td style="padding: var(--space-2) var(--space-3); color: var(--text-muted);">
+                        {% if row.get('narrative') %}
+                            <span style="color: #059669;">あり</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td style="padding: var(--space-2) var(--space-3); text-align: right;">
+                        <button type="button"
+                                class="btn-mx"
+                                style="font-size: var(--text-xs); padding: var(--space-1) var(--space-3);"
+                                hx-get="/api/v1/financial/assessments/{{ row.get('id') }}"
+                                hx-target="#ai-assessment-result"
+                                hx-swap="innerHTML">
+                            表示
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">
+        まだAI診断履歴はありません。決算書PDFをアップロードして診断を実行してください。
+    </p>
+    {% endif %}
+</fieldset>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -471,5 +600,236 @@ document.addEventListener('htmx:afterSwap', function(evt) {
         });
     });
 });
+
+// ======================================================================
+// AI assessment — intercept JSON responses and render them as HTML.
+// The backend returns JSON for both POST /assess-document and
+// GET /assessments/{id}; HTMX would otherwise innerHTML the raw JSON.
+// ======================================================================
+(function () {
+    var TARGET_ID = 'ai-assessment-result';
+
+    function fmtInt(n) {
+        if (n === null || n === undefined || n === '') return '—';
+        try { return Number(n).toLocaleString('ja-JP'); } catch (_) { return String(n); }
+    }
+    function esc(s) {
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'})[c];
+        });
+    }
+
+    var FIELDS = [
+        ['会社名',        'company_name',               ''],
+        ['売上高',        'revenue',                    '円'],
+        ['営業利益',      'operating_profit',           '円'],
+        ['経常利益',      'ordinary_profit',            '円'],
+        ['総資産',        'total_assets',               '円'],
+        ['総負債',        'total_liabilities',          '円'],
+        ['純資産',        'equity',                     '円'],
+        ['流動資産',      'current_assets',             '円'],
+        ['流動負債',      'current_liabilities',        '円'],
+        ['当座資産',      'quick_assets',               '円'],
+        ['有利子負債',    'interest_bearing_debt',      '円'],
+        ['営業CF',        'operating_cf',               '円'],
+        ['フリーCF',      'free_cf',                    '円'],
+        ['保有車両台数',  'vehicle_count',              '台'],
+        ['車両稼働率',    'vehicle_utilization_rate',   ''],
+        ['既存リース月額','existing_lease_monthly',     '円/月'],
+        ['既存借入残高',  'existing_loan_balance',      '円'],
+    ];
+
+    var GRADE_CLASS = { A: 'score-badge--A', B: 'score-badge--B', C: 'score-badge--C', D: 'score-badge--D' };
+    var RISK_CLASS  = {
+        '推奨': 'risk-badge--recommended',
+        '要注意': 'risk-badge--caution',
+        '非推奨': 'risk-badge--not-recommended'
+    };
+
+    function renderResult(r) {
+        if (r && r.data && typeof r.data === 'object') r = r.data;
+        var diag = r.diagnosis || {};
+        var input = r.extracted_input || {};
+        var warnings = r.extraction_warnings || [];
+        var narrative = r.narrative;
+        var cached = !!r.cached;
+        var needsVision = !!r.needs_vision;
+        var cost = r.cost_usd || 0;
+        var model = r.model || '';
+        var assessmentId = r.id || '';
+        var grade = diag.score || '?';
+        var gradeClass = GRADE_CLASS[grade] || 'score-badge--C';
+        var risk = diag.risk_level || '';
+        var riskClass = RISK_CLASS[risk] || 'risk-badge--caution';
+
+        var rowsHtml = FIELDS.map(function (f) {
+            var label = f[0], key = f[1], unit = f[2];
+            var v = input[key];
+            var cell;
+            if (v === null || v === undefined || v === '') {
+                cell = '<span style="color: var(--text-muted);">—</span>';
+            } else if (typeof v === 'number') {
+                if (unit === '円' || unit === '円/月') {
+                    cell = esc(fmtInt(Math.round(v))) + ' ' + esc(unit);
+                } else {
+                    cell = esc(String(v)) + ' ' + esc(unit);
+                }
+            } else {
+                cell = esc(String(v)) + (unit ? ' ' + esc(unit) : '');
+            }
+            return '<tr style="border-bottom:1px solid var(--border);">'
+                 + '<th style="text-align:left;padding:var(--space-2) var(--space-3);color:var(--text-muted);font-weight:600;width:40%;">' + esc(label) + '</th>'
+                 + '<td style="text-align:right;padding:var(--space-2) var(--space-3);color:var(--text);font-variant-numeric:tabular-nums;">' + cell + '</td>'
+                 + '</tr>';
+        }).join('');
+
+        var warnHtml = '';
+        if (warnings && warnings.length) {
+            warnHtml = '<div style="margin-top:var(--space-6);">'
+                     + '<h3 style="font-size:var(--text-base);font-weight:700;margin-bottom:var(--space-3);color:#dc2626;">抽出時の警告</h3>'
+                     + '<div style="display:flex;flex-wrap:wrap;gap:var(--space-2);">'
+                     + warnings.map(function (w) {
+                         return '<span style="display:inline-block;padding:var(--space-1) var(--space-3);border-radius:9999px;background:#fee2e2;color:#991b1b;font-size:var(--text-xs);font-weight:600;">' + esc(w) + '</span>';
+                       }).join('')
+                     + '</div></div>';
+        }
+
+        var narrHtml = '';
+        if (narrative) {
+            narrHtml = '<div style="margin-top:var(--space-6);padding:var(--space-4);background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);">'
+                     + '<h3 style="font-size:var(--text-base);font-weight:700;margin-bottom:var(--space-3);">AI解説</h3>'
+                     + '<p style="font-size:var(--text-sm);line-height:1.7;color:var(--text);white-space:pre-wrap;margin:0;">' + esc(narrative) + '</p>'
+                     + '</div>';
+        }
+
+        var cachedPill = cached
+            ? '<span class="risk-badge risk-badge--caution" style="margin-left:var(--space-3);font-size:var(--text-xs);">キャッシュ</span>'
+            : '<span class="risk-badge risk-badge--recommended" style="margin-left:var(--space-3);font-size:var(--text-xs);">新規診断</span>';
+        var visionPill = needsVision
+            ? '<span class="risk-badge risk-badge--caution" style="margin-left:var(--space-2);font-size:var(--text-xs);">画像PDF</span>'
+            : '';
+
+        var extractedJson = JSON.stringify(input).replace(/"/g, '&quot;');
+
+        var html = '<div class="fa-fieldset" style="border-color:#3b82f6;" data-ai-assessment-id="' + esc(assessmentId) + '">'
+                 + '<legend style="color:#3b82f6;"><span class="legend-icon" aria-hidden="true">&#x1F916;</span>AI診断結果'
+                 + cachedPill + visionPill + '</legend>'
+                 + '<div class="diagnosis-header">'
+                 + '  <div class="score-badge ' + gradeClass + '">'
+                 + '    <span class="grade">' + esc(grade) + '</span>'
+                 + '    <span class="label">' + esc(String(diag.score_numeric || 0)) + ' / 100</span>'
+                 + '  </div>'
+                 + '  <div class="key-metrics" style="flex:1;min-width:260px;">'
+                 + '    <div class="key-metric"><div class="metric-label">リスク評価</div>'
+                 + '      <div class="metric-value"><span class="risk-badge ' + riskClass + '">' + esc(risk || '—') + '</span></div></div>'
+                 + '    <div class="key-metric"><div class="metric-label">耐えうる月額リース料上限</div>'
+                 + '      <div class="metric-value">' + esc(fmtInt(diag.max_monthly_lease || 0)) + '<span class="yen"> 円/月</span></div></div>'
+                 + '    <div class="key-metric"><div class="metric-label">推奨リース期間</div>'
+                 + '      <div class="metric-value">' + esc(String(diag.recommended_lease_term_min || 0)) + '〜' + esc(String(diag.recommended_lease_term_max || 0)) + '<span class="yen"> ヶ月</span></div></div>'
+                 + '  </div>'
+                 + '</div>'
+                 + '<div style="margin-top:var(--space-6);">'
+                 + '  <h3 style="font-size:var(--text-base);font-weight:700;margin-bottom:var(--space-3);">抽出された財務データ（確認用）</h3>'
+                 + '  <div style="overflow-x:auto;">'
+                 + '    <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm);"><tbody>' + rowsHtml + '</tbody></table>'
+                 + '  </div>'
+                 + '  <div style="margin-top:var(--space-3);">'
+                 + '    <button type="button" class="btn-mx" style="font-size:var(--text-sm);"'
+                 + '      data-extracted="' + extractedJson + '" onclick="window.__prefillManualForm(this)">不足項目を手入力する →</button>'
+                 + '  </div>'
+                 + '</div>'
+                 + warnHtml
+                 + narrHtml
+                 + '<div style="margin-top:var(--space-4);font-size:var(--text-xs);color:var(--text-muted);">'
+                 + (model ? 'model: ' + esc(model) + ' · ' : '')
+                 + 'cost: $' + Number(cost).toFixed(4)
+                 + (assessmentId ? ' · id: <code style="font-family:monospace;">' + esc(assessmentId) + '</code>' : '')
+                 + '</div>'
+                 + '</div>';
+        return html;
+    }
+
+    function renderError(resp) {
+        var msg = '診断に失敗しました。';
+        var detail = '';
+        try {
+            var body = JSON.parse(resp);
+            if (body && body.detail) {
+                if (typeof body.detail === 'string') {
+                    msg = body.detail;
+                } else if (body.detail.message) {
+                    msg = body.detail.message;
+                    if (body.detail.extraction_warnings && body.detail.extraction_warnings.length) {
+                        detail = '<div style="margin-top:var(--space-2);display:flex;flex-wrap:wrap;gap:var(--space-2);">'
+                               + body.detail.extraction_warnings.map(function (w) {
+                                   return '<span style="display:inline-block;padding:var(--space-1) var(--space-3);border-radius:9999px;background:#fee2e2;color:#991b1b;font-size:var(--text-xs);font-weight:600;">' + esc(w) + '</span>';
+                                 }).join('')
+                               + '</div>';
+                    }
+                }
+            }
+        } catch (_) { /* not JSON */ }
+        return '<div class="fa-fieldset" style="border-color:#dc2626;background:#fee2e2;">'
+             + '<legend style="color:#dc2626;">エラー</legend>'
+             + '<p style="margin:0;font-size:var(--text-sm);color:#991b1b;">' + esc(msg) + '</p>'
+             + detail
+             + '</div>';
+    }
+
+    // Intercept the swap: if the target is the AI result div, replace
+    // the incoming (JSON) body with our rendered HTML. Honours HTMX's
+    // cancellation protocol via evt.detail.shouldSwap.
+    document.addEventListener('htmx:beforeSwap', function (evt) {
+        var tgt = evt.detail.target;
+        if (!tgt || tgt.id !== TARGET_ID) return;
+        var xhr = evt.detail.xhr;
+        if (!xhr) return;
+
+        var body = xhr.responseText || '';
+        if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+                var parsed = JSON.parse(body);
+                evt.detail.serverResponse = renderResult(parsed);
+                evt.detail.shouldSwap = true;
+                evt.detail.isError = false;
+            } catch (err) {
+                // Fall through to default swap.
+            }
+        } else {
+            evt.detail.serverResponse = renderError(body);
+            evt.detail.shouldSwap = true;
+            evt.detail.isError = false;
+        }
+    });
+
+    // Prefill the manual-input form with whatever the LLM extracted.
+    window.__prefillManualForm = function (btn) {
+        if (!btn) return;
+        var raw = btn.getAttribute('data-extracted');
+        if (!raw) return;
+        var data;
+        try { data = JSON.parse(raw); } catch (_) { return; }
+
+        var form = document.getElementById('financial-form');
+        if (!form) return;
+
+        Object.keys(data).forEach(function (key) {
+            var v = data[key];
+            if (v === null || v === undefined) return;
+            var el = form.querySelector('[name="' + key + '"]');
+            if (!el) return;
+            // vehicle_utilization_rate is 0–1 in the schema but the form
+            // expects a percentage (0–100).
+            if (key === 'vehicle_utilization_rate' && typeof v === 'number' && v <= 1) {
+                v = v * 100;
+            }
+            el.value = v;
+        });
+
+        // Scroll the form into view so the operator sees the prefill.
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+})();
 </script>
 {% endblock %}

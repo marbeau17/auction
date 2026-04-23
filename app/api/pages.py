@@ -904,7 +904,49 @@ async def financial_analysis_page(request: Request):
     if redirect:
         return redirect
 
-    return _render(request, "pages/financial_analysis.html", {"user": user})
+    # Feature-flag + prefetch the last 10 AI-pipeline assessments so the page
+    # can render the history list without an extra round-trip. When the flag
+    # is off we still render the page — the manual form still works — but we
+    # surface an info banner (see template) and suppress the upload panel.
+    settings = get_settings()
+    finance_llm_enabled = bool(getattr(settings, "finance_llm_enabled", False))
+    finance_assessments: list[dict[str, Any]] = []
+
+    if finance_llm_enabled and user is not None:
+        try:
+            from uuid import UUID as _UUID
+
+            from app.db.repositories.finance_assessment_repo import (
+                FinanceAssessmentRepository,
+            )
+            from app.db.supabase_client import get_supabase_client
+
+            client = get_supabase_client(service_role=True)
+            repo = FinanceAssessmentRepository(client=client)
+            rows, _total = await repo.list_by_user(
+                user_id=_UUID(str(user["id"])),
+                page=1,
+                per_page=10,
+            )
+            finance_assessments = rows or []
+        except Exception:
+            # Prefetch is best-effort — fall back to an empty list so the
+            # page still renders if Supabase is degraded.
+            logger.exception(
+                "financial_analysis_page_prefetch_failed",
+                user_id=str(user.get("id")) if user else None,
+            )
+            finance_assessments = []
+
+    return _render(
+        request,
+        "pages/financial_analysis.html",
+        {
+            "user": user,
+            "finance_llm_enabled": finance_llm_enabled,
+            "finance_assessments": finance_assessments,
+        },
+    )
 
 
 @router.get("/invoices", response_class=HTMLResponse)

@@ -1,0 +1,167 @@
+{# ==========================================================================
+   Finance Assessment (AI) — result card
+   Rendered into #ai-assessment-result via HTMX on a successful
+   POST /api/v1/financial/assess-document or GET /api/v1/financial/assessments/{id}.
+
+   Accepts TWO possible shapes:
+     1. POST /assess-document response (top-level keys diagnosis, extracted_input, ...)
+     2. GET  /assessments/{id} response ({data: {diagnosis, extracted_input, ...}})
+   — a tiny normalizer at the top handles both.
+   ========================================================================== #}
+{% set _r = data if data is defined else (result if result is defined else {}) %}
+{% if _r.get is defined and _r.get('data') is mapping %}
+  {% set _r = _r.get('data') %}
+{% endif %}
+{% set _diag = _r.get('diagnosis', {}) %}
+{% set _input = _r.get('extracted_input', {}) %}
+{% set _warnings = _r.get('extraction_warnings', []) %}
+{% set _narrative = _r.get('narrative') %}
+{% set _cached = _r.get('cached', False) %}
+{% set _needs_vision = _r.get('needs_vision', False) %}
+{% set _cost = _r.get('cost_usd', 0) %}
+{% set _model = _r.get('model') %}
+{% set _assessment_id = _r.get('id') %}
+{% set _grade = _diag.get('score', '?') %}
+{% set _grade_class = {'A': 'score-badge--A', 'B': 'score-badge--B', 'C': 'score-badge--C', 'D': 'score-badge--D'}.get(_grade, 'score-badge--C') %}
+{% set _risk = _diag.get('risk_level', '') %}
+{% set _risk_class = {'推奨': 'risk-badge--recommended', '要注意': 'risk-badge--caution', '非推奨': 'risk-badge--not-recommended'}.get(_risk, 'risk-badge--caution') %}
+
+<div class="fa-fieldset" style="border-color: #3b82f6;" data-ai-assessment-id="{{ _assessment_id or '' }}">
+    <legend style="color: #3b82f6;">
+        <span class="legend-icon" aria-hidden="true">&#x1F916;</span>AI診断結果
+        {% if _cached %}
+            <span class="risk-badge risk-badge--caution" style="margin-left: var(--space-3); font-size: var(--text-xs);">キャッシュ</span>
+        {% else %}
+            <span class="risk-badge risk-badge--recommended" style="margin-left: var(--space-3); font-size: var(--text-xs);">新規診断</span>
+        {% endif %}
+        {% if _needs_vision %}
+            <span class="risk-badge risk-badge--caution" style="margin-left: var(--space-2); font-size: var(--text-xs);">画像PDF</span>
+        {% endif %}
+    </legend>
+
+    {# -- Diagnosis header (grade + KPIs) ------------------------------ #}
+    <div class="diagnosis-header">
+        <div class="score-badge {{ _grade_class }}">
+            <span class="grade">{{ _grade }}</span>
+            <span class="label">{{ _diag.get('score_numeric', 0) }} / 100</span>
+        </div>
+
+        <div class="key-metrics" style="flex: 1; min-width: 260px;">
+            <div class="key-metric">
+                <div class="metric-label">リスク評価</div>
+                <div class="metric-value">
+                    <span class="risk-badge {{ _risk_class }}">{{ _risk or '—' }}</span>
+                </div>
+            </div>
+            <div class="key-metric">
+                <div class="metric-label">耐えうる月額リース料上限</div>
+                <div class="metric-value">
+                    {{ '{:,}'.format(_diag.get('max_monthly_lease', 0) or 0) }}<span class="yen"> 円/月</span>
+                </div>
+            </div>
+            <div class="key-metric">
+                <div class="metric-label">推奨リース期間</div>
+                <div class="metric-value">
+                    {{ _diag.get('recommended_lease_term_min', 0) }}〜{{ _diag.get('recommended_lease_term_max', 0) }}<span class="yen"> ヶ月</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# -- Extracted input table (17 fields, labelled) ----------------- #}
+    <div style="margin-top: var(--space-6);">
+        <h3 style="font-size: var(--text-base); font-weight: 700; margin-bottom: var(--space-3);">
+            抽出された財務データ（確認用）
+        </h3>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: var(--text-sm);">
+                <tbody>
+                    {% set _rows = [
+                        ('会社名', _input.get('company_name', ''), ''),
+                        ('売上高', _input.get('revenue'), '円'),
+                        ('営業利益', _input.get('operating_profit'), '円'),
+                        ('経常利益', _input.get('ordinary_profit'), '円'),
+                        ('総資産', _input.get('total_assets'), '円'),
+                        ('総負債', _input.get('total_liabilities'), '円'),
+                        ('純資産', _input.get('equity'), '円'),
+                        ('流動資産', _input.get('current_assets'), '円'),
+                        ('流動負債', _input.get('current_liabilities'), '円'),
+                        ('当座資産', _input.get('quick_assets'), '円'),
+                        ('有利子負債', _input.get('interest_bearing_debt'), '円'),
+                        ('営業CF', _input.get('operating_cf'), '円'),
+                        ('フリーCF', _input.get('free_cf'), '円'),
+                        ('保有車両台数', _input.get('vehicle_count'), '台'),
+                        ('車両稼働率', _input.get('vehicle_utilization_rate'), ''),
+                        ('既存リース月額', _input.get('existing_lease_monthly'), '円/月'),
+                        ('既存借入残高', _input.get('existing_loan_balance'), '円'),
+                    ] %}
+                    {% for label, val, unit in _rows %}
+                    <tr style="border-bottom: 1px solid var(--border);">
+                        <th style="text-align: left; padding: var(--space-2) var(--space-3); color: var(--text-muted); font-weight: 600; width: 40%;">
+                            {{ label }}
+                        </th>
+                        <td style="text-align: right; padding: var(--space-2) var(--space-3); color: var(--text); font-variant-numeric: tabular-nums;">
+                            {% if val is none or val == '' %}
+                                <span style="color: var(--text-muted);">—</span>
+                            {% elif val is number %}
+                                {% if unit == '円' or unit == '円/月' %}
+                                    {{ '{:,}'.format(val|int) }} {{ unit }}
+                                {% else %}
+                                    {{ val }} {{ unit }}
+                                {% endif %}
+                            {% else %}
+                                {{ val }} {{ unit }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: var(--space-3);">
+            <button type="button"
+                    onclick="prefillManualForm(this)"
+                    data-extracted='{{ _input|tojson|e }}'
+                    class="btn-mx"
+                    style="font-size: var(--text-sm);">
+                不足項目を手入力する →
+            </button>
+        </div>
+    </div>
+
+    {# -- Extraction warnings ---------------------------------------- #}
+    {% if _warnings %}
+    <div style="margin-top: var(--space-6);">
+        <h3 style="font-size: var(--text-base); font-weight: 700; margin-bottom: var(--space-3); color: #dc2626;">
+            抽出時の警告
+        </h3>
+        <div style="display: flex; flex-wrap: wrap; gap: var(--space-2);">
+            {% for w in _warnings %}
+            <span style="display: inline-block; padding: var(--space-1) var(--space-3); border-radius: 9999px; background: #fee2e2; color: #991b1b; font-size: var(--text-xs); font-weight: 600;">
+                {{ w }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# -- Narrative commentary --------------------------------------- #}
+    {% if _narrative %}
+    <div style="margin-top: var(--space-6); padding: var(--space-4); background: var(--bg-white); border: 1px solid var(--border); border-radius: var(--radius);">
+        <h3 style="font-size: var(--text-base); font-weight: 700; margin-bottom: var(--space-3);">
+            AI解説
+        </h3>
+        <p style="font-size: var(--text-sm); line-height: 1.7; color: var(--text); white-space: pre-wrap; margin: 0;">{{ _narrative }}</p>
+    </div>
+    {% endif %}
+
+    {# -- Cost / model snapshot -------------------------------------- #}
+    <div style="margin-top: var(--space-4); font-size: var(--text-xs); color: var(--text-muted);">
+        {% if _model %}model: {{ _model }} · {% endif %}
+        cost: ${{ '%.4f'|format(_cost|float) }}
+        {% if _assessment_id %}
+            · id: <code style="font-family: monospace;">{{ _assessment_id }}</code>
+        {% endif %}
+    </div>
+</div>

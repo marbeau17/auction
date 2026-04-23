@@ -573,6 +573,108 @@ class TestGetAssessmentNotFound:
 
 
 # --------------------------------------------------------------------------- #
+# Test 10b — GET /assessments (list) happy path + pagination envelope
+# --------------------------------------------------------------------------- #
+
+
+class TestListAssessmentsHappyPath:
+    async def test_list_assessments_returns_user_rows(
+        self,
+        client_flag_on: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Create 2 assessments via POST then GET /assessments returns both."""
+        fake_client = _FakeGenAIClient(
+            _make_fake_genai_response(_full_schema_dict())
+        )
+        import app.api.financial as fin_module
+
+        monkeypatch.setattr(
+            fin_module, "_build_genai_client", lambda _api_key: fake_client
+        )
+
+        # Two distinct PDFs → two separate cache keys → two inserts.
+        pdf1 = _make_minimal_pdf_bytes(text="list-test-alpha-pdf-payload")
+        pdf2 = _make_minimal_pdf_bytes(text="list-test-beta-pdf-payload")
+
+        r1 = await client_flag_on.post(
+            "/api/v1/financial/assess-document",
+            files={"file": ("alpha.pdf", pdf1, "application/pdf")},
+            data={"company_name": "alpha-transport", "narrative": "false"},
+        )
+        assert r1.status_code == 200, r1.text
+        r2 = await client_flag_on.post(
+            "/api/v1/financial/assess-document",
+            files={"file": ("beta.pdf", pdf2, "application/pdf")},
+            data={"company_name": "beta-transport", "narrative": "false"},
+        )
+        assert r2.status_code == 200, r2.text
+
+        resp = await client_flag_on.get(
+            "/api/v1/financial/assessments",
+            params={"page": 1, "per_page": 20},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["page"] == 1
+        assert body["per_page"] == 20
+        assert body["total"] == 2
+        assert body["total_pages"] == 1
+        assert isinstance(body["items"], list)
+        assert len(body["items"]) == 2
+        # Every item is owned by the current admin user.
+        for row in body["items"]:
+            assert row["user_id"] == ADMIN_USER_ID
+
+
+# --------------------------------------------------------------------------- #
+# Test 10c — GET /assessments with feature flag off → 503
+# --------------------------------------------------------------------------- #
+
+
+class TestListAssessmentsFlagOff:
+    async def test_list_assessments_flag_off_503(
+        self, client_flag_off: AsyncClient
+    ) -> None:
+        resp = await client_flag_off.get("/api/v1/financial/assessments")
+        assert resp.status_code == 503, resp.text
+        assert "disabled" in resp.json()["detail"].lower()
+
+
+# --------------------------------------------------------------------------- #
+# Test 10d — GET /assessments unauthenticated → 401
+# --------------------------------------------------------------------------- #
+
+
+class TestListAssessmentsUnauthed:
+    async def test_list_assessments_unauthed_401(
+        self, fake_supabase: _FakeClient
+    ) -> None:
+        """No access_token cookie, no dependency override → 401."""
+        fake_supabase.tables.setdefault("finance_assessments", [])
+        app = create_app()
+
+        def _override_supabase() -> _FakeClient:
+            return fake_supabase
+
+        def _override_settings() -> Settings:
+            return _enable_flag_settings()
+
+        # NOTE: intentionally DO NOT override get_current_user — we want the
+        # real auth dep to run and reject the call as unauthenticated.
+        app.dependency_overrides[get_supabase_client] = _override_supabase
+        app.dependency_overrides[get_settings] = _override_settings
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as ac:
+            resp = await ac.get("/api/v1/financial/assessments")
+        assert resp.status_code == 401, resp.text
+
+
+# --------------------------------------------------------------------------- #
 # Test 11 — DELETE then GET → 404
 # --------------------------------------------------------------------------- #
 

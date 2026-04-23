@@ -671,6 +671,52 @@ async def assess_document(
 
 
 @router.get(
+    "/assessments",
+    summary="List the current user's persisted finance assessments",
+)
+async def list_assessments(
+    page: int = 1,
+    per_page: int = 20,
+    current_user: dict[str, Any] = Depends(require_permission("financial", "read")),
+    settings: Settings = Depends(get_settings),
+    repo: FinanceAssessmentRepository = Depends(_get_finance_repo),
+) -> JSONResponse:
+    """Paginated list of assessments owned by the calling user.
+
+    Mirrors the pagination envelope used by other list routes in the app
+    (see ``/api/v1/invoices``). Feature-flag gated via
+    ``settings.finance_llm_enabled`` so the endpoint is 503 while the
+    pipeline is dark-launched.
+    """
+    _require_finance_llm_enabled(settings)
+
+    # Clamp inputs — avoid surprising negative or oversized pages.
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 1
+    if per_page > 100:
+        per_page = 100
+
+    rows, total = await repo.list_by_user(
+        user_id=UUID(str(current_user["id"])),
+        page=page,
+        per_page=per_page,
+    )
+    total_pages = math.ceil(total / per_page) if per_page else 0
+
+    return JSONResponse(
+        content={
+            "items": rows,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+        }
+    )
+
+
+@router.get(
     "/assessments/{assessment_id}",
     summary="Fetch a persisted finance assessment by id",
 )
