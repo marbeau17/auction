@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.1
 
+    # Gemini / Finance Assessment (Phase-1)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-flash-latest"
+    finance_llm_enabled: bool = False
+    finance_llm_max_pdf_mb: int = 10
+    finance_llm_monthly_budget_usd: float = 50.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

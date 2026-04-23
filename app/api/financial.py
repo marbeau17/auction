@@ -2,13 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
+from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import Any, Optional
+from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
+from app.config import Settings, get_settings
+from app.core.finance_llm_extractor import (
+    BudgetExceeded,
+    FinanceLLMExtractor,
+    FinancialInputSchema,
+)
+from app.core.financial_analyzer import FinancialAnalyzer, FinancialInput
+from app.core.pdf_text_extractor import PDFExtractionError, extract as pdf_extract
+from app.db.repositories.finance_assessment_repo import FinanceAssessmentRepository
 from app.dependencies import get_current_user, get_supabase_client
 from app.middleware.rbac import require_permission
 from app.models.financial import (
@@ -361,3 +375,338 @@ async def get_financial_history(
             status_code=500,
             detail=f"Failed to fetch financial history: {str(e)}",
         )
+
+
+# ====================================================================== #
+# Finance Assessment — Phase-1 (LLM-extracted 決算書 → rule diagnosis)
+# ====================================================================== #
+#
+# All routes below are dark-launched behind ``settings.finance_llm_enabled``.
+# They are admin/operator-only via the ``financial`` entry in RBAC_MATRIX.
+
+
+def _get_finance_repo(
+    supabase=Depends(get_supabase_client),
+) -> FinanceAssessmentRepository:
+    """Dependency factory for the finance-assessment repository."""
+    return FinanceAssessmentRepository(client=supabase)
+
+
+def _require_finance_llm_enabled(settings: Settings) -> None:
+    """Feature-flag gate — raises 503 when the LLM pipeline is disabled."""
+    if not settings.finance_llm_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="finance assessment feature disabled",
+        )
+
+
+def _build_genai_client(api_key: str):
+    """Construct a ``google.genai.Client``. Overridden in tests."""
+    from google import genai  # local import — optional dep at test time
+
+    return genai.Client(api_key=api_key)
+
+
+class AssessDocumentResponse(BaseModel):
+    """Response envelope for ``POST /assess-document``."""
+
+    id: str
+    cached: bool = False
+    diagnosis: dict[str, Any]
+    extracted_input: dict[str, Any]
+    narrative: Optional[str] = None
+    extraction_warnings: list[str] = Field(default_factory=list)
+    needs_vision: bool = False
+    llm_tokens_used: dict[str, int] = Field(default_factory=dict)
+    cost_usd: float = 0.0
+
+
+_REQUIRED_FIELDS = (
+    "revenue",
+    "operating_profit",
+    "ordinary_profit",
+    "total_assets",
+    "total_liabilities",
+    "equity",
+    "current_assets",
+    "current_liabilities",
+)
+
+
+def _schema_to_financial_input(
+    schema: FinancialInputSchema,
+) -> tuple[FinancialInput, list[str]]:
+    """Project the LLM schema (Optional fields) into the strict dataclass.
+
+    Returns the dataclass and a list of required-field names that were
+    ``None`` in the schema. Missing required fields are back-filled with
+    ``0`` so construction succeeds; the caller decides whether to 422
+    based on the warnings list.
+    """
+    data = schema.model_dump()
+    missing: list[str] = []
+    for field_name in _REQUIRED_FIELDS:
+        if data.get(field_name) is None:
+            missing.append(field_name)
+            data[field_name] = 0
+
+    fi = FinancialInput(
+        company_name=data["company_name"],
+        revenue=data["revenue"],
+        operating_profit=data["operating_profit"],
+        ordinary_profit=data["ordinary_profit"],
+        total_assets=data["total_assets"],
+        total_liabilities=data["total_liabilities"],
+        equity=data["equity"],
+        current_assets=data["current_assets"],
+        current_liabilities=data["current_liabilities"],
+        quick_assets=data.get("quick_assets"),
+        interest_bearing_debt=data.get("interest_bearing_debt") or 0,
+        operating_cf=data.get("operating_cf"),
+        free_cf=data.get("free_cf"),
+        vehicle_count=data.get("vehicle_count") or 0,
+        vehicle_utilization_rate=data.get("vehicle_utilization_rate") or 0.0,
+        existing_lease_monthly=data.get("existing_lease_monthly") or 0,
+        existing_loan_balance=data.get("existing_loan_balance") or 0,
+    )
+    return fi, missing
+
+
+def _diagnosis_to_dict(d) -> dict[str, Any]:
+    """``FinancialDiagnosisResult`` is a dataclass; ``asdict`` is safe."""
+    return asdict(d)
+
+
+def _financial_input_to_dict(fi: FinancialInput) -> dict[str, Any]:
+    return asdict(fi)
+
+
+@router.post(
+    "/assess-document",
+    summary="Upload a 決算書 PDF and run the LLM-extract + rule-diagnose pipeline",
+)
+async def assess_document(
+    request: Request,
+    file: UploadFile = File(...),
+    company_name: str = Form(...),
+    narrative: bool = Form(False),
+    current_user: dict[str, Any] = Depends(require_permission("financial", "write")),
+    settings: Settings = Depends(get_settings),
+    repo: FinanceAssessmentRepository = Depends(_get_finance_repo),
+) -> JSONResponse:
+    """Dark-launched PDF-to-diagnosis pipeline (feature-flag gated)."""
+    _require_finance_llm_enabled(settings)
+
+    # 1. Read + size-check
+    pdf_bytes = await file.read()
+    max_bytes = settings.finance_llm_max_pdf_mb * 1024 * 1024
+    if len(pdf_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"PDF size exceeds {settings.finance_llm_max_pdf_mb} MB cap",
+        )
+
+    # 2. Hash + dedup lookup
+    pdf_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
+    user_id = current_user["id"]
+
+    cached = await repo.get_by_hash(UUID(str(user_id)), pdf_sha256)
+    if cached:
+        logger.info(
+            "finance_assess_cache_hit",
+            user_id=str(user_id),
+            pdf_sha256=pdf_sha256,
+            assessment_id=cached.get("id"),
+        )
+        return JSONResponse(
+            content={
+                "id": str(cached.get("id")),
+                "cached": True,
+                "diagnosis": cached.get("diagnosis") or {},
+                "extracted_input": cached.get("extracted_input") or {},
+                "narrative": cached.get("narrative"),
+                "extraction_warnings": [],
+                "needs_vision": cached.get("needs_vision", False),
+                "llm_tokens_used": {"prompt": 0, "completion": 0},
+                "cost_usd": float(cached.get("cost_usd") or 0.0),
+            }
+        )
+
+    # 3. Text-layer extraction
+    try:
+        extraction = pdf_extract(pdf_bytes)
+    except PDFExtractionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"PDF extraction failed: {exc}",
+        )
+
+    # 4. Pre-compute monthly spend snapshot, then build Gemini extractor.
+    # Passing a closure ``lambda: snapshot`` sidesteps the sync-vs-async
+    # mismatch between the repo (async) and the extractor's budget_fn
+    # (sync). One extra request's worth of drift is acceptable for a
+    # fail-closed budget check.
+    current_spend = await repo.sum_cost_current_month(None)
+
+    try:
+        genai_client = _build_genai_client(settings.gemini_api_key)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("finance_assess_genai_client_failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gemini client init failed: {exc}",
+        )
+
+    extractor = FinanceLLMExtractor(
+        client=genai_client,
+        model=settings.gemini_model,
+        monthly_budget_usd=settings.finance_llm_monthly_budget_usd,
+        budget_used_usd_fn=lambda: current_spend,
+    )
+
+    # 5. Vision vs text branch
+    try:
+        if extraction.needs_vision:
+            ext_out = extractor.extract_from_pdf_bytes(company_name, pdf_bytes)
+        else:
+            ext_out = extractor.extract_from_text(
+                company_name, extraction.text or ""
+            )
+    except BudgetExceeded:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="monthly budget exceeded",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("finance_assess_llm_failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"LLM extraction failed: {exc}",
+        )
+
+    # 6. Schema → FinancialInput + required-field check
+    fi, missing_required = _schema_to_financial_input(ext_out.input_data)
+    extracted_input_dict = _financial_input_to_dict(fi)
+
+    if missing_required:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "required fields missing from PDF",
+                "extraction_warnings": missing_required + ext_out.extraction_warnings,
+                "extracted_input": extracted_input_dict,
+                "needs_vision": extraction.needs_vision,
+            },
+        )
+
+    # 7. Rule-engine diagnosis
+    analyzer = FinancialAnalyzer()
+    diagnosis = analyzer.analyze(fi)
+    diagnosis_dict = _diagnosis_to_dict(diagnosis)
+
+    # 8. Optional narrative
+    narrative_text: Optional[str] = None
+    narrative_cost = 0.0
+    narrative_prompt_tokens = 0
+    narrative_completion_tokens = 0
+    if narrative:
+        try:
+            narr_out = extractor.write_narrative(
+                ext_out.input_data, diagnosis.score, diagnosis_dict,
+            )
+            narrative_text = narr_out.text
+            narrative_cost = narr_out.cost_usd
+            narrative_prompt_tokens = narr_out.prompt_tokens
+            narrative_completion_tokens = narr_out.completion_tokens
+        except BudgetExceeded:
+            # Narrative is opt-in — drop silently on budget exceed.
+            logger.warning("finance_assess_narrative_budget_skip")
+            narrative_text = None
+        except Exception:  # noqa: BLE001
+            logger.exception("finance_assess_narrative_failed")
+            narrative_text = None
+
+    total_cost = ext_out.cost_usd + narrative_cost
+    total_prompt = ext_out.prompt_tokens + narrative_prompt_tokens
+    total_completion = ext_out.completion_tokens + narrative_completion_tokens
+
+    # 9. Persist
+    try:
+        row = await repo.create(
+            user_id=str(user_id),
+            pdf_sha256=pdf_sha256,
+            needs_vision=extraction.needs_vision,
+            extracted_input=extracted_input_dict,
+            diagnosis=diagnosis_dict,
+            narrative=narrative_text,
+            model=settings.gemini_model,
+            cost_usd=total_cost,
+        )
+    except Exception:
+        logger.exception("finance_assess_persist_failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="failed to persist assessment",
+        )
+
+    return JSONResponse(
+        content={
+            "id": str(row.get("id")),
+            "cached": False,
+            "diagnosis": diagnosis_dict,
+            "extracted_input": extracted_input_dict,
+            "narrative": narrative_text,
+            "extraction_warnings": ext_out.extraction_warnings,
+            "needs_vision": extraction.needs_vision,
+            "llm_tokens_used": {
+                "prompt": total_prompt,
+                "completion": total_completion,
+            },
+            "cost_usd": total_cost,
+        }
+    )
+
+
+@router.get(
+    "/assessments/{assessment_id}",
+    summary="Fetch a persisted finance assessment by id",
+)
+async def get_assessment(
+    assessment_id: UUID,
+    current_user: dict[str, Any] = Depends(require_permission("financial", "read")),
+    settings: Settings = Depends(get_settings),
+    repo: FinanceAssessmentRepository = Depends(_get_finance_repo),
+) -> JSONResponse:
+    _require_finance_llm_enabled(settings)
+    row = await repo.get_by_id(assessment_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="assessment not found",
+        )
+    return JSONResponse(content={"data": row})
+
+
+@router.delete(
+    "/assessments/{assessment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Hard-delete a finance assessment",
+)
+async def delete_assessment(
+    assessment_id: UUID,
+    current_user: dict[str, Any] = Depends(require_permission("financial", "write")),
+    settings: Settings = Depends(get_settings),
+    repo: FinanceAssessmentRepository = Depends(_get_finance_repo),
+) -> JSONResponse:
+    _require_finance_llm_enabled(settings)
+    existing = await repo.get_by_id(assessment_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="assessment not found",
+        )
+    await repo.delete(assessment_id)
+    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)

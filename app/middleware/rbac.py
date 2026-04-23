@@ -27,6 +27,10 @@ RBAC_MATRIX: dict[str, dict[str, list[str]]] = {
         "read": ["admin", "operator", "investor", "end_user", "asset_manager"],
         "write": ["admin", "operator"],
     },
+    "financial": {
+        "read": ["admin", "operator", "asset_manager"],
+        "write": ["admin", "operator"],
+    },
     "contracts": {
         "read": [
             "admin",
