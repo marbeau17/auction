@@ -40,10 +40,14 @@
     font-size: 12px;
     font-weight: 700;
     color: var(--navy);
-    padding: 0 6px;
-    margin: -16px 6px 0;    /* pull legend up over border */
-    display: block;         /* explicit block */
+    display: inline-block;
+    padding: 2px 6px;
+    margin: -8px 6px 0;
+    line-height: 1;
+    background: #fff;
   }
+  body.matsu[data-theme="dark"] .pricing-fieldset { background: var(--card, #1a2332); border-color: var(--line, #2a3547); }
+  body.matsu[data-theme="dark"] .pricing-fieldset legend { background: var(--card, #1a2332); color: var(--text, #E6E4DB); }
   .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
