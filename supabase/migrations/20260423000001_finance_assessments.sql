@@ -12,7 +12,7 @@
 CREATE TABLE IF NOT EXISTS public.finance_assessments (
   id                uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id           uuid         NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  fund_id           uuid         REFERENCES public.funds(id) ON DELETE SET NULL,
+  fund_id           uuid,  -- intentionally not a FK: pure tag, no referential-integrity need
   pdf_sha256        text         NOT NULL,
   needs_vision      boolean      NOT NULL DEFAULT false,
   extracted_input   jsonb        NOT NULL,
@@ -29,13 +29,13 @@ COMMENT ON TABLE public.finance_assessments IS
   'LLM-extracted 決算書 (financial statement) diagnoses. Cross-fund feature — fund_id is a loose tag only; authorisation happens at the application layer via RBAC.';
 
 COMMENT ON COLUMN public.finance_assessments.fund_id IS
-  'Loose tag only; not used for authorization (cross-fund feature).';
+  'Loose tag only; not a foreign key, not used for authorization (cross-fund feature).';
 COMMENT ON COLUMN public.finance_assessments.pdf_sha256 IS
   'SHA-256 of the uploaded PDF. Dedup key: same user + same PDF re-uses the cached diagnosis.';
 COMMENT ON COLUMN public.finance_assessments.needs_vision IS
   'True when the text layer was empty and Gemini''s vision path was used (doubles token cost).';
 COMMENT ON COLUMN public.finance_assessments.extracted_input IS
-  'FinancialInput fields (26 Japanese line items) as extracted by the LLM.';
+  'FinancialInput fields (17 Japanese line items) as extracted by the LLM.';
 COMMENT ON COLUMN public.finance_assessments.diagnosis IS
   'FinancialDiagnosisResult from the deterministic rule engine.';
 COMMENT ON COLUMN public.finance_assessments.narrative IS
